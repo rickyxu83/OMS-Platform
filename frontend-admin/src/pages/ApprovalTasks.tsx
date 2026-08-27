@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  CalendarClock, CheckCircle2, CircleCheck, CircleCheckBig, CircleMinus, CircleSlash, CircleX,
+  CalendarClock, CheckCircle2, CircleCheck, CircleCheckBig, CircleDot, CircleMinus, CircleSlash, CircleX,
   Clock3, FileSignature, FileText, Forward, Hourglass, ListTodo, Loader2, Package,
   PauseCircle, Pencil, RefreshCw, RotateCcw, Search, Send, type LucideIcon,
 } from 'lucide-react'
@@ -85,6 +85,66 @@ function agingInfo(createdAt?: string | null) {
   const days = Math.floor(hours / 24)
   const text = days > 0 ? `已等待 ${days} 天 ${hours % 24} 小时` : `已等待 ${hours} 小时`
   return { text, overdue: hours >= 48 }
+}
+
+/** 状态 hover 悬浮卡（fixed 定位，防表格遮挡）：发起/完成时间线 + 签核步骤链 */
+function TaskStatusHover({ task }: { task: ApprovalTask }) {
+  const [hover, setHover] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const ref = useRef<HTMLSpanElement>(null)
+  const segs = ([
+    { label: '发起', at: task.createdAt },
+    { label: '完成', at: task.completedAt },
+  ]).filter((seg) => seg.at)
+  const steps = task.approvalSteps || []
+  if (!segs.length && !steps.length) return statusIndicator(task)
+  return (
+    <span
+      ref={ref}
+      className="inline-block cursor-default"
+      onMouseEnter={() => {
+        if (ref.current) {
+          const rect = ref.current.getBoundingClientRect()
+          setPos({ top: rect.bottom + 4, left: Math.min(rect.left, Math.max(8, window.innerWidth - 240)) })
+        }
+        setHover(true)
+      }}
+      onMouseLeave={() => setHover(false)}
+    >
+      {statusIndicator(task)}
+      {hover && pos ? (
+        <div className="pointer-events-none fixed z-[100] min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ top: pos.top, left: pos.left }}>
+          {segs.map((seg) => (
+            <div key={seg.label} className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#582b8b]/10 text-[#582b8b]"><CircleDot className="h-2.5 w-2.5" /></span>
+              {seg.label} <span className="font-medium text-foreground">{dateTime(seg.at)}</span>
+            </div>
+          ))}
+          {steps.length ? (
+            <div className={segs.length ? 'mt-1.5 border-t border-slate-100 pt-1.5' : ''}>
+              {(() => {
+                const currentIdx = steps.findIndex((step) => !step.action)
+                return steps.map((step, idx) => {
+                  const isCurrent = idx === currentIdx
+                  return (
+                    <div key={`${step.seq}-${step.stepKey}`} className={`flex items-center gap-1.5 py-0.5 ${isCurrent ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${step.action === 'approve' ? 'bg-emerald-100 text-emerald-700' : step.action === 'reject' ? 'bg-rose-100 text-rose-600' : isCurrent ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-400'}`}>
+                        {step.action === 'approve' ? <CircleCheck className="h-2.5 w-2.5" /> : step.action === 'reject' ? <CircleX className="h-2.5 w-2.5" /> : <Hourglass className="h-2.5 w-2.5" />}
+                      </span>
+                      <span className={`flex-1 truncate ${isCurrent ? 'font-medium' : ''}`}>
+                        {step.stepLabel}{step.approverName ? ` · ${step.approverName}` : ''}{isCurrent ? '（进行中）' : ''}
+                      </span>
+                      {step.decidedAt ? <span className="shrink-0 text-[11px]">{dateTime(step.decidedAt)}</span> : null}
+                    </div>
+                  )
+                })
+              })()}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </span>
+  )
 }
 
 function taskFilterDate(task: ApprovalTask) {
@@ -301,7 +361,6 @@ export function ApprovalTasks() {
         subtitle={subtitleOf(task)}
         fields={[
           { label: '业务', value: businessIndicator(task) },
-          { label: '当前步骤', value: task.currentStepLabel || '-' },
           { label: '发起人', value: task.initiatorName || '-' },
           { label: view === 'pending' ? '等待' : '时间', value: timeCell(task) },
         ]}
@@ -390,19 +449,17 @@ export function ApprovalTasks() {
             <ResponsiveList items={filteredItems} keyExtractor={(task) => String(task.id)} renderCard={renderTaskCard}>
               <table className="w-full table-fixed caption-bottom text-sm">
                 <colgroup>
-                  <col className="w-[10%]" />
-                  <col className="w-[30%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[35%]" />
                   <col className="w-[13%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[17%]" />
                   <col className="w-[11%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[15%]" />
-                  <col className="w-[10%]" />
                 </colgroup>
                 <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                   <TableRow>
                     <TableHead>业务</TableHead>
                     <TableHead>标题</TableHead>
-                    <TableHead>当前步骤</TableHead>
                     <TableHead>发起人</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead>{view === 'pending' ? '等待 / 发起时间' : '时间'}</TableHead>
@@ -435,9 +492,8 @@ export function ApprovalTasks() {
                             <div className="truncate text-xs text-muted-foreground">{subtitleOf(task)}</div>
                           </div>
                         </TableCell>
-                        <TableCell className="min-w-0"><span className="block truncate text-sm">{task.currentStepLabel || '-'}</span></TableCell>
                         <TableCell className="min-w-0"><span className="block truncate text-sm">{task.initiatorName || '-'}</span></TableCell>
-                        <TableCell>{statusIndicator(task)}</TableCell>
+                        <TableCell><TaskStatusHover task={task} /></TableCell>
                         <TableCell className="whitespace-normal">{timeCell(task)}</TableCell>
                         <TableCell onClick={(event) => event.stopPropagation()}>
                           <div className="flex items-center gap-1">{quickActions(task, false)}</div>

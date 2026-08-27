@@ -751,6 +751,30 @@ async function listApprovalTasks(userId, view = 'pending', extraAssigneeIds = []
      LIMIT 500`,
     { userId, ...assigneeParams },
   )
+  // 批量查 MR 签核任务的最新一轮步骤链（待办中心状态悬浮卡用；采购/合同任务无签核链）
+  const mrIds = [...new Set(rows.filter((row) => row.business_type === 'mr').map((row) => row.business_id).filter(Boolean))]
+  const approvalsByMr = {}
+  if (mrIds.length) {
+    const approvalRows = await query(
+      `SELECT a.mr_id, a.seq, a.step_key, a.step_label, a.approver_name_snapshot, a.action, a.decided_at
+       FROM mr_approvals a
+       INNER JOIN (SELECT mr_id, MAX(cycle) AS max_cycle FROM mr_approvals WHERE mr_id IN (${mrIds.map(() => '?').join(',')}) GROUP BY mr_id) latest
+         ON latest.mr_id = a.mr_id AND latest.max_cycle = a.cycle
+       ORDER BY a.mr_id, a.seq`,
+      mrIds,
+    )
+    for (const a of approvalRows) {
+      if (!approvalsByMr[a.mr_id]) approvalsByMr[a.mr_id] = []
+      approvalsByMr[a.mr_id].push({
+        seq: a.seq,
+        stepKey: a.step_key,
+        stepLabel: a.step_label,
+        approverName: a.approver_name_snapshot || null,
+        action: a.action || null,
+        decidedAt: a.decided_at || null,
+      })
+    }
+  }
   const countRows = await query(
     `SELECT (
        (SELECT COUNT(*) FROM approval_tasks WHERE assignee_user_id IN (${assigneePlaceholders}) AND status = 'pending')
@@ -773,6 +797,7 @@ async function listApprovalTasks(userId, view = 'pending', extraAssigneeIds = []
     detailPath: row.detail_path,
     createdAt: row.created_at,
     completedAt: row.completed_at,
+    approvalSteps: row.business_type === 'mr' ? (approvalsByMr[row.business_id] || []) : [],
   })), pendingCount: Number(countRows[0]?.count || 0) }
 }
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeftRight, CalendarClock, ExternalLink, CalendarDays, CalendarOff, CircleCheck, CircleSlash, CircleX, Clock3, Coins, Coffee, Flag, Hourglass, Loader2, Paperclip, PencilLine, Undo2, Users, Wrench, Zap, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, CalendarClock, CalendarDays, CalendarOff, CircleCheck, CircleSlash, CircleX, Clock3, Coins, Coffee, Flag, Hourglass, Loader2, Paperclip, PencilLine, Undo2, Users, Wrench, Zap, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -202,6 +202,65 @@ function batchUnionRange(group: RequestGroup) {
 function batchTotalHours(group: RequestGroup) {
   return group.reduce((sum, item) => sum + Number(item.hours || 0), 0);
 }
+/** 关联工单 chip：扳手 + "工单 · 客户名" 一行轻量展示；
+ *  单号/设备/类型/问题收进 hover 悬浮卡（fixed 定位防遮挡），点击照常开工单预览。 */
+function LinkedOrderChip({ order, onPreview }: { order: ServiceOrderSummary; onPreview?: (order: ServiceOrderSummary) => void }) {
+  const [hover, setHover] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const ref = useRef<HTMLSpanElement>(null);
+  const orderLabel = order.orderNo || `#${order.id}`;
+  const typeLabel = serviceOrderTypeLabel(order);
+  const rows = [
+    { label: "工单号", value: orderLabel },
+    { label: "客户", value: order.customerName },
+    { label: "设备", value: order.deviceName },
+    { label: "类型", value: typeLabel === "- / -" ? "" : typeLabel },
+    { label: "问题", value: order.issueDescription },
+  ].filter((row) => row.value && row.value !== "-");
+  const text = `工单${order.customerName ? ` · ${order.customerName}` : ""}`;
+  return (
+    <span
+      ref={ref}
+      className="inline-flex shrink-0 items-center"
+      onMouseEnter={() => {
+        if (ref.current) {
+          const rect = ref.current.getBoundingClientRect();
+          setPos({ top: rect.bottom + 4, left: Math.min(rect.left, Math.max(8, window.innerWidth - 250)) });
+        }
+        setHover(true);
+      }}
+      onMouseLeave={() => setHover(false)}
+    >
+      {onPreview ? (
+        <button
+          type="button"
+          onClick={() => onPreview(order)}
+          className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-1.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          title={`工单 ${orderLabel}`}
+        >
+          <Wrench className="h-3 w-3" />
+          {text}
+        </button>
+      ) : (
+        <span className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-1.5 py-0.5 text-xs font-medium text-foreground/70" title={`工单 ${orderLabel}`}>
+          <Wrench className="h-3 w-3" />
+          {text}
+        </span>
+      )}
+      {hover && pos && rows.length ? (
+        <div className="pointer-events-none fixed z-[100] min-w-[200px] max-w-[300px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ top: pos.top, left: pos.left }}>
+          {rows.map((row) => (
+            <div key={row.label} className="flex items-start gap-1.5 py-0.5 text-muted-foreground">
+              <span className="shrink-0 text-muted-foreground/60">{row.label}</span>
+              <span className="min-w-0 break-words font-medium text-foreground">{row.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
 function ServiceOrderApprovalSummary({ order, onPreview }: { order: ServiceOrderSummary; onPreview?: (order: ServiceOrderSummary) => void }) {
   const orderLabel = order.orderNo || `#${order.id}`;
   if (order.unavailable) {
@@ -211,38 +270,9 @@ function ServiceOrderApprovalSummary({ order, onPreview }: { order: ServiceOrder
       </div>
     );
   }
-  const typeLabel = serviceOrderTypeLabel(order);
-  // 空字段不占位：只展示有值的项（工单号 / 客户 / 设备 / 类型）
-  const facts = [
-    order.customerName,
-    order.deviceName,
-    typeLabel === "- / -" ? "" : typeLabel,
-  ].filter((value) => value && value !== "-");
   return (
-    <div className="mt-1.5 max-w-xl rounded-md border bg-muted/30 px-2.5 py-1.5 text-xs">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground">
-        {onPreview ? (
-          <button
-            type="button"
-            onClick={() => onPreview(order)}
-            className="inline-flex items-center gap-1 font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ExternalLink className="h-3 w-3" />
-            工单 {orderLabel}
-          </button>
-        ) : (
-          <span className="font-medium text-foreground">工单 {orderLabel}</span>
-        )}
-        {facts.map((fact) => (
-          <span key={fact} className="inline-flex items-center gap-2">
-            <span className="text-muted-foreground/40">|</span>
-            {fact}
-          </span>
-        ))}
-      </div>
-      {order.issueDescription ? (
-        <div className="mt-0.5 truncate text-muted-foreground" title={order.issueDescription}>问题：{order.issueDescription}</div>
-      ) : null}
+    <div className="mt-1.5">
+      <LinkedOrderChip order={order} onPreview={onPreview} />
     </div>
   );
 }
@@ -388,7 +418,6 @@ export function RequestList({
   const renderBatchTableRow = (group: RequestGroup) => {
     const rep = group[0];
     const orderLabel = rep.serviceOrder?.orderNo || (rep.sourceId ? `#${rep.sourceId}` : "-");
-    const customerName = rep.serviceOrder?.customerName || "";
     const totalHours = group.reduce((sum, item) => sum + Number(item.hours || 0), 0);
     const kindsText = group.map((item) => overtimeKindLabel(item)).join(" + ");
     const anyTriple = group.some((item) => item.isTriplePay);
@@ -403,13 +432,11 @@ export function RequestList({
         <TableCell>{requestTypeIndicator(rep.requestType)}</TableCell>
         <TableCell>
           <div className="flex items-center gap-2">
-            <Wrench className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            {onPreviewOrder && rep.serviceOrder ? (
-              <button type="button" onClick={() => onPreviewOrder(rep.serviceOrder as ServiceOrderSummary)} className="shrink-0 text-sm font-medium text-primary underline-offset-2 hover:underline">工单 {orderLabel}</button>
+            {rep.serviceOrder ? (
+              <LinkedOrderChip order={rep.serviceOrder as ServiceOrderSummary} onPreview={onPreviewOrder} />
             ) : (
-              <span className="shrink-0 text-sm font-medium">工单 {orderLabel}</span>
+              <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"><Wrench className="h-3 w-3" />工单 {orderLabel}</span>
             )}
-            {customerName ? <span className="min-w-0 truncate text-xs text-muted-foreground">{customerName}</span> : null}
             <SegmentsHoverCard group={group} />
             {anyTriple ? (
               <span className="inline-flex shrink-0 animate-pulse items-center gap-0.5 text-[11px] font-semibold text-rose-600"><Zap className="h-3 w-3" />3倍</span>
@@ -770,26 +797,8 @@ function requestMetaRow(
       segs.push(<span key="order" className="inline-flex shrink-0 items-center gap-1"><Wrench className="h-3 w-3" />关联工单 {orderLabel} 暂不可用</span>);
       titleParts.push(`关联工单 ${orderLabel} 暂不可用`);
     } else {
-      const typeLabel = serviceOrderTypeLabel(order);
-      const facts = [order.customerName, order.deviceName, typeLabel === "- / -" ? "" : typeLabel].filter((value) => value && value !== "-");
-      segs.push(
-        <span key="order" className="inline-flex shrink-0 items-center gap-1">
-          <Wrench className="h-3 w-3" />
-          {onPreviewOrder ? (
-            <button
-              type="button"
-              onClick={() => onPreviewOrder(order)}
-              className="font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              工单 {orderLabel}
-            </button>
-          ) : (
-            <span className="font-medium text-foreground/70">工单 {orderLabel}</span>
-          )}
-          {facts.length ? <span className="max-w-52 truncate text-muted-foreground/70">{facts.join(" · ")}</span> : null}
-        </span>,
-      );
-      titleParts.push([`工单 ${orderLabel}`, ...facts, order.issueDescription ? `问题：${order.issueDescription}` : ""].filter(Boolean).join(" · "));
+      segs.push(<LinkedOrderChip key="order" order={order} onPreview={onPreviewOrder} />);
+      titleParts.push([`工单 ${orderLabel}`, order.customerName, order.issueDescription ? `问题：${order.issueDescription}` : ""].filter(Boolean).join(" · "));
     }
   }
 

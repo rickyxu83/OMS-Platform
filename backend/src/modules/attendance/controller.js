@@ -2214,6 +2214,48 @@ function approvalTaskStepLabel(row) {
   return '审批'
 }
 
+// 步骤链（待办中心状态悬浮卡用）：attendance_request_approvals → 与 MR 签核链同构的 approvalSteps
+function attendanceStepChainLabel(stepType, role) {
+  if (stepType === 'delegate') return '代理确认'
+  if (stepType === 'supervisor') return '主管审批'
+  if (stepType === 'hr') return '人事审批'
+  if (stepType === 'vp') return '副总审批'
+  if (stepType === 'role') return `${ROLE_LABELS[role] || role || '角色'}审批`
+  return '审批'
+}
+
+async function attachTaskApprovalSteps(items) {
+  const ids = [...new Set(items.map((item) => Number(item.businessId)).filter(Boolean))]
+  if (!ids.length) return items
+  const params = {}
+  const placeholders = ids.map((id, index) => {
+    params[`req${index}`] = id
+    return `:req${index}`
+  })
+  const rows = await query(
+    `SELECT a.request_id, a.step_type, a.step_order, a.assignee_role, a.status,
+            a.approved_at, a.rejected_at, p.employee_name AS assignee_name
+     FROM attendance_request_approvals a
+     LEFT JOIN attendance_employee_profiles p ON p.id = a.assignee_employee_id
+     WHERE a.request_id IN (${placeholders.join(', ')})
+     ORDER BY a.request_id, a.step_order, a.id`,
+    params,
+  )
+  const byRequest = {}
+  for (const row of rows) {
+    if (!byRequest[row.request_id]) byRequest[row.request_id] = []
+    byRequest[row.request_id].push({
+      seq: row.step_order,
+      stepKey: row.step_type,
+      stepLabel: attendanceStepChainLabel(row.step_type, row.assignee_role),
+      approverName: row.assignee_name || null,
+      action: row.approved_at ? 'approve' : row.rejected_at ? 'reject' : null,
+      decidedAt: row.approved_at || row.rejected_at || null,
+    })
+  }
+  return items.map((item) => ({ ...item, approvalSteps: byRequest[Number(item.businessId)] || [] }))
+}
+
 function approvalTaskStatus(row, view) {
   if (view === 'pending') return 'pending'
   const status = text(row.status)
@@ -2256,7 +2298,7 @@ async function listApprovalTaskItems(user, view = 'pending') {
        LIMIT 200`,
       { userId: user.id },
     )
-    return rows.map((row) => approvalTaskPayload(row, view))
+    return attachTaskApprovalSteps(rows.map((row) => approvalTaskPayload(row, view)))
   }
   if (view === 'completed') {
     // 我已处理：我签核/驳回过的审批步骤 + 旧流程的主管/行政/作废动作
@@ -2281,10 +2323,10 @@ async function listApprovalTaskItems(user, view = 'pending') {
        LIMIT 200`,
       { userId: user.id },
     )
-    return rows.map((row) => approvalTaskPayload(row, view))
+    return attachTaskApprovalSteps(rows.map((row) => approvalTaskPayload(row, view)))
   }
   const rows = await pendingApprovalRequestRows(user)
-  return rows.map((row) => approvalTaskPayload(row, view))
+  return attachTaskApprovalSteps(rows.map((row) => approvalTaskPayload(row, view)))
 }
 
 async function requestForUpdate(connection, id) {
