@@ -3,6 +3,7 @@ import { Download, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -319,22 +320,14 @@ export function Timesheets() {
       <Card>
         <CardContent className="pt-6">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            <div className="space-y-2">
-              <Label htmlFor="start-date">开始日期</Label>
-              <Input
-                id="start-date"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="end-date">结束日期</Label>
-              <Input
-                id="end-date"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+            <div className="space-y-2 md:col-span-2">
+              <Label>日期范围</Label>
+              <DateRangePicker
+                start={startDate}
+                end={endDate}
+                onChange={(s2, e2) => { setStartDate(s2); setEndDate(e2); }}
+                placeholder="开始日期 ~ 结束日期"
+                ariaLabel="工时日期范围"
               />
             </div>
             <div className="space-y-2">

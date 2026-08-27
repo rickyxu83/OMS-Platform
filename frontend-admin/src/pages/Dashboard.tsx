@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Amap } from "@/components/Amap";
 import { ErrorToast } from "@/components/ErrorToast";
@@ -1393,23 +1394,15 @@ export function Dashboard() {
                 {reportHint}
               </div>
             )}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <label className="space-y-2 text-sm font-medium">
-                <span>{t.reportDialog.startDate}</span>
-                <Input
-                  type="date"
-                  value={reportStartDate}
-                  onChange={(e) => setReportStartDate(e.target.value)}
-                />
-              </label>
-              <label className="space-y-2 text-sm font-medium">
-                <span>{t.reportDialog.endDate}</span>
-                <Input
-                  type="date"
-                  value={reportEndDate}
-                  onChange={(e) => setReportEndDate(e.target.value)}
-                />
-              </label>
+            <div className="space-y-2 text-sm font-medium">
+              <span>{t.reportDialog.startDate} ~ {t.reportDialog.endDate}</span>
+              <DateRangePicker
+                start={reportStartDate}
+                end={reportEndDate}
+                onChange={(s2, e2) => { setReportStartDate(s2); setReportEndDate(e2); }}
+                placeholder={`${t.reportDialog.startDate} ~ ${t.reportDialog.endDate}`}
+                ariaLabel={`${t.reportDialog.startDate} / ${t.reportDialog.endDate}`}
+              />
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               {canSelectReportSalesperson && (
