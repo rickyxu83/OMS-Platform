@@ -19,6 +19,7 @@ router.get('/duty/batches', requirePermission('attendance.duty.manage', 'attenda
 router.get('/employees', requirePermission('attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listEmployees)
 router.get('/delegates', requirePermission('attendance.apply'), controller.listDelegates)
 router.get('/me', requirePermission('attendance.apply', 'attendance.approve', 'attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.me)
+router.get('/me/balance-ledger', requirePermission('attendance.apply'), controller.myBalanceLedger)
 router.get('/supervisor-role-rules', requirePermission('attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listSupervisorRoleRules)
 router.put('/supervisor-role-rules', requirePermission('attendance.manage'), controller.updateSupervisorRoleRules)
 router.get('/approval-role-rules', requirePermission('attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listApprovalRoleRules)

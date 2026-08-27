@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useLocation, useNavigationType } from "react-router-dom";
-import { SHOW_MR_ATTENDANCE } from "@/lib/feature-flags";
+import { SHOW_ATTENDANCE } from "@/lib/feature-flags";
 import {
   LayoutDashboard,
   ListTodo,
@@ -253,8 +253,8 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
   },
 ];
 
-/** 暗启动隐藏入口：MR/考勤/待办（SHOW_MR_ATTENDANCE=false 时从导航剔除，桌面与移动端共用 navGroups 过滤点） */
-const FEATURE_FLAG_HIDDEN_NAV_PATHS = new Set(["mr", "attendance", "approval-tasks"]);
+/** 暗启动隐藏入口：考勤（SHOW_ATTENDANCE=false 时从导航剔除，桌面与移动端共用 navGroups 过滤点）；MR/待办已点亮常驻 */
+const FEATURE_FLAG_HIDDEN_NAV_PATHS = new Set(["attendance"]);
 
 const MOBILE_NAV_LABELS: Record<string, string> = {
   dashboard: "首页",
@@ -326,7 +326,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   );
   const [attendancePendingCount, setAttendancePendingCount] = useState(0);
   useEffect(() => {
-    if (!SHOW_MR_ATTENDANCE || !canApproveAttendance) return;
+    if (!SHOW_ATTENDANCE || !canApproveAttendance) return;
     let cancelled = false;
     async function loadPendingCount() {
       try {
@@ -423,7 +423,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   }, [user?.id]);
 
   useEffect(() => {
-    if (!SHOW_MR_ATTENDANCE) return;
     let active = true;
     const load = () => api.get("/approval-tasks?view=pending")
       .then((data) => { if (active) setPendingTaskCount(Number(data?.pendingCount || 0)); })
@@ -450,7 +449,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     NAV_CONFIG.map((group) => ({
       group: strings.groups[group.groupKey],
       items: group.items
-        .filter((item) => SHOW_MR_ATTENDANCE || !FEATURE_FLAG_HIDDEN_NAV_PATHS.has(item.path))
+        .filter((item) => SHOW_ATTENDANCE || !FEATURE_FLAG_HIDDEN_NAV_PATHS.has(item.path))
         .map((item) => ({
           label: strings.pages[item.labelKey],
           icon: item.icon,

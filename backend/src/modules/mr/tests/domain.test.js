@@ -240,6 +240,19 @@ function validBody(overrides = {}) {
   const margins = purchaseOnlyAllocate.items.map((item) => item.marginRate)
   assert(Math.abs(margins[0] - margins[1]) < 0.01, '成本占比分摊后各品项毛利率应一致')
 
+  // 回归（2026-08-25 毛利率爆负事故）：单项系统集成主项仅采购（purchase_only，报价单仅有采购价）也必须分配 99%，
+  // 否则提交签核后后端重算把主项单价抹成 null，签核视图毛利率变 -2687%。与前端 form-logic.check.ts 同场景
+  const singlePurchaseOnly = normalizeOrder(validBody({ pricingMode: 2, totalExcludingTax: 73341, items: [
+    { name: '阵列卡 Cisco 12G Modular RAID controller', qty: 7, unitPrice: null, quotedUnitPrice: null, vendor: '苏州诺恒智能', costInclTax: 23100, taxRate: 13, purchaseOnly: true },
+    { name: '技术服务', qty: 1, unitPrice: null, quotedUnitPrice: null, costInclTax: 0, taxRate: 13 },
+  ] }))
+  assert(singlePurchaseOnly.items[0].unitPrice !== null && Math.abs(singlePurchaseOnly.items[0].unitPrice - 10372.512857) < 0.001, '单项系统集成主项即使仅采购也应分配 99%')
+  assert.equal(singlePurchaseOnly.items[0].subtotal, 72607.59)
+  assert.equal(singlePurchaseOnly.items[1].unitPrice, 733.41, '技术服务应分配 1%')
+  const singleTotals = totals(singlePurchaseOnly.order, singlePurchaseOnly.items)
+  assert.equal(singleTotals.salesExcludingTax, 73341, '未税总计应等于整单总额')
+  assert(Math.abs(singleTotals.marginRate - 72.1268) < 0.001, '整单毛利率应约 72.13% 而非负值')
+
   const schedule = normalizeOrder(validBody({
     grossProfitRecognitions: [
       { startMonth: '2026-09', frequency: 'monthly', amount: 10000 },

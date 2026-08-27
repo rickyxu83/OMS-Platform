@@ -34,11 +34,12 @@ function status(task: ApprovalTask) {
   return [task.status || '-', 'outline'] as const
 }
 
-function businessLabel(task: ApprovalTask) {
-  if (task.businessType === 'mr_purchase') return 'MR·采购'
-  if (task.businessType === 'mr_contract_no') return 'MR·合同'
-  if (task.businessType === 'attendance') return '考勤'
-  return task.businessType.toUpperCase()
+function businessBadge(task: ApprovalTask) {
+  // 业务列按类型分色：MR 系用冷色（采购 cyan / 合同 purple），考勤用暖色 orange，与状态列的 amber/emerald 语义色错开
+  if (task.businessType === 'mr_purchase') return ['MR·采购', 'cyan'] as const
+  if (task.businessType === 'mr_contract_no') return ['MR·合同', 'purple'] as const
+  if (task.businessType === 'attendance') return ['考勤', 'orange'] as const
+  return [task.businessType.toUpperCase(), 'outline'] as const
 }
 
 export function ApprovalTasks() {
@@ -116,6 +117,7 @@ export function ApprovalTasks() {
               <TableRow><TableCell colSpan={6} className="h-40"><EmptyState title="当前没有记录" description={view === 'pending' ? '待办都处理完了' : undefined} /></TableCell></TableRow>
             ) : items.map((task) => {
               const [label, variant] = status(task)
+              const [bizLabel, bizVariant] = businessBadge(task)
               const canOpen = !['reassigned', 'paused'].includes(task.status)
               return (
                 <TableRow
@@ -132,7 +134,7 @@ export function ApprovalTasks() {
                     }
                   }}
                 >
-                  <TableCell><Badge variant="outline">{businessLabel(task)}</Badge></TableCell>
+                  <TableCell><Badge variant={bizVariant}>{bizLabel}</Badge></TableCell>
                   <TableCell><div className="font-medium">{task.title}</div><div className="text-xs text-muted-foreground">{task.businessType === 'attendance' ? (task.timeLabel || '-') : `${task.customerName || '-'} · ${task.ctrlNo || '未填 Ctrl.NO'}`}</div></TableCell>
                   <TableCell>{task.currentStepLabel || '-'}</TableCell>
                   <TableCell>{task.initiatorName || '-'}</TableCell>
