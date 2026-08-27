@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, CalendarClock, Check, Loader2, RotateCcw, Send } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, Check, Loader2, RotateCcw, Send, TriangleAlert, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/services/api";
 import {
@@ -29,11 +30,13 @@ import {
   previewOvertimeHours,
   toDateTimeLocal,
   workingLeaveSummary,
+  formFromDraft,
   type AnnualLeavePeriod,
   type EmployeeProfile,
   type LegalHolidayItem,
   type OvertimeServiceOrder,
   type RequestType,
+  type ResumableDraft,
 } from "@/pages/attendance-shared";
 
 type ApplyForm = ReturnType<typeof createBlankForm>;
@@ -46,6 +49,8 @@ interface AttendanceApplyDrawerProps {
   myProfile: EmployeeProfile | null;
   /** 法定节假日日期集合（用于工作日核算） */
   holidayDates: Set<string>;
+  /** 「我的申请」草稿行「继续提交」传入的草稿；仅请假/调休支持 */
+  resumeDraft?: ResumableDraft | null;
 }
 
 const REQUEST_TYPE_CARDS: Array<{ value: RequestType; label: string; description: string; icon: typeof CalendarClock }> = [
@@ -54,12 +59,20 @@ const REQUEST_TYPE_CARDS: Array<{ value: RequestType; label: string; description
   { value: "comp_time", label: "调休", description: "使用已有调休余额", icon: RotateCcw },
 ];
 
+/** 时段腿展示的紧凑时间：'2026-10-01 11:10' → '10-01 11:10' */
+function shortDateTime(value?: string) {
+  return String(value || "").replace("T", " ").slice(5, 16);
+}
+
 /** 新建申请三步向导：选类型 → 填表单 → 确认提交。表单状态与提交逻辑自原考勤页内嵌表单迁入。 */
-export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfile, holidayDates }: AttendanceApplyDrawerProps) {
+export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfile, holidayDates, resumeDraft }: AttendanceApplyDrawerProps) {
+  // 加班单无草稿态，仅请假/调休可继续提交
+  const resumed = resumeDraft && ["leave", "comp_time"].includes(resumeDraft.requestType) ? resumeDraft : null;
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<ApplyForm>(createBlankForm);
   const [submitting, setSubmitting] = useState(false);
   const [proofFiles, setProofFiles] = useState<File[]>([]);
+  const [proofDragging, setProofDragging] = useState(false);
   const [delegates, setDelegates] = useState<EmployeeProfile[]>([]);
   const [delegatesLoading, setDelegatesLoading] = useState(false);
   const [overtimeOrders, setOvertimeOrders] = useState<OvertimeServiceOrder[]>([]);
@@ -68,18 +81,18 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   const [travelDepartureAt, setTravelDepartureAt] = useState("");
   const [travelReturnAt, setTravelReturnAt] = useState("");
 
-  // 打开时重置为空白表单与第一步（草稿功能已下线，退出即重填）
+  // 打开时重置为初始草稿与第一步；继续提交场景用草稿预填并直达表单步
   useEffect(() => {
     if (open) {
-      setStep(1);
-      setForm(createBlankForm());
+      setStep(resumed ? 2 : 1);
+      setForm(resumed ? formFromDraft(resumed) : createBlankForm());
       setProofFiles([]);
       setSelectedOvertimeOrderId("");
       setTravelDepartureAt("");
       setTravelReturnAt("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, resumed]);
 
   // 代理人加载：请假/调休时按所选日期过滤冲突人员（逻辑同原页面）
   useEffect(() => {
@@ -142,11 +155,17 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     [overtimeOrders, selectedOvertimeOrderId],
   );
   const selectedOvertimeRows = useMemo(() => overtimeRows(selectedOvertimeOrder), [selectedOvertimeOrder]);
-  // 路上时间 2026-08-27 起拆成去程(travel_out)/回程(travel_back)两条独立时段；无有效加班时长的程后端不返回
-  const travelSegments = useMemo(() => selectedOvertimeRows.filter((item) => item.kind === "travel"), [selectedOvertimeRows]);
-  const travelOutSegment = useMemo(() => travelSegments.find((item) => item.key === "travel_out") || null, [travelSegments]);
-  const travelBackSegment = useMemo(() => travelSegments.find((item) => item.key === "travel_back") || null, [travelSegments]);
-  const hasTravelSegment = travelSegments.length > 0;
+  // 涉及的三倍工资日（法定节假日）：仅可付费时段（工作时间）与 300% 相关；路上固定转调休不参与
+  const triplePayDates = useMemo(() => {
+    const dates = new Set<string>();
+    selectedOvertimeRows
+      .filter((segment) => (segment.allowedResults || []).includes("pay"))
+      .forEach((segment) => (segment.triplePayDates || []).forEach((date) => dates.add(date)));
+    return [...dates].sort();
+  }, [selectedOvertimeRows]);
+  const travelSegment = useMemo(() => selectedOvertimeRows.find((item) => item.key === "travel") || null, [selectedOvertimeRows]);
+  // 路上时间可编辑性：仅多工程师工单开放（各地往返差异，ADR-0002）；单人工单按工单时间锁死
+  const travelEditable = (selectedOvertimeOrder?.engineerCount || 0) > 1;
   const workSegment = useMemo(() => selectedOvertimeRows.find((item) => item.key === "work") || null, [selectedOvertimeRows]);
 
   useEffect(() => {
@@ -154,18 +173,28 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     setTravelReturnAt(toDateTimeLocal(selectedOvertimeOrder?.returnAt));
   }, [selectedOvertimeOrderId, selectedOvertimeOrder?.departureAt, selectedOvertimeOrder?.returnAt]);
 
-  // 去程/回程预览时长分开核算（各自的日类型：法定节假日/休息日/工作日可能不同）
-  const travelPreview = useMemo(() => {
-    if (!selectedOvertimeOrder || !hasTravelSegment) return null;
+  // 路上两段（去程=出发→到达、回程=完工→返回）的即时预览，与后端 travelOvertimeSegment 同口径
+  const travelLegsPreview = useMemo(() => {
+    if (!selectedOvertimeOrder || !travelSegment) return [];
     const arrival = toDateTimeLocal(selectedOvertimeOrder.actualStartAt);
     const finish = toDateTimeLocal(selectedOvertimeOrder.actualEndAt);
-    const outbound = travelDepartureAt && arrival ? previewOvertimeHours(travelDepartureAt, arrival, travelOutSegment?.dayType) : 0;
-    const back = travelReturnAt && finish ? previewOvertimeHours(finish, travelReturnAt, travelBackSegment?.dayType) : 0;
-    return { outbound, back };
-  }, [selectedOvertimeOrder, hasTravelSegment, travelOutSegment?.dayType, travelBackSegment?.dayType, travelDepartureAt, travelReturnAt]);
+    const dayType = travelSegment.dayType;
+    const legs: Array<{ label: string; startAt: string; endAt: string; hours: number }> = [];
+    const outHours = travelDepartureAt && arrival ? previewOvertimeHours(travelDepartureAt, arrival, dayType) : 0;
+    if (outHours > 0) legs.push({ label: "去程", startAt: travelDepartureAt, endAt: arrival, hours: outHours });
+    const backHours = finish && travelReturnAt ? previewOvertimeHours(finish, travelReturnAt, dayType) : 0;
+    if (backHours > 0) legs.push({ label: "回程", startAt: finish, endAt: travelReturnAt, hours: backHours });
+    return legs;
+  }, [selectedOvertimeOrder, travelSegment, travelDepartureAt, travelReturnAt]);
+
+  const travelPreview = useMemo(() => {
+    if (!selectedOvertimeOrder || !travelSegment) return null;
+    const total = travelLegsPreview.reduce((sum, leg) => sum + leg.hours, 0);
+    return { hours: Math.round(total * 100) / 100, dayType: travelSegment.dayType };
+  }, [selectedOvertimeOrder, travelSegment, travelLegsPreview]);
 
   const travelInvalid = useMemo(() => {
-    if (!hasTravelSegment || !selectedOvertimeOrder) return "";
+    if (!travelSegment || !selectedOvertimeOrder) return "";
     const arrival = parseLocalDateTime(selectedOvertimeOrder.actualStartAt);
     const finish = parseLocalDateTime(selectedOvertimeOrder.actualEndAt);
     const departure = parseLocalDateTime(travelDepartureAt);
@@ -173,7 +202,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     if (departure && arrival && departure > arrival) return "去程出发时间不能晚于工单到达时间";
     if (back && finish && back < finish) return "回程返回时间不能早于工单完工时间";
     return "";
-  }, [hasTravelSegment, selectedOvertimeOrder, travelDepartureAt, travelReturnAt]);
+  }, [travelSegment, selectedOvertimeOrder, travelDepartureAt, travelReturnAt]);
 
   const naturalDayLeave = form.requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
   const annualPreview = ["leave", "comp_time"].includes(form.requestType)
@@ -182,6 +211,8 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   const annualSingleDay = form.annualStartDate === form.annualEndDate;
   const selectedDelegateName = delegates.find((item) => String(item.id) === form.delegateEmployeeId)?.employeeName || "";
   const proofRequired = form.requestType === "leave" && ["sick", "marriage"].includes(form.leaveType);
+  // 草稿中已上传的证明数量（继续提交时可补充，重复计算校验分母）
+  const existingProofCount = resumed ? (resumed.proofFiles?.length || resumed.proofFileCount || 0) : 0;
   const compBalance = Number(myProfile?.compTimeBalanceHours || 0);
   const annualBalance = annualBalanceDays(myProfile);
   const balanceInsufficient = form.requestType === "comp_time"
@@ -242,7 +273,8 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
       return "";
     }
     if (!form.delegateEmployeeId) return "请选择代理人";
-    if (proofRequired && proofFiles.length === 0) {
+    if (form.requestType === "leave" && form.leaveType === "personal" && !String(form.reason || "").trim()) return "请填写事假事由";
+    if (proofRequired && proofFiles.length + existingProofCount === 0) {
       return form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明";
     }
     if (annualPreview && !annualPreview.workingDays) {
@@ -268,23 +300,29 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
         });
       } else {
         if (!form.delegateEmployeeId) throw new Error("请选择代理人");
-        if (requestType === "leave" && ["sick", "marriage"].includes(form.leaveType) && proofFiles.length === 0) {
+        if (requestType === "leave" && ["sick", "marriage"].includes(form.leaveType) && proofFiles.length + existingProofCount === 0) {
           throw new Error(form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明");
         }
         const includeNonWorkingDays = requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
         const leaveRange = workingLeaveSummary(form, holidayDates, includeNonWorkingDays);
         if (!leaveRange.workingDays) throw new Error(includeNonWorkingDays ? "申请范围内没有有效日期" : "申请范围内没有工作日");
-        // 草稿功能已下线：一律新建申请（create + 传附件 + submit 连续完成）
-        const draft = await api.post("/attendance/requests", {
-          requestType,
-          leaveType: requestType === "leave" ? form.leaveType : undefined,
-          delegateEmployeeId: form.delegateEmployeeId,
-          startAt: leaveRange.startAt,
-          endAt: leaveRange.endAt,
-          hours: leaveRange.hours,
-        });
-        const draftId: number | string = draft.id;
-        // 附件阶段独立捕获：失败自动撤回刚建的申请，提示重填重提（不再留草稿续传）
+        // 继续提交：草稿已存在，跳过建单直接补附件再提交；新建：先建草稿
+        let draftId: number | string;
+        if (resumed) {
+          draftId = resumed.id;
+        } else {
+          const draft = await api.post("/attendance/requests", {
+            requestType,
+            leaveType: requestType === "leave" ? form.leaveType : undefined,
+            delegateEmployeeId: form.delegateEmployeeId,
+            startAt: leaveRange.startAt,
+            endAt: leaveRange.endAt,
+            hours: leaveRange.hours,
+            reason: requestType === "leave" && form.leaveType === "personal" ? String(form.reason || "").trim() || undefined : undefined,
+          });
+          draftId = draft.id;
+        }
+        // 附件阶段独立捕获：失败不吞草稿，提示可稍后继续提交
         try {
           for (const file of proofFiles) {
             const body = new FormData();
@@ -295,11 +333,11 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
             await api.postForm("/files", body);
           }
         } catch (uploadError) {
-          try { await api.post(`/attendance/requests/${draftId}/withdraw`); } catch { /* 撤回失败不阻断错误提示 */ }
-          toast.error(`证明附件上传失败：${uploadError instanceof Error ? uploadError.message : "未知错误"}，申请已自动撤回，请重新提交。`);
+          toast.error(`证明附件上传失败：${uploadError instanceof Error ? uploadError.message : "未知错误"}。可直接重试，或稍后在「我的申请」对草稿点「继续提交」。`);
           return;
         }
-        await api.post(`/attendance/requests/${draftId}/submit`);
+        // 事由随提交落库：继续提交的草稿由后端在 submit 时顺带更新；新建草稿与建单值一致无副作用
+        await api.post(`/attendance/requests/${draftId}/submit`, requestType === "leave" && form.leaveType === "personal" ? { reason: String(form.reason || "").trim() } : undefined);
       }
       toast.success("申请已提交");
       onOpenChange(false);
@@ -331,9 +369,9 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     <Dialog open={open} onOpenChange={(next) => { if (!submitting) onOpenChange(next); }}>
       <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden sm:max-w-[720px]">
         <DialogHeader className="border-b pb-4">
-          <DialogTitle>新建申请</DialogTitle>
+          <DialogTitle>{resumed ? "继续提交申请" : "新建申请"}</DialogTitle>
           <DialogDescription>
-            {step === 1 ? "选择申请类型" : step === 2 ? `填写${typeLabel}信息` : "确认并提交"}
+            {resumed ? "草稿内容已锁定，补齐材料后提交" : step === 1 ? "选择申请类型" : step === 2 ? `填写${typeLabel}信息` : "确认并提交"}
           </DialogDescription>
           <div className="flex items-center gap-2 pt-2 text-xs">
             {[1, 2, 3].map((index) => (
@@ -423,31 +461,35 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </div>
                 </div>
 
+                {selectedOvertimeOrder && triplePayDates.length ? (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                      本申请涉及法定节假日（3 倍工资日）：<b>{triplePayDates.join("、")}</b>。按法规法定节假日安排加班应按 300% 计付工资，系统不做折算，实际加班费由行政核计。
+                    </span>
+                  </div>
+                ) : null}
                 {selectedOvertimeOrder ? (
                   <>
                     <div className="space-y-2">
                       <Label>加班时段</Label>
-                      <p className="text-xs text-muted-foreground">路上与工作时间将一并提交，各生成一条申请（无有效加班时长的时段自动跳过）</p>
+                      <p className="text-xs text-muted-foreground">路上与工作时间将一并提交，同组审批一次通过或驳回（无有效加班时长的时段自动跳过）</p>
                       <div className="grid gap-2 md:grid-cols-2">
                         {selectedOvertimeRows.map((segment) => {
                           const isTravel = segment.kind === "travel";
-                          const segHours = segment.key === "travel_out"
-                            ? (travelPreview?.outbound ?? segment.hours)
-                            : segment.key === "travel_back"
-                              ? (travelPreview?.back ?? segment.hours)
-                              : segment.hours;
+                          const segHours = isTravel ? (travelPreview?.hours ?? segment.hours) : segment.hours;
                           return (
                             <div key={segment.key} className="rounded-md border bg-background p-3 text-left text-sm">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="font-medium">{segment.label}</span>
+                                <span className="font-medium">{segment.label}{segment.allowedResults?.includes("pay") && segment.triplePayDates?.length ? <Badge variant="rose" className="ml-1.5 align-middle font-semibold">3倍</Badge> : null}</span>
                                 <Check className="h-4 w-4 shrink-0 text-primary" />
                               </div>
                               <div className="mt-1 text-xs text-muted-foreground">
-                                {segment.key === "travel_out"
-                                  ? `${formatDateTime(travelDepartureAt) || "-"} 出发 → 到达 ${formatDateTime(selectedOvertimeOrder.actualStartAt || undefined) || "-"}`
-                                  : segment.key === "travel_back"
-                                    ? `完工 ${formatDateTime(selectedOvertimeOrder.actualEndAt || undefined) || "-"} → 返回 ${formatDateTime(travelReturnAt) || "-"}`
-                                    : `${formatDateTime(segment.startAt)} - ${formatDateTime(segment.endAt)}`}
+                                {isTravel
+                                  ? (travelLegsPreview.length
+                                      ? travelLegsPreview.map((leg) => `${leg.label} ${shortDateTime(leg.startAt)}–${shortDateTime(leg.endAt)}（${hours(leg.hours)}h）`).join(" ＋ ")
+                                      : `${formatDateTime(travelDepartureAt) || "-"} 出发 / ${formatDateTime(travelReturnAt) || "-"} 返回`)
+                                  : `${formatDateTime(segment.startAt)} - ${formatDateTime(segment.endAt)}`}
                               </div>
                               <div className="mt-0.5 text-xs text-muted-foreground">
                                 {hours(segHours)} 小时
@@ -460,17 +502,19 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                         {selectedOvertimeRows.length === 0 ? (
                           <div className="rounded-md border border-dashed py-6 text-center text-xs text-muted-foreground md:col-span-2">暂无可申请时段</div>
                         ) : null}
+                        {(selectedOvertimeOrder.usedSegments || []).map((key) => (
+                          <div key={`used-${key}`} className="rounded-md border border-dashed bg-muted/30 p-3 text-left text-sm text-muted-foreground">
+                            <div className="font-medium">{key === "work" ? "实际工作时间" : "来回路上实际时间"}</div>
+                            <div className="mt-1 text-xs">该时段已有一条进行中的加班申请；在「我的申请」撤回后才可重新申请</div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                    {hasTravelSegment ? (
+                    {travelSegment && travelEditable ? (
                       <div className="space-y-3 rounded-md border bg-muted/10 p-3">
                         <div className="flex items-center justify-between gap-2">
                           <Label className="text-sm">去程/回程时间</Label>
-                          <span className="text-xs text-muted-foreground">
-                            {selectedOvertimeOrder && Number(selectedOvertimeOrder.engineerCount || 1) <= 1
-                              ? "工单仅你一位工程师，往返时间以工单为准"
-                              : "默认带入工单时间，可按本人实际往返修改"}
-                          </span>
+                          <span className="text-xs text-muted-foreground">默认带入工单时间，可按本人实际往返修改</span>
                         </div>
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div className="space-y-1">
@@ -480,7 +524,6 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                               type="datetime-local"
                               value={travelDepartureAt}
                               max={toDateTimeLocal(selectedOvertimeOrder.actualStartAt)}
-                              disabled={Number(selectedOvertimeOrder.engineerCount || 1) <= 1}
                               onChange={(event) => setTravelDepartureAt(event.target.value)}
                             />
                             <p className="text-xs text-muted-foreground">到达（工单）：{formatDateTime(selectedOvertimeOrder.actualStartAt || undefined)}</p>
@@ -492,7 +535,6 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                               type="datetime-local"
                               value={travelReturnAt}
                               min={toDateTimeLocal(selectedOvertimeOrder.actualEndAt)}
-                              disabled={Number(selectedOvertimeOrder.engineerCount || 1) <= 1}
                               onChange={(event) => setTravelReturnAt(event.target.value)}
                             />
                             <p className="text-xs text-muted-foreground">完工（工单）：{formatDateTime(selectedOvertimeOrder.actualEndAt || undefined)}</p>
@@ -502,10 +544,13 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                           <p className="text-xs text-destructive">{travelInvalid}</p>
                         ) : (
                           <p className="text-xs text-muted-foreground">
-                            预计核算：去程 {hours(travelPreview?.outbound || 0)} 小时 · 回程 {hours(travelPreview?.back || 0)} 小时（掐平日 18:00、按整点核算，最终以审批核算为准）
+                            预计核算路上加班 {hours(travelPreview?.hours || 0)} 小时（工作日计 9 点前/18 点后、按 0.5 小时核算，最终以审批核算为准）
                           </p>
                         )}
                       </div>
+                    ) : null}
+                    {travelSegment && !travelEditable ? (
+                      <p className="text-xs text-muted-foreground">本工单为单人工单，路上时间按工单时间核算，不可修改；多名工程师协作时才可按各自实际往返调整。</p>
                     ) : null}
                     <div className="rounded-md border bg-muted/10 p-3">
                       <div className="text-xs font-medium text-muted-foreground">工单信息</div>
@@ -535,6 +580,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                           <button
                             key={value}
                             type="button"
+                            disabled={Boolean(resumed)}
                             onClick={() => setForm((current) => {
                               const date = dateValue(current.startAt);
                               return applyAnnualLeaveRange({
@@ -556,11 +602,13 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </div>
                 ) : null}
 
+                {!resumed ? (
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(0, "morning")}>今天上午</Button>
                   <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(0, "day")}>今天全天</Button>
                   <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(1, "day")}>明天全天</Button>
                 </div>
+                ) : null}
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
@@ -569,6 +617,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       className="h-11"
                       data-compact-date="true"
                       type="date"
+                      disabled={Boolean(resumed)}
                       value={form.annualStartDate}
                       onChange={(event) => setAnnualDraft({ annualStartDate: event.target.value })}
                     />
@@ -579,6 +628,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       className="h-11"
                       data-compact-date="true"
                       type="date"
+                      disabled={Boolean(resumed)}
                       min={form.annualStartDate}
                       value={form.annualEndDate}
                       onChange={(event) => setAnnualDraft({ annualEndDate: event.target.value })}
@@ -600,10 +650,11 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                           <button
                             key={item.value}
                             type="button"
+                            disabled={Boolean(resumed)}
                             onClick={() => setAnnualDraft({ annualPeriod: item.value })}
                             className={`${active
                               ? "rounded-lg border border-primary bg-primary/5 p-3 text-left ring-1 ring-primary/25 transition"
-                              : "rounded-lg border p-3 text-left transition hover:bg-muted/40"}`}
+                              : "rounded-lg border p-3 text-left transition hover:bg-muted/40"} disabled:cursor-not-allowed disabled:opacity-60`}
                           >
                             <div className="flex items-center justify-between gap-2 text-sm font-medium">
                               {item.label}
@@ -619,7 +670,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>开始时段</Label>
-                      <Select value={form.annualStartPeriod} onValueChange={(value) => setAnnualDraft({ annualStartPeriod: value as AnnualLeavePeriod })}>
+                      <Select value={form.annualStartPeriod} onValueChange={(value) => setAnnualDraft({ annualStartPeriod: value as AnnualLeavePeriod })} disabled={Boolean(resumed)}>
                         <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="morning">上午 09:00 起</SelectItem>
@@ -629,7 +680,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                     </div>
                     <div className="space-y-2">
                       <Label>结束时段</Label>
-                      <Select value={form.annualEndPeriod} onValueChange={(value) => setAnnualDraft({ annualEndPeriod: value as AnnualLeavePeriod })}>
+                      <Select value={form.annualEndPeriod} onValueChange={(value) => setAnnualDraft({ annualEndPeriod: value as AnnualLeavePeriod })} disabled={Boolean(resumed)}>
                         <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="morning">上午 14:00 止</SelectItem>
@@ -640,12 +691,25 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </div>
                 )}
 
+                {form.requestType === "leave" && form.leaveType === "personal" ? (
+                  <div className="space-y-2">
+                    <Label>事由<span className="text-destructive"> *</span></Label>
+                    <Textarea
+                      rows={2}
+                      className="resize-none"
+                      value={form.reason || ""}
+                      placeholder="请填写事假事由，审批人可见"
+                      onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
+                    />
+                  </div>
+                ) : null}
+
                 <div className="space-y-2">
                   <Label>工作代理人</Label>
                   <Select
                     value={form.delegateEmployeeId}
                     onValueChange={(value) => setForm((current) => ({ ...current, delegateEmployeeId: value }))}
-                    disabled={delegatesLoading}
+                    disabled={delegatesLoading || Boolean(resumed)}
                   >
                     <SelectTrigger className="h-11">
                       <SelectValue
@@ -668,17 +732,52 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </p>
                 </div>
 
-                {proofRequired ? (
+                {proofRequired || (resumed && existingProofCount > 0) ? (
                   <div className="space-y-2">
                     <Label>{form.leaveType === "sick" ? "病假证明" : form.leaveType === "marriage" ? "婚假证明" : "证明附件"}</Label>
-                    <Input
-                      className="h-11"
-                      type="file"
-                      multiple
-                      accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx"
-                      onChange={(event) => setProofFiles(Array.from(event.target.files || []))}
-                    />
-                    <p className="text-xs text-muted-foreground">{proofRequired ? "必填，" : ""}可上传图片、PDF 或 Word 文件</p>
+                    {existingProofCount > 0 ? (
+                      <p className="text-xs text-muted-foreground">草稿已含 {existingProofCount} 份证明（{resumed?.proofFiles?.map((file) => file.originalName).join("、") || "已上传"}），可继续补充</p>
+                    ) : null}
+                    <label
+                      htmlFor="attendance-proof-upload"
+                      onDragOver={(event) => { event.preventDefault(); setProofDragging(true) }}
+                      onDragLeave={() => setProofDragging(false)}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        setProofDragging(false);
+                        const incoming = Array.from(event.dataTransfer.files || []);
+                        if (incoming.length) setProofFiles((current) => [...current, ...incoming]);
+                      }}
+                      className={`flex min-h-24 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border p-4 text-center transition-colors ${proofDragging ? "border-primary bg-primary/5 ring-2 ring-primary/15" : "border-dashed hover:bg-muted/50"}`}
+                    >
+                      <Upload className="size-5 text-primary" />
+                      <span className="text-sm font-medium">点击选择或拖动文件到此处</span>
+                      <span className="text-xs text-muted-foreground">{proofRequired ? "必填，" : ""}支持图片、PDF、Word，可多选或多次拖入</span>
+                      <input
+                        id="attendance-proof-upload"
+                        type="file"
+                        multiple
+                        accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx"
+                        className="sr-only"
+                        onChange={(event) => {
+                          const incoming = Array.from(event.target.files || []);
+                          if (incoming.length) setProofFiles((current) => [...current, ...incoming]);
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                    {proofFiles.length ? (
+                      <div className="space-y-1">
+                        {proofFiles.map((file, index) => (
+                          <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-2 rounded-md border bg-background px-2.5 py-1.5 text-xs">
+                            <span className="min-w-0 truncate">{file.name}</span>
+                            <button type="button" aria-label={`移除 ${file.name}`} className="shrink-0 p-1 text-muted-foreground hover:text-foreground" onClick={() => setProofFiles((current) => current.filter((_, i) => i !== index))}>
+                              <X className="size-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -712,24 +811,19 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       <span className="text-muted-foreground">工单</span>
                       <span className="font-medium">{selectedOvertimeOrder?.orderNo || (selectedOvertimeOrder ? "工单 #" + selectedOvertimeOrder.id : "未选择")}（{selectedOvertimeOrder?.customerName || "-"}）</span>
                     </div>
-                    {travelOutSegment ? (
+                    {triplePayDates.length ? (
                       <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
-                        <span className="text-muted-foreground">去程路上</span>
-                        <span className="font-medium">
-                          {hours(travelPreview?.outbound || 0)} 小时 · 固定转调休
-                          <span className="block text-xs text-muted-foreground">
-                            {formatDateTime(travelDepartureAt) || "-"} 出发 → 到达 {formatDateTime(selectedOvertimeOrder?.actualStartAt || undefined) || "-"}
-                          </span>
-                        </span>
+                        <span className="text-muted-foreground">三倍工资日</span>
+                        <span className="font-medium text-amber-700">{triplePayDates.join("、")}（法定节假日加班按 300% 计付，以行政核计为准）</span>
                       </div>
                     ) : null}
-                    {travelBackSegment ? (
+                    {travelSegment ? (
                       <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
-                        <span className="text-muted-foreground">回程路上</span>
+                        <span className="text-muted-foreground">来回路上</span>
                         <span className="font-medium">
-                          {hours(travelPreview?.back || 0)} 小时 · 固定转调休
+                          {hours(travelPreview?.hours || 0)} 小时 · 固定转调休
                           <span className="block text-xs text-muted-foreground">
-                            完工 {formatDateTime(selectedOvertimeOrder?.actualEndAt || undefined) || "-"} → 返回 {formatDateTime(travelReturnAt) || "-"}
+                            {formatDateTime(travelDepartureAt) || "-"} 出发 / {formatDateTime(travelReturnAt) || "-"} 返回
                           </span>
                         </span>
                       </div>
@@ -772,6 +866,12 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       <span className="text-muted-foreground">工作代理</span>
                       <span className="font-medium">{selectedDelegateName || "未选择"}</span>
                     </div>
+                    {form.requestType === "leave" && form.leaveType === "personal" ? (
+                      <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
+                        <span className="text-muted-foreground">事由</span>
+                        <span className="font-medium">{String(form.reason || "").trim() || "未填写"}</span>
+                      </div>
+                    ) : null}
                     <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
                       <span className="text-muted-foreground">证明附件</span>
                       <span className={proofRequired && proofFiles.length === 0 ? "font-medium text-destructive" : "font-medium"}>
@@ -796,7 +896,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
         <DialogFooter className="border-t pt-4">
           <div className="flex w-full items-center justify-between gap-3">
             {step > 1 ? (
-              <Button variant="outline" onClick={() => setStep((current) => Math.max(1, current - 1))} disabled={submitting}>
+              <Button variant="outline" onClick={() => setStep((current) => Math.max(resumed ? 2 : 1, current - 1))} disabled={submitting}>
                 <ArrowLeft className="mr-1 h-4 w-4" />上一步
               </Button>
             ) : (

@@ -39,6 +39,14 @@ export interface LegalHolidayItem {
   active?: boolean;
 }
 
+export interface OvertimeLeg {
+  key: string;
+  label: string;
+  startAt: string;
+  endAt: string;
+  hours: number;
+}
+
 export interface OvertimeSegment {
   key: string;
   kind: "travel" | "work";
@@ -47,15 +55,17 @@ export interface OvertimeSegment {
   endAt: string;
   hours: number;
   dayType?: string;
+  triplePayDates?: string[];
   payMultiplier?: number | null;
   allowedResults?: string[];
+  legs?: OvertimeLeg[];
 }
 
 export interface OvertimeServiceOrder extends ServiceOrderSummary {
   status?: string;
-  /** 参与工程师数（主责+协作）；1 时往返时间以工单为准不可改 */
-  engineerCount?: number;
   segments: OvertimeSegment[];
+  usedSegments?: string[];
+  engineerCount?: number;
 }
 
 export const LEAVE_TYPE_LABELS: Record<string, string> = {
@@ -205,30 +215,24 @@ export function parseLocalDateTime(value?: string | null) {
 
 // 客户端预览用的加班时长核算，忠实镜像后端 overtimeWindow（掐平日 18:00、整点取整）。
 // dayType 取所选 travel 段（同城往返为同一天，边界情况以提交后端核算为准）。
+// 镜像后端 overtimeWindow 的定稿口径（2026-08-25）：法定节假日/休息日全天计；
+// 工作日只计 09:00 上班前 + 18:00 下班后；有效时长按 0.5h 粒度四舍五入（满 15 分钟进 0.5h）。
 export function previewOvertimeHours(startAt: string, endAt: string, dayType?: string) {
   const start = parseLocalDateTime(startAt);
   const end = parseLocalDateTime(endAt);
   if (!start || !end || end <= start) return 0;
   const fullDay = dayType === "legal_holiday" || dayType === "rest_day";
-  const endHour = end.getHours() + end.getMinutes() / 60;
-  if (!fullDay && endHour <= 18) return 0;
-  const overtimeStart = fullDay
-    ? start
-    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0);
-  const rawStart = start > overtimeStart ? start : overtimeStart;
-  const effStart = new Date(rawStart);
-  if (effStart.getMinutes() || effStart.getSeconds() || effStart.getMilliseconds()) {
-    effStart.setHours(effStart.getHours() + 1, 0, 0, 0);
+  let minutes: number;
+  if (fullDay) {
+    minutes = (end.getTime() - start.getTime()) / 60000;
   } else {
-    effStart.setMinutes(0, 0, 0);
+    const nine = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 9, 0, 0);
+    const eighteen = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0);
+    minutes = 0;
+    if (start < nine) minutes += Math.max(0, Math.min(end.getTime(), nine.getTime()) - start.getTime()) / 60000;
+    if (end > eighteen) minutes += Math.max(0, end.getTime() - Math.max(start.getTime(), eighteen.getTime())) / 60000;
   }
-  const effEnd = new Date(end);
-  effEnd.setMinutes(0, 0, 0);
-  if (effEnd <= effStart) {
-    // 保底镜像后端 overtimeWindow：掐整归零但确有加班时段（如 11:10–11:35 仅 25 分钟）→ 0.5 小时
-    return end > rawStart ? 0.5 : 0;
-  }
-  const hours = Math.round((effEnd.getTime() - effStart.getTime()) / 3600000);
+  const hours = Math.round(minutes / 30) / 2;
   return hours > 0 ? hours : 0;
 }
 
@@ -250,6 +254,7 @@ export function createBlankForm() {
     annualPeriod: "morning" as AnnualLeavePeriod,
     annualStartPeriod: "morning" as AnnualLeavePeriod,
     annualEndPeriod: "morning" as AnnualLeavePeriod,
+    reason: "",
   });
 }
 
@@ -263,6 +268,7 @@ export interface ResumableDraft {
   endAt?: string;
   proofFiles?: Array<{ id: number | string; originalName: string }>;
   proofFileCount?: number;
+  reason?: string | null;
 }
 
 /** 从草稿重建抽屉表单（继续提交入口用）。仅请假/调休有草稿；加班单一步提交无草稿态。 */
@@ -277,6 +283,7 @@ export function formFromDraft(draft: ResumableDraft) {
     requestType: draft.requestType === "comp_time" ? "comp_time" as RequestType : "leave" as RequestType,
     leaveType: draft.leaveType || "annual",
     delegateEmployeeId: draft.delegateEmployeeId ? String(draft.delegateEmployeeId) : "",
+    reason: draft.reason || "",
     annualStartDate: startDate,
     annualEndDate: endDate,
     // 单日：09-14 上午 / 14-18 下午 / 09-18 全天；多日：按起止半天槽位还原
@@ -322,9 +329,11 @@ export interface AttendanceRequest {
   overtimeDayType?: string | null;
   overtimePayMultiplier?: number | null;
   isTriplePay?: boolean;
+  travelLegs?: OvertimeLeg[] | null;
   sourceType?: string | null;
   sourceId?: number | string | null;
   sourceDetail?: string | null;
+  batchId?: string | null;
   serviceOrder?: ServiceOrderSummary | null;
   reason?: string | null;
   startAt?: string;

@@ -1,4 +1,5 @@
 const { query, transaction } = require('../../config/db')
+const { randomUUID } = require('node:crypto')
 const { badRequest, forbidden, notFound } = require('../../utils/http-error')
 const { hasAnyPermission, hasPermission } = require('../../permissions/store')
 const {
@@ -15,7 +16,7 @@ const {
   queueRejectedLeaveNotification,
   queueCompletedLeaveNotification,
 } = require('../../services/attendance-notifications')
-const { isTriplePayDate } = require('./triple-pay-days')
+const { isTriplePayDate, triplePayDatesInRange } = require('./triple-pay-days')
 const {
   buildApprovalSteps,
   calculateWorkingLeaveRange,
@@ -384,6 +385,7 @@ async function ensureSchema() {
       )
 
       await ensureLegalHolidayDayTypeColumn()
+      await ensureRequestsBatchIdColumn()
       await ensureAttendanceEmailNotificationsTable()
 
       await seedBuiltinLegalHolidays()
@@ -398,6 +400,21 @@ async function ensureSchema() {
     })()
   }
   return schemaReadyPromise
+}
+
+// 同工单加班双段申请共享 batch_id：审批/驳回/撤回/作废按组联动（specs/003-attendance-overtime-batch）
+async function ensureRequestsBatchIdColumn() {
+  const rows = await query(
+    `SELECT COLUMN_NAME AS columnName
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'attendance_requests'
+       AND COLUMN_NAME = 'batch_id'`,
+  )
+  if (!rows.length) {
+    await query("ALTER TABLE attendance_requests ADD COLUMN batch_id VARCHAR(36) NULL AFTER source_snapshot")
+    await query("ALTER TABLE attendance_requests ADD INDEX idx_attendance_requests_batch (batch_id)")
+  }
 }
 
 async function ensureLegalHolidayDayTypeColumn() {
@@ -659,6 +676,27 @@ function profilePayload(row) {
   }
 }
 
+// 列表展示用：从申请快照（工单时间 + 自报往返）重算路上去程/回程两段；非路上申请或快照缺时间返回 null。
+// 历史申请同样可算（快照一直含工单四段时间），但 legs 小时按当前口径重算，可能与旧截断存储的 hours 不同，故展示只取时间段。
+function travelLegsFromSnapshot(row) {
+  const snapshot = parseServiceOrderSnapshot(row.source_snapshot, row.source_id)
+  if (!snapshot) return null
+  const departureAt = snapshot.reportedDepartureAt || snapshot.departureAt
+  const returnAt = snapshot.reportedReturnAt || snapshot.returnAt
+  const legs = [
+    { key: 'outbound', label: '去程', window: overtimeWindow(departureAt, snapshot.actualStartAt) },
+    { key: 'return', label: '回程', window: overtimeWindow(snapshot.actualEndAt, returnAt) },
+  ].filter((leg) => leg.window)
+  if (!legs.length) return null
+  return legs.map((leg) => ({
+    key: leg.key,
+    label: leg.label,
+    startAt: toIsoMinute(leg.window.startAt),
+    endAt: toIsoMinute(leg.window.endAt),
+    hours: leg.window.hours,
+  }))
+}
+
 function requestPayload(row) {
   return {
     id: row.id,
@@ -683,6 +721,8 @@ function requestPayload(row) {
     sourceType: row.source_type,
     sourceId: row.source_id,
     sourceDetail: row.source_detail,
+    batchId: row.batch_id || null,
+    travelLegs: row.request_type === 'overtime' && row.source_detail === 'travel' ? travelLegsFromSnapshot(row) : null,
     startAt: toIsoMinute(row.start_at),
     endAt: toIsoMinute(row.end_at),
     hours: Number(row.hours || 0),
@@ -1172,59 +1212,6 @@ async function me(req, res) {
   res.json({ item: rows[0] ? profilePayload(rows[0]) : null })
 }
 
-// 员工本人额度流水：特休按天、调休按小时记账（与 adjustBalance 口径一致）；
-// balanceAfter 由 JS 按时间正序逐条累算（与余额口径 SUM(delta) 同源），再整体倒序返回，最新在最前。
-async function myBalanceLedger(req, res) {
-  await ensureSchema()
-  await syncUserProfiles()
-  const profiles = await query(
-    'SELECT id FROM attendance_employee_profiles WHERE user_id = :userId LIMIT 1',
-    { userId: req.user.id },
-  )
-  const profile = profiles[0]
-  if (!profile) return res.json({ items: [] })
-  const rows = await query(
-    `SELECT l.id, l.request_id, l.balance_type, l.delta_hours, l.action, l.note, l.created_at,
-            r.request_type, r.leave_type, r.overtime_result, r.hours AS request_hours, r.start_at, r.end_at, r.status AS request_status,
-            cp.employee_name AS created_by_name, cu.username AS created_by_username
-     FROM attendance_balance_ledger l
-     LEFT JOIN attendance_requests r ON r.id = l.request_id
-     LEFT JOIN users cu ON cu.id = l.created_by
-     LEFT JOIN attendance_employee_profiles cp ON cp.user_id = l.created_by
-     WHERE l.employee_id = :employeeId
-     ORDER BY l.created_at ASC, l.id ASC`,
-    { employeeId: profile.id },
-  )
-  const running = {}
-  const items = rows.map((row) => {
-    const balanceType = String(row.balance_type || '')
-    const delta = roundBalance(Number(row.delta_hours || 0))
-    running[balanceType] = roundBalance(Number(running[balanceType] || 0) + delta)
-    return {
-      id: row.id,
-      balanceType,
-      action: String(row.action || ''),
-      delta,
-      balanceAfter: running[balanceType],
-      note: row.note || '',
-      createdAt: row.created_at,
-      createdByName: row.created_by_name || row.created_by_username || '',
-      request: row.request_id ? {
-        id: row.request_id,
-        requestType: row.request_type,
-        leaveType: row.leave_type,
-        overtimeResult: row.overtime_result,
-        hours: Number(row.request_hours || 0),
-        startAt: row.start_at,
-        endAt: row.end_at,
-        status: row.request_status,
-      } : null,
-    }
-  })
-  items.reverse()
-  res.json({ items })
-}
-
 async function updateEmployee(req, res) {
   await ensureSchema()
   const id = Number(req.params.id)
@@ -1415,56 +1402,38 @@ function toDate(value) {
   return Number.isFinite(date.getTime()) ? date : null
 }
 
-function ceilToHour(date) {
-  const rounded = new Date(date)
-  if (rounded.getMinutes() || rounded.getSeconds() || rounded.getMilliseconds()) {
-    rounded.setHours(rounded.getHours() + 1, 0, 0, 0)
-  } else {
-    rounded.setMinutes(0, 0, 0)
-  }
-  return rounded
+// 有效加班分钟数（佬 2026-08-25 定稿）：法定节假日/休息日全天计；
+// 工作日只计 09:00 上班前 + 18:00 下班后（工作时间内的部分不算加班）。跨天时边界取起始日（与历史行为一致）。
+function overtimeEligibleMinutes(startAt, endAt, dayType) {
+  const start = toDate(startAt)
+  const end = toDate(endAt)
+  if (!start || !end || end <= start) return 0
+  if (dayType === 'legal_holiday' || dayType === 'rest_day') return (end.getTime() - start.getTime()) / 60000
+  const nine = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 9, 0, 0)
+  const eighteen = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0)
+  let minutes = 0
+  if (start < nine) minutes += Math.max(0, Math.min(end.getTime(), nine.getTime()) - start.getTime()) / 60000
+  if (end > eighteen) minutes += Math.max(0, end.getTime() - Math.max(start.getTime(), eighteen.getTime())) / 60000
+  return minutes
 }
 
-function floorToHour(date) {
-  const rounded = new Date(date)
-  rounded.setMinutes(0, 0, 0)
-  return rounded
+// 0.5h 粒度四舍五入：×2 取整，满 15 分钟进 0.5h（最小单位 0.5h）
+function roundToHalfHour(minutes) {
+  return Math.round(minutes / 30) / 2
 }
 
-// 加班时长核算：掐平日 18:00、开始向上取整点、结束向下取整点。
-// 前端 Attendance.tsx 的 previewOvertimeHours 镜像了这套口径做即时预览，
-// 改动本函数的 18:00/取整规则时需同步那里。参见 docs/adr/0002。
+// 加班时长核算：有效部分（工作日 9 点前 + 18 点后，节假日全天）按 0.5h 粒度四舍五入。
+// 前端 attendance-shared.ts 的 previewOvertimeHours 镜像这套口径做即时预览，改动规则时需同步那里。
 function overtimeWindow(startAt, endAt) {
   const start = toDate(startAt)
   const end = toDate(endAt)
   if (!start || !end || end <= start) return null
   const dayType = overtimeDayType(start)
-  const fullDayOvertime = dayType === 'legal_holiday' || dayType === 'rest_day'
-  const endHour = end.getHours() + end.getMinutes() / 60
-  if (!fullDayOvertime && endHour <= 18) return null
-  const overtimeStart = fullDayOvertime
-    ? start
-    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0)
-  const effectiveStart = ceilToHour(start > overtimeStart ? start : overtimeStart)
-  const effectiveEnd = floorToHour(end)
-  if (effectiveEnd <= effectiveStart) {
-    // 掐整后归零但实际存在加班时段（如法定节假日去程 11:10–11:35 仅 25 分钟）：按 0.5 小时
-    // 保底计，时段显示原始起止。平日 18:00 前无加班事实的窗口已在上方拦截，不受保底影响。
-    // 产品裁决 2026-08-27；前端 previewOvertimeHours 同步镜像。参见 docs/adr/0002。
-    const rawStart = start > overtimeStart ? start : overtimeStart
-    if (end <= rawStart) return null
-    return {
-      startAt: formatMysqlDateTime(rawStart),
-      endAt: formatMysqlDateTime(end),
-      hours: 0.5,
-      dayType,
-    }
-  }
-  const hours = Math.round((effectiveEnd.getTime() - effectiveStart.getTime()) / 3600000)
+  const hours = roundToHalfHour(overtimeEligibleMinutes(start, end, dayType))
   if (hours <= 0) return null
   return {
-    startAt: formatMysqlDateTime(effectiveStart),
-    endAt: formatMysqlDateTime(effectiveEnd),
+    startAt: formatMysqlDateTime(start),
+    endAt: formatMysqlDateTime(end),
     hours,
     dayType,
   }
@@ -1505,37 +1474,51 @@ function normalizeTravelOverrides(order, body) {
 }
 
 // 把工程师自报的原始去程出发、回程返回时间留痕进快照，供审批人对照“自报 vs 工单”。
-// 仅在对应程且确有覆盖时写入，避免污染无差异的快照。参见 docs/adr/0002。
+// 仅在路上时间且确有覆盖时写入，避免污染无差异的快照。参见 docs/adr/0002。
 function snapshotWithReportedTravel(snapshot, segmentKey, overrides = {}) {
+  if (segmentKey !== 'travel') return snapshot
   const next = { ...snapshot }
-  if (segmentKey === 'travel_out' && overrides.departureAt) next.reportedDepartureAt = toIsoMinute(overrides.departureAt)
-  if (segmentKey === 'travel_back' && overrides.returnAt) next.reportedReturnAt = toIsoMinute(overrides.returnAt)
+  if (overrides.departureAt) next.reportedDepartureAt = toIsoMinute(overrides.departureAt)
+  if (overrides.returnAt) next.reportedReturnAt = toIsoMinute(overrides.returnAt)
   return next
 }
 
-// 路上时间拆成去程/回程两条独立申请：去程=出发→到达、回程=完工→返回，
-// 去程出发、回程返回可由工程师自报覆盖（overrides），到达/完工两个锚点始终取工单值。
-// 每一程各自过 overtimeWindow（掐平日 18:00、整点取整），无有效加班时长的程不生成。参见 docs/adr/0002。
-function travelOvertimeSegments(row, overrides = {}) {
+// 路上时间合并成一条“来回路上实际时间”。去程出发、回程返回可由工程师自报覆盖
+// （overrides），到达/完工两个锚点始终取工单值。每一程各自过 overtimeWindow
+// （掐平日 18:00、整点取整），再把有效的时长相加。参见 docs/adr/0002。
+// 路上时段 = 去程（出发→到达）＋ 回程（完工→返回）两段组成，每段有效时长按 0.5h 粒度四舍五入后相加
+// （佬 2026-08-25 定稿，取代分段截断与 span−work 两种旧口径）。legs 明细随段返回供前端两段展示。
+// overrides 仅允许去程出发/回程返回（多工程师工单），到达/完工两个锚点始终取工单值。参见 docs/adr/0002。
+function travelOvertimeSegment(row, overrides = {}) {
   const departureAt = overrides.departureAt || row.departure_at
   const returnAt = overrides.returnAt || row.return_at
   const legs = [
-    { key: 'travel_out', label: '去程路上时间', window: overtimeWindow(departureAt, row.actual_start_at) },
-    { key: 'travel_back', label: '回程路上时间', window: overtimeWindow(row.actual_end_at, returnAt) },
-  ]
-  return legs
-    .filter((leg) => leg.window)
-    .map((leg) => ({
+    { key: 'outbound', label: '去程', window: overtimeWindow(departureAt, row.actual_start_at) },
+    { key: 'return', label: '回程', window: overtimeWindow(row.actual_end_at, returnAt) },
+  ].filter((leg) => leg.window)
+  if (!legs.length) return null
+  const hours = Math.round(legs.reduce((sum, leg) => sum + Number(leg.window.hours || 0), 0) * 100) / 100
+  const first = legs[0].window
+  const last = legs[legs.length - 1].window
+  return {
+    key: 'travel',
+    kind: 'travel',
+    label: '来回路上实际时间',
+    startAt: toIsoMinute(first.startAt),
+    endAt: toIsoMinute(last.endAt),
+    hours,
+    legs: legs.map((leg) => ({
       key: leg.key,
-      kind: 'travel',
       label: leg.label,
       startAt: toIsoMinute(leg.window.startAt),
       endAt: toIsoMinute(leg.window.endAt),
       hours: leg.window.hours,
-      dayType: leg.window.dayType,
-      payMultiplier: null,
-      allowedResults: ['comp_time'],
-    }))
+    })),
+    dayType: first.dayType,
+    triplePayDates: triplePayDatesInRange(first.startAt, last.endAt),
+    payMultiplier: null,
+    allowedResults: ['comp_time'],
+  }
 }
 
 function workOvertimeSegment(row) {
@@ -1549,6 +1532,7 @@ function workOvertimeSegment(row) {
     endAt: toIsoMinute(window.endAt),
     hours: window.hours,
     dayType: window.dayType,
+    triplePayDates: triplePayDatesInRange(window.startAt, window.endAt),
     payMultiplier: overtimePayMultiplier(window.dayType, 'pay') || DEFAULT_PAY_MULTIPLIER,
     allowedResults: ['comp_time', 'pay'],
   }
@@ -1556,8 +1540,9 @@ function workOvertimeSegment(row) {
 
 function overtimeSegments(row, usedSegments = new Set()) {
   const segments = []
-  for (const travel of travelOvertimeSegments(row)) {
-    if (!usedSegments.has(travel.key)) segments.push(travel)
+  if (!usedSegments.has('travel')) {
+    const travel = travelOvertimeSegment(row)
+    if (travel) segments.push(travel)
   }
   if (!usedSegments.has('work')) {
     const work = workOvertimeSegment(row)
@@ -1634,14 +1619,21 @@ async function serviceOrderOvertimeRows(userId, serviceOrderId = null, connectio
                       so.service_mode, so.service_type, so.issue_description,
                       COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(d.model, ''), NULLIF(d.serial_no, '')), ''), NULLIF(d.name, ''), '-') AS device_name,
                       sr.departure_at, sr.actual_start_at, sr.actual_end_at, sr.return_at,
-                      COALESCE(sr.actual_start_at, so.submitted_at, so.created_at) AS service_at,
-                      (SELECT 1 + COUNT(DISTINCT CASE WHEN soe.engineer_id <> so.assigned_engineer_id THEN soe.engineer_id END)
-                       FROM service_order_engineers soe
-                       WHERE soe.service_order_id = so.id) AS engineer_count
+                      COALESCE(ec.engineer_count, 0) AS engineer_count,
+                      COALESCE(sr.actual_start_at, so.submitted_at, so.created_at) AS service_at
                FROM service_orders so
                JOIN customers c ON c.id = so.customer_id
                LEFT JOIN devices d ON d.id = so.device_id
                JOIN service_reports sr ON sr.service_order_id = so.id
+               LEFT JOIN (
+                 SELECT order_id, COUNT(DISTINCT engineer_id) AS engineer_count
+                 FROM (
+                   SELECT id AS order_id, assigned_engineer_id AS engineer_id FROM service_orders
+                   UNION ALL
+                   SELECT service_order_id, engineer_id FROM service_order_engineers
+                 ) all_engineers
+                 GROUP BY order_id
+               ) ec ON ec.order_id = so.id
                WHERE (:serviceOrderId IS NULL OR so.id = :serviceOrderId)
                  AND so.status NOT IN ('draft', 'cancelled')
                  AND (
@@ -1699,18 +1691,13 @@ async function usedOvertimeSegments(orderIds, userId) {
        AND status NOT IN ('rejected', 'withdrawn', 'voided')`,
     { ...params, userId },
   )
-  // 时段分 work / travel_out / travel_back 三类。历史合并的 travel 申请对去程、回程
-  // 两段均有占用，避免老数据被重复申请。参见 docs/adr/0002。
+  // 时段只剩 work / travel 两类。历史遗留的 travel_out / travel_back 申请仍按
+  // travel 占用对待，避免老数据被重复申请。参见 docs/adr/0002。
   return rows.reduce((map, row) => {
     const key = Number(row.source_id)
     if (!map.has(key)) map.set(key, new Set())
     const detail = row.source_detail || 'work'
-    if (detail === 'travel') {
-      map.get(key).add('travel_out')
-      map.get(key).add('travel_back')
-    } else {
-      map.get(key).add(detail)
-    }
+    map.get(key).add(detail === 'travel_out' || detail === 'travel_back' ? 'travel' : detail)
     return map
   }, new Map())
 }
@@ -1723,33 +1710,39 @@ async function listOvertimeServiceOrders(req, res) {
   const rows = await serviceOrderOvertimeRows(req.user.id)
   const usedMap = await usedOvertimeSegments(rows.map((row) => row.id), req.user.id)
   const items = rows
-    .map((row) => ({
-      ...serviceOrderSnapshot(row),
-      status: row.status,
-      engineerCount: Number(row.engineer_count || 1),
-      segments: overtimeSegments(row, usedMap.get(Number(row.id)) || new Set()),
-    }))
+    .map((row) => {
+      const used = usedMap.get(Number(row.id)) || new Set()
+      return {
+        ...serviceOrderSnapshot(row),
+        status: row.status,
+        segments: overtimeSegments(row, used),
+        // 被本人进行中申请占用的时段（work/travel），前端据此显示占用占位提示
+        usedSegments: [...used],
+        // 工单工程师数（主责+协作去重）：>1 时前端才放开路上时间编辑
+        engineerCount: Number(row.engineer_count || 0),
+      }
+    })
     .filter((item) => item.segments.length)
   res.json({ items })
 }
 
 // 校验并归一化一个时段的加班结果。路上固定转调休，工作段按 body 的 overtimeResult。
 function resolveSegmentResult(segmentKey, body) {
-  if (segmentKey === 'travel_out' || segmentKey === 'travel_back') return 'comp_time'
+  if (segmentKey === 'travel') return 'comp_time'
   const overtimeResult = text(body?.overtimeResult)
   if (!overtimeResults.has(overtimeResult)) throw badRequest('加班处理结果不正确')
   return overtimeResult
 }
 
 // 在同一事务里插入一条工单加班申请（含审批链）。已占用或无有效加班时长则跳过（返回 null）。
-// 一个工单、一个工程师，每种时段（travel_out / travel_back / work）只允许一条未作废申请；
-// 历史合并的 travel 申请同时占用去程、回程两段。参见 docs/adr/0002。
+// 一个工单、一个工程师，每种时段（travel / work）只允许一条未作废申请；历史遗留的
+// travel_out/travel_back 申请仍按 travel 占用对待。参见 docs/adr/0002。
 async function insertServiceOrderOvertimeSegment(connection, {
-  employee, order, orderSnapshot, serviceOrderId, segmentKey, overtimeResult, travelOverrides, userId,
+  employee, order, orderSnapshot, serviceOrderId, segmentKey, overtimeResult, travelOverrides, userId, batchId = null,
 }) {
-  const segment = segmentKey === 'work'
-    ? workOvertimeSegment(order)
-    : travelOvertimeSegments(order, travelOverrides).find((item) => item.key === segmentKey)
+  const segment = segmentKey === 'travel'
+    ? travelOvertimeSegment(order, travelOverrides)
+    : workOvertimeSegment(order)
   if (!segment) return null
   if (segment.kind === 'travel' && overtimeResult !== 'comp_time') throw badRequest('路上时间只能转调休')
   if (!segment.allowedResults.includes(overtimeResult)) throw badRequest('处理方式不适用于该时段')
@@ -1763,8 +1756,8 @@ async function insertServiceOrderOvertimeSegment(connection, {
        AND source_id = :serviceOrderId
        AND (
          source_detail = :segmentKey
-         OR (:segmentKey = 'work' AND (source_detail IS NULL OR source_detail NOT IN ('travel', 'travel_out', 'travel_back')))
-         OR (:segmentKey IN ('travel_out', 'travel_back') AND source_detail = 'travel')
+         OR (:segmentKey = 'work' AND source_detail IS NULL)
+         OR (:segmentKey = 'travel' AND source_detail IN ('travel_out', 'travel_back'))
        )
        AND submitted_by = :userId
        AND status NOT IN ('rejected', 'withdrawn', 'voided')
@@ -1787,10 +1780,11 @@ async function insertServiceOrderOvertimeSegment(connection, {
   if (!status) throw badRequest('审批流程不能为空')
   const [inserted] = await connection.execute(
     `INSERT INTO attendance_requests
-       (workflow_version, employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, source_type, source_id, source_detail, source_snapshot, start_at, end_at, hours, working_days, reason, status, submitted_by)
+       (workflow_version, employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, source_type, source_id, source_detail, source_snapshot, batch_id, start_at, end_at, hours, working_days, reason, status, submitted_by)
      VALUES
-       (4, :employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, 'service_order', :serviceOrderId, :sourceDetail, :sourceSnapshot, :startAt, :endAt, :hours, NULL, :reason, :status, :submittedBy)`,
+       (4, :employeeId, 'overtime', NULL, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, 'service_order', :serviceOrderId, :sourceDetail, :sourceSnapshot, :batchId, :startAt, :endAt, :hours, NULL, :reason, :status, :submittedBy)`,
     {
+      batchId,
       supervisorRole,
       employeeId: employee.id,
       overtimeKind: segment.kind,
@@ -1812,22 +1806,19 @@ async function insertServiceOrderOvertimeSegment(connection, {
   return { id: inserted.insertId, status, segmentKey: segment.key, hours: segment.hours }
 }
 
-// 一个工单一把申请：去程路上 + 回程路上 + 工作三段一起提交，后端各生成一条申请。
-// 已占用或无有效加班时长的时段自动跳过；都没生成才报错。
-// 兼容旧的单时段 body（只带一个 segmentKey，'travel' 展开为去程+回程）。参见 docs/adr/0002。
+// 一个工单一把申请：路上 + 工作两段一起提交，后端各生成一条申请。
+// 已占用或无有效加班时长的时段自动跳过；两段都没生成才报错。
+// 兼容旧的单时段 body（只带一个 segmentKey）。参见 docs/adr/0002。
 async function createServiceOrderOvertimeRequest(req, res) {
   await ensureSchema()
   assertAttendanceApplicantRole(req.user.role)
   const serviceOrderId = Number(req.params.id)
   if (!serviceOrderId) throw badRequest('工单 ID 不正确')
 
-  // 请求的时段集合：显式传单个 segmentKey 时只处理该段；旧客户端按 'travel' 申请时
-  // 展开为去程+回程两段（向后兼容）；默认三段都报。
+  // 请求的时段集合：显式传单个 segmentKey 时只处理该段（向后兼容），否则默认两段都报。
   const requestedKey = text(req.body?.segmentKey)
-  if (requestedKey && !['travel', 'travel_out', 'travel_back', 'work'].includes(requestedKey)) throw badRequest('工单时段不正确')
-  const segmentKeys = requestedKey
-    ? (requestedKey === 'travel' ? ['travel_out', 'travel_back'] : [requestedKey])
-    : ['travel_out', 'travel_back', 'work']
+  if (requestedKey && !['travel', 'work'].includes(requestedKey)) throw badRequest('工单时段不正确')
+  const segmentKeys = requestedKey ? [requestedKey] : ['travel', 'work']
 
   const result = await transaction(async (connection) => {
     const employee = await currentEmployeeForConnection(connection, req.user.id)
@@ -1838,12 +1829,15 @@ async function createServiceOrderOvertimeRequest(req, res) {
     const orderSnapshot = serviceOrderSnapshot(order)
     if (!orderSnapshot) throw notFound('没有可申请的工单')
 
-    // 路上时间允许工程师自报去程出发、回程返回时间（默认带工单值），仅多工程师工单开放；
-    // 单工程师工单的往返时间本就是本人填报，以工单为准、覆盖忽略（产品裁决 2026-08-27）。
-    // 工作段锁死按工单，不接受覆盖。参见 docs/adr/0002。
-    const travelOverrides = Number(order.engineer_count || 1) > 1 && segmentKeys.some((key) => key === 'travel_out' || key === 'travel_back')
+    // 路上时间允许工程师自报去程出发、回程返回时间（默认带工单值），只落在本条申请上，
+    // 工单侧不改。工作段锁死按工单，不接受覆盖。参见 docs/adr/0002。
+    // 路上时间仅多工程师工单开放自报（各地往返天然不同，ADR-0002）；单人工单锁死按工单时间核算，忽略任何覆盖
+    const travelOverrides = segmentKeys.includes('travel') && Number(order.engineer_count || 0) > 1
       ? normalizeTravelOverrides(order, req.body)
       : {}
+
+    // 双段同批：同一次提交的路+工作盖同一 batch_id，审批/驳回/撤回/作废按组联动（specs/003）；显式单段提交不打标
+    const batchId = requestedKey ? null : randomUUID()
 
     const created = []
     for (const segmentKey of segmentKeys) {
@@ -1857,6 +1851,7 @@ async function createServiceOrderOvertimeRequest(req, res) {
         overtimeResult,
         travelOverrides,
         userId: req.user.id,
+        batchId,
       })
       if (inserted) created.push(inserted)
     }
@@ -2263,6 +2258,24 @@ async function requestForUpdate(connection, id) {
   return rows[0] || null
 }
 
+// 组联动加载：带 batch_id 的申请（同工单加班的路+工作，specs/003）在审批/驳回/撤回/作废上视为一体，
+// 任一条目的动作都扩展到整组（同事务内逐条处理，终态条目由调用点跳过）。无 batch_id 返回单例。
+async function batchRequestsForUpdate(connection, request) {
+  if (!request.batch_id) return [request]
+  const [rows] = await connection.execute(
+    `SELECT r.*, p.employee_name, p.user_id, u.email AS applicant_email,
+            u.role AS applicant_role, p.supervisor_employee_id
+     FROM attendance_requests r
+     JOIN attendance_employee_profiles p ON p.id = r.employee_id
+     LEFT JOIN users u ON u.id = p.user_id
+     WHERE r.batch_id = :batchId
+     ORDER BY r.id
+     FOR UPDATE`,
+    { batchId: request.batch_id },
+  )
+  return rows.length ? rows : [request]
+}
+
 async function insertApprovalSteps(connection, requestId, steps) {
   for (let index = 0; index < steps.length; index += 1) {
     const step = steps[index]
@@ -2294,6 +2307,11 @@ async function submitRequest(req, res) {
     const workflowVersion = Number(request.workflow_version || 1)
     if (![2, 3, 4].includes(workflowVersion) || request.status !== 'draft') throw badRequest('当前申请不能提交')
     if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以提交草稿')
+
+    // 草稿提交时允许顺带更新事由/申请说明：继续提交场景在抽屉中补写或修改的事由随提交落库
+    if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'reason')) {
+      await connection.execute('UPDATE attendance_requests SET reason = :reason WHERE id = :id', { id, reason: nullableText(req.body.reason) })
+    }
 
     if (request.request_type !== 'overtime' && !request.delegate_employee_id) throw badRequest('请选择代理人')
     if (request.request_type === 'leave') {
@@ -2564,7 +2582,15 @@ async function approveWorkflowStep(req, res, expectedStepType, workflowVersions 
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
     if (!workflowVersions.includes(Number(request.workflow_version || 1))) throw badRequest('申请不属于当前审批流程')
-    return approveLockedWorkflowStep(connection, request, expectedStepType, req.user)
+    // 组联动：同批申请一并推进一步审批链（终态跳过），每行各自结算/通知
+    const group = await batchRequestsForUpdate(connection, request)
+    const actionable = group.filter((item) => !finalStatuses.has(item.status))
+    if (!actionable.length) throw badRequest('当前状态不能执行此审批')
+    let nextStatus = null
+    for (const item of actionable) {
+      nextStatus = await approveLockedWorkflowStep(connection, item, expectedStepType, req.user)
+    }
+    return nextStatus
   })
   res.json({ ok: true, status })
 }
@@ -2651,25 +2677,32 @@ async function rejectRequest(req, res) {
       const step = await pendingApprovalStep(connection, request.id)
       if (!step) throw badRequest('当前申请没有待审批步骤')
       assertWorkflowStepApprover(step, req.user, request)
-      await connection.execute(
-        `UPDATE attendance_request_approvals
-         SET status = 'rejected',
-             rejected_by = :userId,
-             rejected_at = NOW(),
-             rejected_reason = :reason
-         WHERE id = :id`,
-        { id: step.id, userId: req.user.id, reason },
-      )
-      await connection.execute(
-        `UPDATE attendance_requests
-         SET status = 'rejected',
-             rejected_by = :userId,
-             rejected_at = NOW(),
-             rejected_reason = :reason
-         WHERE id = :id`,
-        { id, userId: req.user.id, reason },
-      )
-      await queueRejectedLeaveNotification(connection, request, req.user, reason)
+      // 组联动：同批申请以同一原因一并驳回（终态或无待审步骤的跳过），各自发驳回通知
+      const group = await batchRequestsForUpdate(connection, request)
+      for (const item of group) {
+        if (finalStatuses.has(item.status)) continue
+        const itemStep = item.id === request.id ? step : await pendingApprovalStep(connection, item.id)
+        if (!itemStep) continue
+        await connection.execute(
+          `UPDATE attendance_request_approvals
+           SET status = 'rejected',
+               rejected_by = :userId,
+               rejected_at = NOW(),
+               rejected_reason = :reason
+           WHERE id = :id`,
+          { id: itemStep.id, userId: req.user.id, reason },
+        )
+        await connection.execute(
+          `UPDATE attendance_requests
+           SET status = 'rejected',
+               rejected_by = :userId,
+               rejected_at = NOW(),
+               rejected_reason = :reason
+           WHERE id = :id`,
+          { id: item.id, userId: req.user.id, reason },
+        )
+        await queueRejectedLeaveNotification(connection, item, req.user, reason)
+      }
       return
     }
     const isRoleSupervisor = request.status === 'pending_supervisor' && request.supervisor_role && request.supervisor_role === req.user.role
@@ -2701,14 +2734,19 @@ async function withdrawRequest(req, res) {
       throw badRequest('当前状态不能撤回')
     }
     if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以撤回')
-    await connection.execute(
-      `UPDATE attendance_requests
-       SET status = 'withdrawn',
-           withdrawn_by = :userId,
-           withdrawn_at = NOW()
-       WHERE id = :id`,
-      { id, userId: req.user.id },
-    )
+    // 组联动：同批申请中可撤回的条目一并撤回（终态/不可撤回状态跳过）
+    const group = await batchRequestsForUpdate(connection, request)
+    for (const item of group) {
+      if (!['draft', 'pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin'].includes(item.status)) continue
+      await connection.execute(
+        `UPDATE attendance_requests
+         SET status = 'withdrawn',
+             withdrawn_by = :userId,
+             withdrawn_at = NOW()
+         WHERE id = :id`,
+        { id: item.id, userId: req.user.id },
+      )
+    }
   })
   res.json({ ok: true })
 }
@@ -2724,16 +2762,21 @@ async function voidRequest(req, res) {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
     if (request.status !== 'approved') throw badRequest('只有已通过申请可以作废')
-    await reverseApprovalLedger(connection, request, req.user.id)
-    await connection.execute(
-      `UPDATE attendance_requests
-       SET status = 'voided',
-           voided_by = :userId,
-           voided_at = NOW(),
-           void_reason = :reason
-       WHERE id = :id`,
-      { id, userId: req.user.id, reason },
-    )
+    // 组联动：同批已批准条目逐一回滚台账并作废（未批准条目跳过）
+    const group = await batchRequestsForUpdate(connection, request)
+    for (const item of group) {
+      if (item.status !== 'approved') continue
+      await reverseApprovalLedger(connection, item, req.user.id)
+      await connection.execute(
+        `UPDATE attendance_requests
+         SET status = 'voided',
+             voided_by = :userId,
+             voided_at = NOW(),
+             void_reason = :reason
+         WHERE id = :id`,
+        { id: item.id, userId: req.user.id, reason },
+      )
+    }
   })
   res.json({ ok: true })
 }
@@ -2864,7 +2907,6 @@ module.exports = {
   listEmployees,
   listDelegates,
   me,
-  myBalanceLedger,
   listSupervisorRoleRules,
   updateSupervisorRoleRules,
   listApprovalRoleRules,
