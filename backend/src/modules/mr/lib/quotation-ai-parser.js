@@ -1,6 +1,25 @@
 /** AI 报价识别：以多模态/文本大模型识别报价文件，输出与系统解析器对齐的 sheet 结构。 */
 const XLSX = require('xlsx')
 const env = require('../../../config/env')
+const { effectiveSettings } = require('../../settings/controller')
+
+/**
+ * 解析 AI 连接配置：系统设置（DB）非空值优先，env 兜底。
+ * 与 work-summary / asset-normalization 同一配置源，避免 MR 识别读裸 env 造成配置割裂；
+ * DB 读取失败时静默回退 env（不影响单元测试与离线场景）。
+ */
+async function resolveAiConnection() {
+  try {
+    const settings = await effectiveSettings()
+    return {
+      apiUrl: settings.ai.apiUrl || env.ai.apiUrl,
+      apiKey: settings.ai.apiKey || env.ai.apiKey,
+      model: settings.ai.model || env.ai.model,
+    }
+  } catch {
+    return { apiUrl: env.ai.apiUrl, apiKey: env.ai.apiKey, model: env.ai.model }
+  }
+}
 
 const SYSTEM_PROMPT = [
   '你是专业的报价单/采购订单识别助手，擅长从图片和表格文本中提取结构化信息，能理解各种不同的报价单排版格式。',
@@ -170,19 +189,19 @@ async function pdfImageMessages(buffer, timeoutMs) {
 }
 
 /** 调用 OpenAI-compatible chat completions 接口。 */
-async function callAi(messages, timeoutMs, fetchImpl = fetch) {
+async function callAi(messages, timeoutMs, fetchImpl = fetch, conn) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), Math.max(1000, Number(timeoutMs || 60000)))
   try {
-    const response = await fetchImpl(env.ai.apiUrl, {
+    const response = await fetchImpl(conn.apiUrl, {
       method: 'POST',
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.ai.apiKey}`,
+        Authorization: `Bearer ${conn.apiKey}`,
       },
       body: JSON.stringify({
-        model: env.ai.model,
+        model: conn.model,
         messages,
         stream: false,
         max_tokens: 4000,
@@ -212,7 +231,8 @@ async function callAi(messages, timeoutMs, fetchImpl = fetch) {
  */
 async function recognizeQuotationWithAi(buffer, extension, fileName, { fetchImpl = fetch, onStage = null } = {}) {
   if (!env.ai.quoteRecognitionEnabled) return null
-  if (!env.ai.apiUrl || !env.ai.apiKey || !env.ai.model) return null
+  const conn = await resolveAiConnection()
+  if (!conn.apiUrl || !conn.apiKey || !conn.model) return null
   const timeoutMs = env.ai.quoteTimeoutMs
   const isPdf = extension === '.pdf'
   if (isPdf && onStage) onStage('rendering')
@@ -223,7 +243,7 @@ async function recognizeQuotationWithAi(buffer, extension, fileName, { fetchImpl
     { role: 'system', content: SYSTEM_PROMPT },
     { role: 'user', content: [{ type: 'text', text: USER_PROMPT }, ...input] },
   ]
-  const content = await callAi(messages, timeoutMs, fetchImpl)
+  const content = await callAi(messages, timeoutMs, fetchImpl, conn)
   const ai = extractJson(content)
   const sheet = normalizeAiResult(ai, fileName)
   if (sheet) {
@@ -234,7 +254,7 @@ async function recognizeQuotationWithAi(buffer, extension, fileName, { fetchImpl
     }
   }
   // 重试一次：部分模型偶发返回空内容或解析失败，直接重发可显著提升成功率
-  const retryContent = await callAi(messages, timeoutMs, fetchImpl)
+  const retryContent = await callAi(messages, timeoutMs, fetchImpl, conn)
   const retryAi = extractJson(retryContent)
   const retrySheet = normalizeAiResult(retryAi, fileName)
   if (!retrySheet) return null
@@ -252,7 +272,9 @@ async function recognizeQuotationWithAi(buffer, extension, fileName, { fetchImpl
  * @param {Array<{ name: string, sheets: Array<{ items: Array }> }>} sources
  */
 async function applyAiEntityKeys(sources, { fetchImpl = fetch } = {}) {
-  if (!env.ai.quoteRecognitionEnabled || !env.ai.apiUrl || !env.ai.apiKey || !env.ai.model) return
+  if (!env.ai.quoteRecognitionEnabled) return
+  const conn = await resolveAiConnection()
+  if (!conn.apiUrl || !conn.apiKey || !conn.model) return
   const entries = []
   sources.forEach((source, sourceIndex) => {
     ;(source.sheets || []).forEach((sheet) => {
@@ -282,7 +304,7 @@ async function applyAiEntityKeys(sources, { fetchImpl = fetch } = {}) {
   const content = await callAi([
     { role: 'system', content: '你是设备实体识别助手，严格只输出合法 JSON。' },
     { role: 'user', content: prompt },
-  ], env.ai.quoteTimeoutMs, fetchImpl)
+  ], env.ai.quoteTimeoutMs, fetchImpl, conn)
   const result = extractJson(content)
   const mapping = Array.isArray(result?.items) ? result.items : []
   for (const entry of mapping) {
