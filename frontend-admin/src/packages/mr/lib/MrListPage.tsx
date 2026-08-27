@@ -48,7 +48,7 @@ const PURCHASE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = 
 }
 
 /** 状态按钮 + hover 悬浮时间线卡（fixed 定位，脱离表格层叠上下文，不被下行遮挡） */
-function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilter }: { orderStatus: MrStatus; order: { createdAt?: string | null; submittedAt?: string | null; approvedAt?: string | null; rejectedAt?: string | null; voidedAt?: string | null }; stepLabel?: string; assigneeName?: string | null; onFilter: () => void }) {
+function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilter }: { orderStatus: MrStatus; order: { createdAt?: string | null; submittedAt?: string | null; approvedAt?: string | null; rejectedAt?: string | null; voidedAt?: string | null; approvalSteps?: Array<{ seq: number; stepKey: string; stepLabel: string; approverName: string | null; action: string | null; decidedAt: string | null }> }; stepLabel?: string; assigneeName?: string | null; onFilter: () => void }) {
   const [hover, setHover] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -57,10 +57,8 @@ function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilt
   const segs = ([
     { label: '创建', at: order.createdAt },
     { label: '提交签核', at: order.submittedAt },
-    { label: '签核通过', at: order.approvedAt },
-    { label: '驳回', at: order.rejectedAt },
-    { label: '作废', at: order.voidedAt },
   ]).filter((seg) => seg.at)
+  const steps = (order.approvalSteps || [])
   return (
     <span className="inline-block">
       <button
@@ -82,18 +80,23 @@ function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilt
       </button>
       {hover && pos && segs.length ? (
         <div className="pointer-events-none fixed z-[100] min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ top: pos.top, left: pos.left }}>
-          {segs.map((seg, i) => (
-            <div key={seg.label}>
-              <div className="flex items-center gap-1.5 text-muted-foreground">
-                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#582b8b]/10 text-[#582b8b]"><CircleDot className="h-2.5 w-2.5" /></span>
-                {seg.label} <span className="font-medium text-foreground">{shortDate(seg.at)}</span>
-              </div>
-              {i < segs.length - 1 ? <div className="my-1 ml-2 h-3 border-l border-dashed border-slate-300" /> : null}
+          {segs.map((seg) => (
+            <div key={seg.label} className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#582b8b]/10 text-[#582b8b]"><CircleDot className="h-2.5 w-2.5" /></span>
+              {seg.label} <span className="font-medium text-foreground">{shortDate(seg.at)}</span>
             </div>
           ))}
-          {stepLabel || assigneeName ? (
-            <div className="mt-2 border-t border-slate-100 pt-2 text-muted-foreground">
-              当前节点：<span className="font-medium text-foreground">{[stepLabel, assigneeName].filter(Boolean).join(' · ')}</span>
+          {steps.length ? (
+            <div className="mt-1.5 border-t border-slate-100 pt-1.5">
+              {steps.map((step) => (
+                <div key={`${step.seq}-${step.stepKey}`} className="flex items-center gap-1.5 py-0.5 text-muted-foreground">
+                  <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${step.action === 'approved' ? 'bg-emerald-100 text-emerald-700' : step.action === 'rejected' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-400'}`}>
+                    {step.action === 'approved' ? <CircleCheck className="h-2.5 w-2.5" /> : step.action === 'rejected' ? <CircleX className="h-2.5 w-2.5" /> : <Hourglass className="h-2.5 w-2.5" />}
+                  </span>
+                  <span className="flex-1 truncate">{step.stepLabel}{step.approverName ? ` · ${step.approverName}` : ''}</span>
+                  {step.decidedAt ? <span className="shrink-0 text-[11px]">{shortDate(step.decidedAt)}</span> : null}
+                </div>
+              ))}
             </div>
           ) : null}
         </div>

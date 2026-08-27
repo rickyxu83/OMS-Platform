@@ -577,9 +577,31 @@ async function list(req, res) {
      LIMIT 500`,
     params,
   )
+  // 批量查所有 MR 的签核步骤链（悬浮卡显示完整流转进度）
+  const mrIds = rows.map((row) => row.id).filter(Boolean)
+  let approvalsByMr = {}
+  if (mrIds.length) {
+    const approvalRows = await query(
+      `SELECT mr_id, cycle, seq, step_key, step_label, approver_id, approver_name_snapshot, action, decided_at
+       FROM mr_approvals WHERE mr_id IN (${mrIds.map(() => '?').join(',')})
+       ORDER BY mr_id, cycle DESC, seq`,
+      mrIds,
+    )
+    for (const a of approvalRows) {
+      if (!approvalsByMr[a.mr_id]) approvalsByMr[a.mr_id] = []
+      approvalsByMr[a.mr_id].push({
+        seq: a.seq,
+        stepKey: a.step_key,
+        stepLabel: a.step_label,
+        approverName: a.approver_name_snapshot || null,
+        action: a.action || null,
+        decidedAt: a.decided_at || null,
+      })
+    }
+  }
   res.json({ items: rows.map((row) => {
     const order = orderPayload(row)
-    return { ...order, permissions: { canEdit: canEdit(order, req.user, assistantIds), canDelete: canDelete(order, req.user, assistantIds), canVoid: canVoid(order, req.user, assistantIds), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: canWithdraw(order, req.user), canPurchase: canPurchase(order, req.user), canFillContractNo: canFillContractNo(order, req.user, assistantIds) } }
+    return { ...order, approvalSteps: approvalsByMr[row.id] || [], permissions: { canEdit: canEdit(order, req.user, assistantIds), canDelete: canDelete(order, req.user, assistantIds), canVoid: canVoid(order, req.user, assistantIds), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: canWithdraw(order, req.user), canPurchase: canPurchase(order, req.user), canFillContractNo: canFillContractNo(order, req.user, assistantIds) } }
   }) })
 }
 

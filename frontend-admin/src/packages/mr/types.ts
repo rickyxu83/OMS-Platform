@@ -135,6 +135,7 @@ export interface MrOrder {
   currentVersion?: { versionNo: number; changes: Array<{ field: string; before: unknown; after: unknown }>; createdAt?: string | null } | null
   currentStepKey?: string | null
   currentStepLabel?: string | null
+  approvalSteps?: Array<{ seq: number; stepKey: string; stepLabel: string; approverName: string | null; action: string | null; decidedAt: string | null }>
   createdByName?: string | null
   createdAt?: string | null
   updatedAt?: string | null
