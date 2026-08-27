@@ -890,7 +890,11 @@ export function Customers() {
   }, [detailTarget?.id, t.errors.loadFailed]);
 
   const filtered = useMemo(
-    () => (levelFilter === "all" ? customers : customers.filter((customer) => levelOf(customer) === levelFilter)),
+    () => (levelFilter === "all"
+      ? customers
+      : levelFilter === "keyvip"
+        ? customers.filter((customer) => ["key", "vip"].includes(levelOf(customer)))
+        : customers.filter((customer) => levelOf(customer) === levelFilter)),
     [customers, levelFilter],
   );
 
@@ -966,9 +970,9 @@ export function Customers() {
     const key = customers.filter((c) => levelOf(c) === "key" || levelOf(c) === "vip").length;
     const serviceCount = customers.reduce((sum, c) => sum + Number(c.serviceOrderCount || 0), 0);
     return [
-      { label: t.stats.total, value: total },
-      { label: t.stats.key, value: key },
-      { label: t.stats.serviceCount, value: serviceCount },
+      { key: "total", label: t.stats.total, value: total },
+      { key: "keyvip", label: t.stats.key, value: key },
+      { key: "serviceCount", label: t.stats.serviceCount, value: serviceCount },
     ];
   }, [customers, t.stats]);
   const initialLoading = loading && !loadedOnce;
@@ -976,7 +980,9 @@ export function Customers() {
 
   const levelFilterLabel = levelFilter === "all"
     ? ""
-    : t.levels[levelFilter as keyof typeof t.levels] || levelFilter;
+    : levelFilter === "keyvip"
+      ? t.stats.key
+      : t.levels[levelFilter as keyof typeof t.levels] || levelFilter;
 
   function toggleLevelFilter(level: string) {
     setLevelFilter((current) => (current === level ? "all" : level));
@@ -1590,16 +1596,36 @@ export function Customers() {
       <ErrorToast message={error} />
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
-        {stats.map((stat, statIndex) => (
-          <span key={stat.label} className="inline-flex items-baseline gap-1.5">
-            <span className="text-muted-foreground">{stat.label}</span>
-            {initialLoading ? (
-              <Skeleton className="h-5 w-8" />
-            ) : (
-              <span className="stat-value-enter inline-block text-base font-bold" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
-            )}
-          </span>
-        ))}
+        {stats.map((stat, statIndex) => {
+          const valueNode = initialLoading ? (
+            <Skeleton className="h-5 w-8" />
+          ) : (
+            <span className="stat-value-enter inline-block text-base font-bold" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
+          );
+          // 统计可点过滤：全部客户 / 重点客户（重点+VIP 合并）；服务次数不可点
+          if (stat.key === "total" || stat.key === "keyvip") {
+            const active = stat.key === "keyvip" ? levelFilter === "keyvip" : levelFilter === "all";
+            return (
+              <button
+                key={stat.key}
+                type="button"
+                onClick={() => setLevelFilter(stat.key === "keyvip" ? (active ? "all" : "keyvip") : "all")}
+                className={`inline-flex items-baseline gap-1.5 rounded-md px-1.5 py-0.5 transition-colors ${active && stat.key === "keyvip" ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-accent"}`}
+                title={stat.key === "keyvip" ? `${stat.label}（点击筛选）` : stat.label}
+                aria-pressed={stat.key === "keyvip" ? active : undefined}
+              >
+                <span className="text-muted-foreground">{stat.label}</span>
+                {valueNode}
+              </button>
+            );
+          }
+          return (
+            <span key={stat.key} className="inline-flex items-baseline gap-1.5">
+              <span className="text-muted-foreground">{stat.label}</span>
+              {valueNode}
+            </span>
+          );
+        })}
       </div>
 
       <Card>
