@@ -29,7 +29,6 @@ import { HolidayPanel } from "@/components/attendance/HolidayPanel";
 import { SettingsHolidays, type HolidayDraft, type HolidaySyncPreview } from "@/components/attendance/SettingsHolidays";
 import { ReportExportDialog } from "@/components/attendance/ReportExportDialog";
 import { AdjustBalanceDialog, BatchBalanceDialog, EmployeeEditDialog } from "@/components/attendance/EmployeeDialogs";
-import { BalanceLedgerPanel, type BalanceLedgerItem } from "@/components/attendance/BalanceLedgerPanel";
 
 // 法定节假日说明文案已迁 SettingsHolidays；审批链规则说明保留在本页（设置-审批流程视图使用）
 const APPROVAL_RULE_HELP = "审批链按固定模型自动推导，无需逐级配置：普通员工 = 直属主管 → 行政主管；工程/销售主管 = 行政主管 → 运营负责人；行政主管本人 = 运营负责人；请假满 3 天自动追加运营负责人终审。直属主管映射为「行政主管」时等同无直属主管步骤（自动去重）。管理员与行政主管拥有全部考勤权限，可审批任意环节。";
@@ -73,10 +72,10 @@ import {
   serviceOrderTypeLabel,
 } from "@/pages/attendance-shared";
 
-type AttendanceTab = "approve" | "balance" | "records" | "employees" | "settings" | "duty";
+type AttendanceTab = "approve" | "records" | "employees" | "settings" | "duty";
 
 // 待办中心等外部入口通过 ?tab=approve 深链定位考勤页签
-const ATTENDANCE_TABS: AttendanceTab[] = ["approve", "balance", "records", "employees", "settings", "duty"];
+const ATTENDANCE_TABS: AttendanceTab[] = ["approve", "records", "employees", "settings", "duty"];
 function parseTabParam(value: string | null): AttendanceTab {
   return ATTENDANCE_TABS.includes(value as AttendanceTab) ? (value as AttendanceTab) : "approve";
 }
@@ -214,8 +213,6 @@ export function Attendance() {
   const canApprove = hasPermission("attendance.approve");
   const canViewAll = hasPermission("attendance.view", "attendance.admin.approve", "attendance.hr.approve", "attendance.vp.approve", "attendance.manage");
   // 申请明细可见性（2026-08-24 裁决）：全员查档限 view-all 角色；有审批权限者可见审批链与自己相关的申请（scope=related）
-  // 布局（2026-08-25 再裁决）：审批人的经手历史不再单列页签，收进「申请与审批」的审批卡片（待办/已办切换）；
-  // 记录与报表页签只保留给全员查档角色（含月度汇总/导出/作废）；员工本人记录由「我的申请」覆盖
   const canViewRecords = canViewAll || canApprove;
   const canExportReport = hasPermission("attendance.report.export");
   const canManage = hasPermission("attendance.manage");
@@ -254,9 +251,6 @@ export function Attendance() {
   const [dutyBatchSaving, setDutyBatchSaving] = useState(false);
   const [dutyDetail, setDutyDetail] = useState<{ month: string; records: DutyDetailRecord[] } | null>(null);
   const [dutyDetailLoading, setDutyDetailLoading] = useState(false);
-  // 员工本人额度流水（「额度变动」页签，进入页签时按需拉取）
-  const [balanceLedger, setBalanceLedger] = useState<BalanceLedgerItem[]>([]);
-  const [balanceLedgerLoading, setBalanceLedgerLoading] = useState(false);
   const employeeDragRef = useRef<{ active: boolean; mode: "add" | "remove" }>({ active: false, mode: "add" });
   const employeeAnchorRef = useRef<number | null>(null);
   const employeeCardRef = useRef<HTMLDivElement | null>(null);
@@ -267,8 +261,6 @@ export function Attendance() {
   const [previewOrderFileId, setPreviewOrderFileId] = useState<string | number | null>(null);
   const previewOrderRequestRef = useRef(0);
   const [recordStatus, setRecordStatus] = useState("all");
-  // 审批卡片视图：todo=待办队列，done=已办历史（仅无全员查档权限的审批人可见此切换）
-  const [approvalView, setApprovalView] = useState<"todo" | "done">("todo");
   const [recordType, setRecordType] = useState("all");
   const [recordKeyword, setRecordKeyword] = useState("");
   const [recordStartDate, setRecordStartDate] = useState("");
@@ -368,23 +360,6 @@ export function Attendance() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canViewAll, reportMonth]);
 
-  // 额度变动页签：进入时拉取本人流水（变动多由审批人/行政触发，页内自带刷新按钮兜底）
-  async function loadBalanceLedger() {
-    if (!canApply) return;
-    setBalanceLedgerLoading(true);
-    try {
-      const data = await api.get("/attendance/me/balance-ledger");
-      setBalanceLedger((data?.items || []) as BalanceLedgerItem[]);
-    } catch { /* 静默：页签内刷新按钮可重试 */ } finally {
-      setBalanceLedgerLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (activeTab === "balance") loadBalanceLedger();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, canApply]);
-
   // 考勤设置-工作日历独立加载：年份输满 4 位才发请求（避免逐击键触发整页重载）
   async function loadLegalHolidays() {
     if (!canViewAll || !/^\d{4}$/.test(holidayYear)) return;
@@ -419,9 +394,8 @@ export function Attendance() {
 
 
 
-  // 草稿功能已下线：进行中只计 pending_*（历史草稿不算申请，仅在「全部」中只读展示）
   const pendingMine = useMemo(
-    () => mine.filter((item) => String(item.status || "").startsWith("pending_")).length,
+    () => mine.filter((item) => ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "")).length,
     [mine],
   );
   // 「我的申请」状态筛选：pending 聚合所有 pending_* 步骤，closed 聚合已撤回/已作废
@@ -449,13 +423,14 @@ export function Attendance() {
     const items: Array<{ key: AttendanceTab; label: string; count?: number }> = [
       { key: "approve", label: canApply ? "申请与审批" : "审批待办", count: approvalTodos.length },
     ];
-    if (canApply) items.push({ key: "balance", label: "额度变动" });
-    if (canViewAll) items.push({ key: "records", label: "记录与报表" });
+    if (canViewRecords) {
+      items.push({ key: "records", label: canViewAll ? "记录与报表" : "申请明细" });
+    }
     if (canManage) items.push({ key: "employees", label: "员工与余额" });
     if (canManage) items.push({ key: "settings", label: "考勤设置" });
     if (canViewDuty) items.push({ key: "duty", label: "值班津贴" });
     return items;
-  }, [canApply, canViewAll, canManage, canViewDuty, approvalTodos.length]);
+  }, [canApply, canViewAll, canViewRecords, canManage, canViewDuty, approvalTodos.length]);
 
   useEffect(() => {
     if (!tabs.some((tab) => tab.key === activeTab)) setActiveTab("approve");
@@ -546,82 +521,6 @@ export function Attendance() {
     } finally {
       setRowActionId("");
     }
-  }
-
-  // 同工单成组审批：组内每段按各自当前状态走对应审批路径（与行内 config 映射保持一致），
-  // 统一 toast 汇总、一次 load() 刷新；驳回弹一次原因应用于全组
-  const [groupActionKey, setGroupActionKey] = useState("");
-  const GROUP_APPROVE_PATH: Record<string, string> = {
-    pending_delegate: "approve-delegate",
-    pending_approval: "approve",
-    pending_supervisor: "approve-supervisor",
-    pending_hr: "approve-hr",
-    pending_vp: "approve-vp",
-    pending_admin: "approve-admin",
-  };
-  async function approveGroup(items: AttendanceRequest[]) {
-    const key = items.map((item) => item.id).join("-");
-    setGroupActionKey(key);
-    try {
-      const results = await Promise.allSettled(items.map((item) => {
-        const path = GROUP_APPROVE_PATH[item.status || ""];
-        if (!path) return Promise.reject(new Error("当前状态不能审批"));
-        return api.post(`/attendance/requests/${item.id}/${path}`);
-      }));
-      const okCount = results.filter((result) => result.status === "fulfilled").length;
-      if (okCount === items.length) {
-        toast.success(`已通过该工单全部 ${okCount} 段申请`);
-      } else {
-        toast.warning(`已通过 ${okCount}/${items.length} 段，其余未成功`);
-      }
-      await load();
-    } finally {
-      setGroupActionKey("");
-    }
-  }
-  function rejectGroup(items: AttendanceRequest[]) {
-    setPendingAction({
-      title: "驳回整组申请",
-      description: <>{items[0]?.employeeName || "-"} · 工单 {items[0]?.serviceOrder?.orderNo || "-"} 共 {items.length} 段，将按同一原因全部驳回</>,
-      confirmLabel: "确认驳回",
-      destructive: true,
-      reasonRequired: true,
-      reasonLabel: "驳回原因",
-      reasonPlaceholder: "请填写驳回原因（将通知申请人）",
-      run: async (reason) => {
-        const results = await Promise.allSettled(items.map((item) => api.post(`/attendance/requests/${item.id}/reject`, { reason })));
-        const okCount = results.filter((result) => result.status === "fulfilled").length;
-        if (okCount === items.length) toast.success(`已驳回该工单全部 ${okCount} 段申请`);
-        else toast.warning(`已驳回 ${okCount}/${items.length} 段`);
-        await load();
-        return okCount > 0;
-      },
-    });
-  }
-
-  // 我的申请·同工单批量撤回：一次确认后撤回组内全部待审批段（已撤回/已驳回/已通过段不动）
-  function withdrawGroup(items: AttendanceRequest[]) {
-    const targets = items.filter((item) => String(item.status || "").startsWith("pending_"));
-    if (!targets.length) return;
-    const key = items.map((item) => item.id).join("-");
-    setPendingAction({
-      title: "撤回整组申请",
-      description: <>工单 {items[0]?.serviceOrder?.orderNo || "-"} 共 {targets.length} 段待审批申请将全部撤回，可重新新建申请。</>,
-      confirmLabel: "确认撤回",
-      run: async () => {
-        setGroupActionKey(key);
-        try {
-          const results = await Promise.allSettled(targets.map((item) => api.post(`/attendance/requests/${item.id}/withdraw`)));
-          const okCount = results.filter((result) => result.status === "fulfilled").length;
-          if (okCount === targets.length) toast.success(`已撤回该工单全部 ${okCount} 段申请`);
-          else toast.warning(`已撤回 ${okCount}/${targets.length} 段`);
-          await load();
-          return okCount > 0;
-        } finally {
-          setGroupActionKey("");
-        }
-      },
-    });
   }
 
   function rejectDutyBatch(month: string) {
@@ -908,53 +807,6 @@ export function Attendance() {
     });
   }, [allRequests, recordStatus, recordType, recordKeyword]);
   const recordApprovedCount = filteredAllRequests.filter((item) => item.status === "approved").length;
-  // 审批人「已办历史」：仅无全员查档权限的审批人（admin 等走「记录与报表」页签，避免功能重复）；
-  // 只要持审批权限就常驻（不看当前待办数），否则没待办时历史入口会消失
-  const showApprovalHistory = canApprove && !canViewAll;
-  // 申请记录筛选条：审批人「已办历史」与「记录与报表-申请明细」共用（状态/类型/姓名/日期/重置）
-  const recordFilterControls = (
-    <div className="flex flex-wrap items-center gap-2">
-      {[
-        { key: "all", label: "全部", count: allRequests.length },
-        { key: "pending", label: "审批中", count: allRequests.filter((item) => String(item.status || "").startsWith("pending_")).length },
-        { key: "approved", label: "已通过", count: allRequests.filter((item) => item.status === "approved").length },
-        { key: "rejected", label: "已驳回", count: allRequests.filter((item) => item.status === "rejected").length },
-        { key: "voided", label: "已作废", count: allRequests.filter((item) => item.status === "voided").length },
-      ].map((chip) => {
-        const active = recordStatus === chip.key;
-        return (
-          <button
-            key={chip.key}
-            type="button"
-            onClick={() => setRecordStatus(chip.key)}
-            className={active
-              ? "flex h-8 items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-3 text-xs font-medium text-primary"
-              : "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium text-muted-foreground transition hover:bg-muted/50"}
-          >
-            {chip.label}
-            <span className={active ? "font-semibold" : ""}>{chip.count}</span>
-          </button>
-        );
-      })}
-      <Select value={recordType} onValueChange={setRecordType}>
-        <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">全部类型</SelectItem>
-          {Object.entries(REQUEST_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
-        </SelectContent>
-      </Select>
-      <div className="relative">
-        <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
-        <Input className="h-8 w-44 pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
-      </div>
-      <div className="flex items-center gap-1.5">
-        <Input className="h-8 w-36" type="date" aria-label="开始日期" value={recordStartDate} onChange={(event) => setRecordStartDate(event.target.value)} />
-        <span className="text-xs text-muted-foreground">至</span>
-        <Input className="h-8 w-36" type="date" aria-label="结束日期" min={recordStartDate || undefined} value={recordEndDate} onChange={(event) => setRecordEndDate(event.target.value)} />
-      </div>
-      {hasRecordFilter ? <Button variant="ghost" size="sm" onClick={() => { setRecordStatus("all"); setRecordType("all"); setRecordKeyword(""); setRecordStartDate(""); setRecordEndDate(""); }}>重置</Button> : null}
-    </div>
-  );
   const activeEmployeeCount = employees.filter((item) => item.attendanceEnabled !== false).length;
   const totalCompBalanceHours = employees.reduce((sum, item) => sum + Number(item.compTimeBalanceHours || 0), 0);
   const approvalRuleMappedCount = supervisorRules.filter((rule) => {
@@ -1097,56 +949,16 @@ export function Attendance() {
             </Card>
           ) : null}
 
-          {canApprove ? (
+          {isApprover ? (
             <RequestList
-              title={showApprovalHistory && approvalView === "done" ? "审批记录" : "待我审批"}
-              description={showApprovalHistory && approvalView === "done"
-                ? "审批链与我相关的全部申请（含已办结历史），只读"
-                : "代理确认与当前角色审批待办集中在这里处理"}
-              items={showApprovalHistory && approvalView === "done" ? allRequests : approvalTodos}
+              title="待我审批"
+              description="代理确认与当前角色审批待办集中在这里处理"
+              items={approvalTodos}
               loading={loading}
               onDownloadProof={previewProof}
               onPreviewOrder={openOrderPreview}
-              emptyText={showApprovalHistory && approvalView === "done" ? "暂无相关申请记录" : "暂无待审批的申请"}
-              groupByServiceOrder
-              groupActions={showApprovalHistory && approvalView === "done" ? undefined : (group) => {
-                const key = group.map((item) => item.id).join("-");
-                const busy = groupActionKey === key;
-                return (
-                  <>
-                    <Button size="sm" disabled={busy} onClick={() => approveGroup(group)}>
-                      {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />} 通过
-                    </Button>
-                    <Button size="sm" variant="outline" disabled={busy} onClick={() => rejectGroup(group)}>
-                      <X className="mr-1 h-4 w-4" /> 驳回
-                    </Button>
-                  </>
-                );
-              }}
-              toolbar={showApprovalHistory ? (
-                <>
-                  {[
-                    { key: "todo", label: "待我审批", count: approvalTodos.length },
-                    { key: "done", label: "已办历史", count: allRequests.length },
-                  ].map((view) => {
-                    const active = approvalView === view.key;
-                    return (
-                      <button
-                        key={view.key}
-                        type="button"
-                        onClick={() => setApprovalView(view.key as "todo" | "done")}
-                        className={active
-                          ? "flex h-8 items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-3 text-xs font-medium text-primary"
-                          : "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium text-muted-foreground transition hover:bg-muted/50"}
-                      >
-                        {view.label}
-                        <span className={active ? "font-semibold" : ""}>{view.count}</span>
-                      </button>
-                    );
-                  })}
-                </>
-              ) : undefined}
-              actions={showApprovalHistory && approvalView === "done" ? undefined : (item) => {
+              emptyText="暂无待审批的申请"
+              actions={(item) => {
                 const config: Record<string, { path: string; success: string }> = {
                   pending_delegate: { path: "approve-delegate", success: "代理人已通过" },
                   pending_approval: { path: "approve", success: "当前审批步骤已通过" },
@@ -1190,18 +1002,6 @@ export function Attendance() {
             onPreviewOrder={openOrderPreview}
             showEmployee={false}
             emptyText={mineStatus === "all" ? "暂无申请记录" : "没有该状态的申请"}
-            groupByServiceOrder
-            groupActions={(group) => {
-              const pendingCount = group.filter((item) => String(item.status || "").startsWith("pending_")).length;
-              if (!pendingCount) return null;
-              const key = group.map((item) => item.id).join("-");
-              const busy = groupActionKey === key;
-              return (
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => withdrawGroup(group)}>
-                  {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-1 h-4 w-4" />} 撤回
-                </Button>
-              );
-            }}
             toolbar={(
               <>
                 {[
@@ -1229,9 +1029,11 @@ export function Attendance() {
               </>
             )}
             actions={(item) => ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "") ? (
-              <Button size="sm" variant="outline" onClick={() => withdrawRequest(item)}>
-                <RotateCcw className="mr-1 h-4 w-4" /> 撤回
-              </Button>
+              <>
+                <Button size="sm" variant="outline" onClick={() => withdrawRequest(item)}>
+                  <RotateCcw className="mr-1 h-4 w-4" /> 撤回
+                </Button>
+              </>
             ) : null}
           /> : null}
 
@@ -1239,12 +1041,9 @@ export function Attendance() {
         </div>
       ) : null}
 
-      {activeTab === "balance" && canApply ? (
-        <BalanceLedgerPanel items={balanceLedger} loading={balanceLedgerLoading} profile={myProfile} onRefresh={loadBalanceLedger} />
-      ) : null}
-
-      {activeTab === "records" && canViewAll ? (
+      {activeTab === "records" && canViewRecords ? (
         <div className="space-y-5">
+          {canViewAll ? (
           <div className="flex w-fit gap-1 rounded-lg border bg-muted/40 p-1 text-sm">
             <button
               type="button"
@@ -1257,7 +1056,8 @@ export function Attendance() {
               className={`h-8 rounded-md px-4 font-medium transition ${recordView === "summary" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >月度汇总</button>
           </div>
-          {recordView === "detail" ? (<>
+          ) : null}
+          {recordView === "detail" || !canViewAll ? (<>
             {allRequests.length >= RECORDS_LIMIT ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
                 已到达单次 {RECORDS_LIMIT} 条上限，仅显示最近记录；查更早记录请用下方起止日期缩小范围。
@@ -1265,13 +1065,55 @@ export function Attendance() {
             ) : null}
             <RequestList
               title="申请明细"
-              description="全员全部类型申请记录，审批通过后可作废"
+              description={canViewAll ? "全员全部类型申请记录，审批通过后可作废" : "审批链与您相关的申请记录"}
               items={filteredAllRequests}
               loading={loading}
               onDownloadProof={previewProof}
               onPreviewOrder={openOrderPreview}
               emptyText={hasRecordFilter ? "没有符合筛选条件的记录" : "暂无记录"}
-              toolbar={recordFilterControls}
+              toolbar={(<>
+                <div className="flex flex-wrap items-center gap-2">
+                  {[
+                    { key: "all", label: "全部", count: allRequests.length },
+                    { key: "pending", label: "审批中", count: allRequests.filter((item) => String(item.status || "").startsWith("pending_")).length },
+                    { key: "approved", label: "已通过", count: allRequests.filter((item) => item.status === "approved").length },
+                    { key: "rejected", label: "已驳回", count: allRequests.filter((item) => item.status === "rejected").length },
+                    { key: "voided", label: "已作废", count: allRequests.filter((item) => item.status === "voided").length },
+                  ].map((chip) => {
+                    const active = recordStatus === chip.key;
+                    return (
+                      <button
+                        key={chip.key}
+                        type="button"
+                        onClick={() => setRecordStatus(chip.key)}
+                        className={active
+                          ? "flex h-8 items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-3 text-xs font-medium text-primary"
+                          : "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium text-muted-foreground transition hover:bg-muted/50"}
+                      >
+                        {chip.label}
+                        <span className={active ? "font-semibold" : ""}>{chip.count}</span>
+                      </button>
+                    );
+                  })}
+                  <Select value={recordType} onValueChange={setRecordType}>
+                    <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部类型</SelectItem>
+                      {Object.entries(REQUEST_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
+                    <Input className="h-8 w-44 pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Input className="h-8 w-36" type="date" aria-label="开始日期" value={recordStartDate} onChange={(event) => setRecordStartDate(event.target.value)} />
+                    <span className="text-xs text-muted-foreground">至</span>
+                    <Input className="h-8 w-36" type="date" aria-label="结束日期" min={recordStartDate || undefined} value={recordEndDate} onChange={(event) => setRecordEndDate(event.target.value)} />
+                  </div>
+                  {hasRecordFilter ? <Button variant="ghost" size="sm" onClick={() => { setRecordStatus("all"); setRecordType("all"); setRecordKeyword(""); setRecordStartDate(""); setRecordEndDate(""); }}>重置</Button> : null}
+                </div>
+              </>)}
               actions={canAdminApprove ? (item) => item.status === "approved" ? (
                 <Button size="sm" variant="outline" onClick={() => voidRequest(item)}><X className="mr-1 h-4 w-4" /> 作废</Button>
               ) : null : undefined}

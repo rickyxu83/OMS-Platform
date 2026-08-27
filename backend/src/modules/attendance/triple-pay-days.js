@@ -78,7 +78,24 @@ function isTriplePayDate(dateStr) {
   return triplePayDates(year).has(text)
 }
 
+/** 返回时间段（含首尾日期）覆盖到的三倍工资日列表（'YYYY-MM-DD'，升序；上限 62 天防御）。 */
+function triplePayDatesInRange(startAt, endAt) {
+  const startText = String(startAt || '').trim().slice(0, 10)
+  const endText = String(endAt || '').trim().slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startText) || !/^\d{4}-\d{2}-\d{2}$/.test(endText)) return []
+  const days = []
+  const cursor = new Date(`${startText}T00:00:00`)
+  const end = new Date(`${endText}T00:00:00`)
+  for (let i = 0; i <= 62 && cursor <= end; i += 1) {
+    const key = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}-${pad(cursor.getDate())}`
+    if (isTriplePayDate(key)) days.push(key)
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return days
+}
+
 module.exports = {
   triplePayDates,
   isTriplePayDate,
+  triplePayDatesInRange,
 }
