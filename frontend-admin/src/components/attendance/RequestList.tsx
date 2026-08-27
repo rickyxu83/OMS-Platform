@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeftRight, CalendarClock, CalendarDays, CalendarOff, CircleCheck, CircleSlash, CircleX, Clock3, Coins, Coffee, Flag, Hourglass, Loader2, Paperclip, PencilLine, Undo2, Users, Wrench, Zap, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -393,6 +393,82 @@ function StatusWithChain({ status, steps }: { status?: string; steps?: ApprovalS
   );
 }
 
+// 组行「N 段」pill：hover 浮出段明细卡（与审批链悬浮同一交互语言），移开/滚动/点击即关
+function SegmentsHoverCard({ group }: { group: AttendanceRequest[] }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number; above: boolean }>({ left: 0, top: 0, above: true });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const hide = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    setOpen(false);
+  }, []);
+  const show = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const above = rect.top > 320;
+      setPos({ left: rect.left + rect.width / 2, top: above ? rect.top - 8 : rect.bottom + 8, above });
+      setOpen(true);
+    }, 120);
+  };
+  useEffect(() => {
+    if (!open) return undefined;
+    window.addEventListener("scroll", hide, true);
+    document.addEventListener("mousedown", hide);
+    return () => {
+      window.removeEventListener("scroll", hide, true);
+      document.removeEventListener("mousedown", hide);
+    };
+  }, [open, hide]);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        className="shrink-0 rounded-full bg-cyan-50 px-2 py-0.5 text-[11px] font-medium text-cyan-700 ring-1 ring-cyan-200"
+      >
+        {group.length} 段
+      </button>
+      {open
+        ? createPortal(
+            <div
+              className="pointer-events-none fixed z-50 w-[560px] rounded-lg border bg-background p-3 text-xs shadow-xl"
+              style={{ left: pos.left, top: pos.top, transform: pos.above ? "translate(-50%, -100%)" : "translate(-50%, 0)" }}
+            >
+              <div className="space-y-1.5">
+                {group.map((item) => {
+                  const duration = requestDurationParts(item);
+                  return (
+                    <div key={item.id} className="flex items-center gap-3">
+                      <div className="min-w-0 flex-1">{requestDetailContent(item)}</div>
+                      <span className="shrink-0 tabular-nums text-muted-foreground">
+                        {chineseMonthDay(String(item.startAt || "").slice(0, 10))} {String(item.startAt || "").slice(11, 16)} – {String(item.endAt || item.startAt || "").slice(11, 16)}
+                      </span>
+                      {duration ? (
+                        <span className="shrink-0 tabular-nums font-semibold text-foreground">
+                          {duration.value}<span className="ml-0.5 font-normal text-muted-foreground">{duration.unit}</span>
+                        </span>
+                      ) : null}
+                      <span className="shrink-0">{statusIndicator(item.status)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
 export function RequestList({
   title,
   description,
@@ -422,9 +498,8 @@ export function RequestList({
   groupActions?: (group: AttendanceRequest[]) => ReactNode;
 }) {
   const hasActions = typeof actions === "function";
-  const colCount = (showEmployee ? 1 : 0) + 5 + (hasActions ? 1 : 0);
 
-  const renderRow = (item: AttendanceRequest, hideActions: boolean) => {
+  const renderRow = (item: AttendanceRequest) => {
     const duration = requestDurationParts(item);
     return (
       <TableRow key={item.id}>
@@ -448,30 +523,54 @@ export function RequestList({
         <TableCell><StatusWithChain status={item.status} steps={item.approvals} /></TableCell>
         {hasActions ? (
           <TableCell>
-            {hideActions ? null : <div className="flex flex-wrap gap-2">{actions?.(item)}</div>}
+            <div className="flex flex-wrap gap-2">{actions?.(item)}</div>
           </TableCell>
         ) : null}
       </TableRow>
     );
   };
 
-  const renderGroupHeader = (group: AttendanceRequest[], groupKey: string) => {
+  // 组行：整组只占一行（与单条行高一致）——明细区为工单号+客户+「N 段」pill+段类型串联，
+  // 时长列显示合计；段明细由 pill 的 hover 浮层承载（SegmentsHoverCard）
+  const renderGroupRow = (group: AttendanceRequest[], groupKey: string) => {
     const first = group[0];
     const orderLabel = first.serviceOrder?.orderNo || (first.sourceId ? `#${first.sourceId}` : "-");
     const customerName = first.serviceOrder?.customerName || "";
     const totalHours = group.reduce((sum, item) => sum + Number(item.hours || 0), 0);
+    const kindsText = group.map((item) => overtimeKindLabel(item)).join(" + ");
+    const pendingItem = group.find((item) => (item.status || "").startsWith("pending"));
+    const groupStatus = pendingItem?.status || first.status || "";
+    const startDate = String(first.startAt || "").slice(0, 10);
+    const endDate = String(group[group.length - 1].endAt || first.startAt || "").slice(0, 10);
+    const dateText = chineseMonthDay(startDate) + (endDate && endDate !== startDate ? ` → ${chineseMonthDay(endDate)}` : "");
     return (
-      <TableRow key={`header-${groupKey}`} className="bg-muted/40 hover:bg-muted/40">
-        <TableCell colSpan={colCount} className="py-2">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <Wrench className="h-3.5 w-3.5 shrink-0" />
-            {showEmployee ? <span className="font-medium text-foreground">{first.employeeName || "-"}</span> : null}
-            <span className="font-medium text-foreground">工单 {orderLabel}</span>
-            {customerName ? <span>{customerName}</span> : null}
-            <span>共 {group.length} 段 · 合计 {hours(totalHours)} 小时</span>
-            {groupActions ? <span className="ml-auto flex items-center gap-2">{groupActions(group)}</span> : null}
+      <TableRow key={groupKey}>
+        {showEmployee ? <TableCell className="font-medium">{first.employeeName || "-"}</TableCell> : null}
+        <TableCell>{requestTypeIndicator(first.requestType)}</TableCell>
+        <TableCell>
+          <div className="flex items-center gap-2">
+            <Wrench className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            {onPreviewOrder && first.serviceOrder ? (
+              <button type="button" onClick={() => onPreviewOrder(first.serviceOrder as ServiceOrderSummary)} className="shrink-0 text-sm font-medium text-primary underline-offset-2 hover:underline">工单 {orderLabel}</button>
+            ) : (
+              <span className="shrink-0 text-sm font-medium">工单 {orderLabel}</span>
+            )}
+            {customerName ? <span className="min-w-0 truncate text-xs text-muted-foreground">{customerName}</span> : null}
+            <SegmentsHoverCard group={group} />
           </div>
+          <div className="mt-0.5 truncate text-xs text-muted-foreground" title={kindsText}>{kindsText}</div>
         </TableCell>
+        <TableCell><span className="text-sm font-medium tabular-nums">{dateText}</span></TableCell>
+        <TableCell className="text-right tabular-nums">
+          <span className="text-sm font-semibold">{hours(totalHours)}</span>
+          <span className="ml-0.5 text-xs text-muted-foreground">小时</span>
+        </TableCell>
+        <TableCell>{statusIndicator(groupStatus)}</TableCell>
+        {hasActions ? (
+          <TableCell>
+            {groupActions ? <div className="flex flex-wrap gap-2">{groupActions(group)}</div> : null}
+          </TableCell>
+        ) : null}
       </TableRow>
     );
   };
@@ -534,14 +633,7 @@ export function RequestList({
               </TableHeader>
               <TableBody>
                 {(groupByServiceOrder ? groupRequestsByServiceOrder(items) : items.map((item) => ({ type: "single" as const, item }))).map((entry) =>
-                  entry.type === "group" ? (
-                    <Fragment key={entry.key}>
-                      {renderGroupHeader(entry.items, entry.key)}
-                      {entry.items.map((item) => renderRow(item, true))}
-                    </Fragment>
-                  ) : (
-                    renderRow(entry.item, false)
-                  ),
+                  entry.type === "group" ? renderGroupRow(entry.items, entry.key) : renderRow(entry.item),
                 )}
               </TableBody>
             </Table>
