@@ -2161,10 +2161,10 @@ export function ServiceOrders() {
                 <col className="w-10" />
                 <col className="w-[19%]" />
                 <col className="w-[10%]" />
-                <col className="w-[21%]" />
-                <col className="w-[10%]" />
-                <col className="w-[13%]" />
+                <col className="w-[19%]" />
                 <col className="w-[9%]" />
+                <col className="w-[15%]" />
+                <col className="w-[10%]" />
                 <col className="w-[18%]" />
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
