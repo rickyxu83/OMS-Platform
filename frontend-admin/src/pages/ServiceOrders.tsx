@@ -2172,7 +2172,7 @@ export function ServiceOrders() {
                   <TableHead>{t.list.colMainContent} / {t.list.colServiceItems}</TableHead>
                   <TableHead>{t.list.colEngineer} / {t.list.colServiceTime}</TableHead>
                   <TableHead>{t.list.colStatus}</TableHead>
-                  <TableHead className="pr-5 text-right">{t.list.colActions}</TableHead>
+                  <TableHead>{t.list.colActions}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -2288,7 +2288,7 @@ export function ServiceOrders() {
                         <TableCell>
                           {(() => { const conf = STATUS_INDICATOR[getWorkflowStatus(order)] || STATIC_FALLBACK; return indicatorSpan(conf.icon, conf.color, statusLabel); })()}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell>
                           {(canConfirmInspection || canAssign) ? (
                               <div className="flex items-center gap-1">
                                 {canConfirmInspection && (
