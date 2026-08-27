@@ -320,7 +320,7 @@ const I18N = {
       description: "实时展示各区域客户密度及服务点位",
     },
     todo: {
-      label: "待处理",
+      label: "条待办",
       mrPart: "MR 签核",
       attendancePart: "考勤审批",
       action: "去处理",
@@ -474,7 +474,7 @@ const I18N = {
       description: "即時展示各區域客戶密度及服務點位",
     },
     todo: {
-      label: "待處理",
+      label: "條待辦",
       mrPart: "MR 簽核",
       attendancePart: "考勤審批",
       action: "去處理",
@@ -1102,7 +1102,7 @@ export function Dashboard() {
           <span className="inline-flex items-center gap-2 text-red-700 dark:text-red-300">
             <ListTodo className="h-4 w-4 shrink-0" />
             <span>
-              {t.todo.label} <span className="font-bold">{todoSummary.total}</span>
+              <span className="font-bold">{todoSummary.total}</span> {t.todo.label}
               {todoSummary.mr || todoSummary.attendance ? (
                 <span className="text-red-600/80 dark:text-red-300/80">
                   {"（"}{[todoSummary.mr ? `${todoSummary.mr} ${t.todo.mrPart}` : "", todoSummary.attendance ? `${todoSummary.attendance} ${t.todo.attendancePart}` : ""].filter(Boolean).join(" · ")}{"）"}
@@ -1245,7 +1245,6 @@ export function Dashboard() {
         <section className="lg:col-span-3">
           <div className="mb-3 px-1 sm:mb-4">
             <h2 className="text-lg font-semibold sm:text-xl">{t.map.title}</h2>
-            <p className="text-sm text-muted-foreground">{t.map.description}</p>
           </div>
           <Amap
             center={{ lng: 120.71518, lat: 31.31962, name: "苏州办事处" }}
