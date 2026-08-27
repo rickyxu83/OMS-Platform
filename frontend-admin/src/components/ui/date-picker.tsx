@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { format, parse, setMonth, setYear } from "date-fns";
 import { CalendarDays } from "lucide-react";
 import { DayPicker } from "react-day-picker";
@@ -28,7 +29,10 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node | null;
+      // 面板用 portal 渲染到 body：需同时排除面板自身的点击（不在 ref 内）
+      const inPanel = t instanceof Element && !!t.closest?.("[data-date-picker-panel]");
+      if (ref.current && !ref.current.contains(t) && !inPanel) setOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -79,8 +83,9 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
         <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className={value ? "truncate text-slate-900" : "truncate text-slate-400"}>{value || placeholder}</span>
       </button>
-      {open ? (
+      {open ? createPortal(
         <div ref={panelRef}
+                data-date-picker-panel
                 onMouseDown={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
                 className="fixed z-[100] flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
@@ -123,7 +128,8 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
               className="rdp-custom"
             />
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
     </div>
   );
