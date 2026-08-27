@@ -1282,7 +1282,6 @@ export function ServiceOrders() {
     && filteredOrders.every((order) => selectedIds.some((id) => String(id) === String(order.id)));
 
   const initialLoading = loading && orders.length === 0;
-  const refreshing = loading && orders.length > 0;
 
   const selectedCustomerName = useMemo(() => {
     if (customerFilter === "all") return "";
@@ -2069,11 +2068,6 @@ export function ServiceOrders() {
       </Card>
 
       <div className="overflow-hidden rounded-xl border bg-card">
-        <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-2.5 text-sm font-medium text-foreground">
-          {t.list.title} ({filteredOrders.length}/{total || filteredOrders.length})
-          <HelpTooltip label={t.list.help} />
-          {refreshing && <span className="btn-loader" aria-hidden="true" />}
-        </div>
         <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto">
             {initialLoading ? (
               <div className="p-2">

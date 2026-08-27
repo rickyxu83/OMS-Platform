@@ -1,5 +1,4 @@
-import { Download, Loader2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Archive, Building2, CircleCheck, CircleCheckBig, CircleSlash, CircleX, Clock3, Download, Flag, Hourglass, Loader2, PenLine, Pencil, Radio, Send, Upload, Wrench, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MarkdownContent } from "@/lib/markdown";
@@ -56,34 +55,52 @@ const DEFAULT_DETAIL_LABELS = {
   unnamedEngineer: "未指定",
 };
 
-const STATUS_BADGE_VARIANT: Record<string, "draft" | "secondary" | "purple" | "success" | "warning" | "destructive"> = {
-  draft: "draft",
-  assigned: "warning",
-  in_progress: "purple",
-  pending_confirmation: "warning",
-  awaiting_customer_signature: "warning",
-  submitted: "success",
-  approved: "success",
-  archived: "secondary",
-  cancelled: "destructive",
-  completed: "success",
+// —— 图标+文字指示器（去 Badge 大色块，与列表页一致）——
+function indicatorSpan(icon: LucideIcon, color: string, label: string) {
+  const Icon = icon;
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+      <Icon className={`h-3.5 w-3.5 ${color}`} />
+      {label}
+    </span>
+  );
+}
+
+const STATUS_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  draft: { icon: Pencil, color: "text-slate-400" },
+  assigned: { icon: Send, color: "text-sky-600" },
+  in_progress: { icon: Clock3, color: "text-indigo-600" },
+  pending_confirmation: { icon: Hourglass, color: "text-amber-600" },
+  awaiting_customer_signature: { icon: PenLine, color: "text-amber-600" },
+  submitted: { icon: Upload, color: "text-emerald-600" },
+  approved: { icon: CircleCheck, color: "text-emerald-600" },
+  archived: { icon: Archive, color: "text-slate-400" },
+  cancelled: { icon: CircleSlash, color: "text-rose-500" },
+  completed: { icon: CircleCheckBig, color: "text-emerald-600" },
+  rejected: { icon: CircleX, color: "text-rose-500" },
 };
 
-const TYPE_BADGE_VARIANT: Record<string, "success" | "warning" | "info" | "purple" | "secondary"> = {
-  install: "success",
-  repair: "warning",
-  maintain: "info",
-  inspect: "purple",
-  training: "info",
-  remote: "info",
-  other: "secondary",
+const TYPE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  install: { icon: Wrench, color: "text-sky-600" },
+  repair: { icon: Wrench, color: "text-amber-600" },
+  maintain: { icon: Clock3, color: "text-teal-600" },
+  inspect: { icon: CircleCheck, color: "text-indigo-600" },
+  training: { icon: Pencil, color: "text-purple-600" },
+  remote: { icon: Radio, color: "text-purple-600" },
+  other: { icon: Clock3, color: "text-slate-400" },
 };
 
-const PRIORITY_BADGE_VARIANT: Record<string, "secondary" | "warning" | "destructive"> = {
-  low: "secondary",
-  normal: "secondary",
-  high: "warning",
-  urgent: "destructive",
+const MODE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  onsite: { icon: Wrench, color: "text-sky-600" },
+  remote: { icon: Radio, color: "text-purple-600" },
+  office: { icon: Building2, color: "text-indigo-600" },
+};
+
+const PRIORITY_INDICATOR: Record<string, { color: string }> = {
+  low: { color: "text-slate-400" },
+  normal: { color: "text-slate-400" },
+  high: { color: "text-amber-600" },
+  urgent: { color: "text-rose-600" },
 };
 
 const PRIORITY_LABELS: Record<string, string> = {
@@ -294,11 +311,11 @@ export function ServiceOrderDetailDialog({
             ) : null}
             {error ? <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div> : null}
 
-            <div className="flex flex-wrap gap-2">
-              <Badge variant={STATUS_BADGE_VARIANT[status] || "secondary"}>{statusLabel}</Badge>
-              <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>{typeLabel}</Badge>
-              <Badge variant="secondary">{modeLabel}</Badge>
-              <Badge variant={PRIORITY_BADGE_VARIANT[order.priority || ""] || "secondary"}>{priorityLabel}</Badge>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              {indicatorSpan((STATUS_INDICATOR[status] || { icon: Clock3 }).icon, (STATUS_INDICATOR[status] || { color: "text-slate-400" }).color, statusLabel)}
+              {indicatorSpan((TYPE_INDICATOR[order.serviceType || ""] || TYPE_INDICATOR.other).icon, (TYPE_INDICATOR[order.serviceType || ""] || TYPE_INDICATOR.other).color, typeLabel)}
+              {indicatorSpan((MODE_INDICATOR[order.serviceMode || ""] || { icon: Wrench }).icon, (MODE_INDICATOR[order.serviceMode || ""] || { color: "text-slate-400" }).color, modeLabel)}
+              {indicatorSpan(Flag, (PRIORITY_INDICATOR[order.priority || ""] || PRIORITY_INDICATOR.normal).color, priorityLabel)}
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">

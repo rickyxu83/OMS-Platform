@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Archive,
   Bold,
+  BookOpen,
   Braces,
   Building2,
   Camera,
@@ -33,6 +34,7 @@ import {
   ListOrdered,
   MapPin,
   MonitorCog,
+  MoreHorizontal,
   Package,
   PenLine,
   Pencil,
@@ -43,6 +45,7 @@ import {
   Save,
   Search,
   Send,
+  Settings,
   Share2,
   Trash2,
   Upload,
@@ -89,9 +92,9 @@ import {
   ATTACHMENT_PURPOSES, COMPRESSIBLE_IMAGE_EXTENSIONS, COMPRESSIBLE_IMAGE_MIME_TYPES,
   FORM_SKIN, IMAGE_COMPRESSION_MAX_EDGE, IMAGE_COMPRESSION_QUALITY,
   INSPECTION_DOCUMENT_ACCEPT, INSPECTION_DOCUMENT_EXTENSIONS, MARKDOWN_TOOLS, MAX_FILE_SIZE,
-  MODE_BADGE_VARIANT, MODE_OPTIONS, OFFICE_SERVICE_MODULE_OPTIONS, ONSITE_SERVICE_MODULE_OPTIONS,
+  MODE_OPTIONS, OFFICE_SERVICE_MODULE_OPTIONS, ONSITE_SERVICE_MODULE_OPTIONS,
   PART_ACTION_OPTIONS, PRIORITY_OPTIONS, REMOTE_SERVICE_MODULE_OPTIONS,
-  RESULT_OPTIONS, SERVICE_TYPE_OPTIONS, STATUS_BADGE_VARIANT, TYPE_BADGE_VARIANT,
+  RESULT_OPTIONS, SERVICE_TYPE_OPTIONS,
 } from "./service-report/constants";
 import {
   allowedServiceModules, attachmentFileExtension, attachmentPreviewKind, buildDeleteConfirmationMessage,
@@ -145,6 +148,28 @@ const MODE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
   office: { icon: Building2, color: "text-indigo-600" },
 };
 const INDICATOR_FALLBACK = { icon: Send, color: "text-slate-400" };
+
+// 服务事项/类型图标（与工单处理 TYPE_INDICATOR 同语义色）
+const TYPE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  install: { icon: HardDrive, color: "text-sky-600" },
+  repair: { icon: Wrench, color: "text-amber-600" },
+  maintain: { icon: Settings, color: "text-teal-600" },
+  inspect: { icon: ClipboardCheck, color: "text-indigo-600" },
+  training: { icon: BookOpen, color: "text-purple-600" },
+  remote: { icon: Radio, color: "text-purple-600" },
+  other: { icon: MoreHorizontal, color: "text-slate-400" },
+};
+
+/** 预览头部服务事项标签 → 图标：关键词优先（模块标签如“备件更换”），兜底 serviceType */
+function serviceItemIndicator(label: string, serviceType?: string): { icon: LucideIcon; color: string } {
+  if (label.includes("安装")) return TYPE_INDICATOR.install;
+  if (label.includes("巡检")) return TYPE_INDICATOR.inspect;
+  if (label.includes("备件")) return { icon: Package, color: "text-amber-600" };
+  if (label.includes("故障") || label.includes("排查")) return TYPE_INDICATOR.repair;
+  if (label.includes("远程")) return TYPE_INDICATOR.remote;
+  if (label.includes("内勤") || label.includes("方案") || label.includes("资料")) return { icon: FileText, color: "text-indigo-600" };
+  return TYPE_INDICATOR[serviceType || ""] || TYPE_INDICATOR.other;
+}
 function indicatorSpan(icon: LucideIcon, color: string, label: string) {
   const Icon = icon;
   return (
@@ -284,7 +309,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   const [editDraftLoaded, setEditDraftLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [formLoading, setFormLoading] = useState(false);
-  const [filledOrdersOpen, setFilledOrdersOpen] = useState(false);
   // 列表页筛选：草稿默认折叠 + 全文搜索 + 服务日期范围（与工单处理页一致的筛选行）
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || "");
@@ -2868,26 +2892,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             </Card>
 
             <Card className="overflow-hidden">
-              <CardHeader className="border-b bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3">
-                <CardTitle className="flex w-full items-center justify-between gap-3 text-sm sm:text-base">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <CheckCircle className="h-4 w-4 shrink-0" />
-                    <span className="truncate">已填写服务记录 ({filledOrders.length})</span>
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 shrink-0 px-2 text-xs sm:hidden"
-                    onClick={() => setFilledOrdersOpen((open) => !open)}
-                    aria-expanded={filledOrdersOpen}
-                  >
-                    {filledOrdersOpen ? "收起" : "展开"}
-                    <ChevronDown className={`h-4 w-4 transition-transform ${filledOrdersOpen ? "rotate-180" : ""}`} />
-                  </Button>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className={`${filledOrdersOpen ? "block" : "hidden sm:block"} p-0`}>
+              <CardContent className="p-0">
                 {renderReportOrderList(filledOrders, "暂无已填写服务记录")}
               </CardContent>
             </Card>
@@ -3005,12 +3010,13 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                     ) : null}
                     {previewError ? <InlineError message={previewError} /> : null}
 
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>{orderStatusLabel(previewOrder.workflowStatus || previewOrder.status, previewOrder.displayStatus)}</Badge>
-                      <Badge variant={MODE_BADGE_VARIANT[mode] || "secondary"}>{modeLabel}</Badge>
-                      {serviceLabels.length ? serviceLabels.map((label) => (
-                        <Badge key={label} variant={TYPE_BADGE_VARIANT[previewOrder.serviceType || ""] || "outline"}>{label}</Badge>
-                      )) : null}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                      {statusIndicator(workflowStatus, orderStatusLabel(previewOrder.workflowStatus || previewOrder.status, previewOrder.displayStatus))}
+                      {modeIndicator(mode, modeLabel)}
+                      {serviceLabels.length ? serviceLabels.map((label) => {
+                        const conf = serviceItemIndicator(label, previewOrder.serviceType);
+                        return <span key={label}>{indicatorSpan(conf.icon, conf.color, label)}</span>;
+                      }) : null}
                     </div>
 
                     {customerFields.length ? (
