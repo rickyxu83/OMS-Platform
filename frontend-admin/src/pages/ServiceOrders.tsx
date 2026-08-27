@@ -42,6 +42,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { formatCount, formatDate, formatDateTime, formatDateRange, formatFileSize } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 
 interface ServiceOrder {
   id: string | number;
@@ -2043,26 +2044,13 @@ export function ServiceOrders() {
                 }}
               />
             </div>
-            <div className="min-w-0 overflow-hidden space-y-1.5 w-[184px]">
-              <Label htmlFor="service-orders-start-date" className="text-xs text-muted-foreground">
-                {t.filters.startDate}
-              </Label>
-              <CompactDateFilterInput
-                id="service-orders-start-date"
-                label={t.filters.startDate}
-                value={startDate}
-                onChange={setStartDate}
-              />
-            </div>
-            <div className="min-w-0 overflow-hidden space-y-1.5 w-[184px]">
-              <Label htmlFor="service-orders-end-date" className="text-xs text-muted-foreground">
-                {t.filters.endDate}
-              </Label>
-              <CompactDateFilterInput
-                id="service-orders-end-date"
-                label={t.filters.endDate}
-                value={endDate}
-                onChange={setEndDate}
+            <div className="min-w-0 w-[240px]">
+              <DateRangePicker
+                start={startDate}
+                end={endDate}
+                onChange={(s2, e2) => { setStartDate(s2); setEndDate(e2); }}
+                placeholder={`${t.filters.startDate} ~ ${t.filters.endDate}`}
+                ariaLabel={`${t.filters.startDate} / ${t.filters.endDate}`}
               />
             </div>
             <Button
