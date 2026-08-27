@@ -1875,33 +1875,6 @@ export function ServiceOrders() {
                 {t.actions.assign}
               </Button>
             )}
-            {canExport && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-muted-foreground hover:text-slate-900 hover:bg-transparent"
-                    onClick={(event) => event.stopPropagation()}
-                    disabled={exporting}
-                  >
-                    {exporting ? <span className="btn-loader mr-1" aria-hidden="true" /> : <Download className="mr-1 h-4 w-4" />}
-                    {t.actions.export}
-                    <ChevronDown className="ml-1 h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
-                  <DropdownMenuItem onSelect={() => exportOrders([order.id])} disabled={exporting}>
-                    <FileSpreadsheet className="mr-2 h-4 w-4" />
-                    {t.actions.exportExcel}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => exportOrdersPdf([order.id], displayId(order))} disabled={exporting}>
-                    <FileDown className="mr-2 h-4 w-4" />
-                    {t.actions.exportPdf}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
           </>
         }
       />
@@ -2183,16 +2156,16 @@ export function ServiceOrders() {
               />
             ) : (
               <ResponsiveList items={filteredOrders} keyExtractor={(order) => order.id} renderCard={renderOrderCard}>
-            <table className="w-full min-w-[1250px] table-fixed caption-bottom text-sm">
+            <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
-                <col className="w-11" />
-                <col className="w-[230px]" />
-                <col className="w-[110px]" />
-                <col className="w-[260px]" />
-                <col className="w-[130px]" />
-                <col className="w-[160px]" />
-                <col className="w-[96px]" />
-                <col className="w-[220px]" />
+                <col className="w-10" />
+                <col className="w-[20%]" />
+                <col className="w-[12%]" />
+                <col className="w-[24%]" />
+                <col className="w-[11%]" />
+                <col className="w-[14%]" />
+                <col className="w-[9%]" />
+                <col className="w-[10%]" />
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                 <TableRow>
@@ -2323,33 +2296,6 @@ export function ServiceOrders() {
                                 <Send className="mr-1 h-4 w-4" />
                                 {t.actions.assign}
                               </Button>
-                            )}
-                            {canExport && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-muted-foreground hover:text-emerald-600 hover:bg-transparent"
-                                    onClick={(event) => event.stopPropagation()}
-                                    disabled={exporting}
-                                  >
-                                    {exporting ? <span className="btn-loader mr-1" aria-hidden="true" /> : <Download className="mr-1 h-4 w-4" />}
-                                    {t.actions.export}
-                                    <ChevronDown className="ml-1 h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
-                                  <DropdownMenuItem onSelect={() => exportOrders([order.id])} disabled={exporting}>
-                                    <FileSpreadsheet className="mr-2 h-4 w-4" />
-                                    {t.actions.exportExcel}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={() => exportOrdersPdf([order.id], displayId(order))} disabled={exporting}>
-                                    <FileDown className="mr-2 h-4 w-4" />
-                                    {t.actions.exportPdf}
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
                             )}
                           </div>
                         </TableCell>
