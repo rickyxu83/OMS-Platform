@@ -58,7 +58,7 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
             setAlignRight(right);
             setPanelPos({ top: rect.bottom + 4, left: right ? Math.max(8, rect.right - panelWidth) : rect.left });
           }
-          setOpen((v) => !v);
+          setOpen(true);
         }}
         className="flex h-9 w-full items-center gap-2 rounded-md border border-slate-300 bg-white px-2.5 text-left text-sm shadow-sm transition-colors hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-[#582b8b]/20"
       >
@@ -66,7 +66,9 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
         <span className={value ? "truncate text-slate-900" : "truncate text-slate-400"}>{value || placeholder}</span>
       </button>
       {open ? (
-        <div className="fixed z-[100] flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
+        <div onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="fixed z-[100] flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
                 style={panelPos ? { top: panelPos.top, left: panelPos.left } : undefined}>
           <div className="max-h-[320px] w-[72px] overflow-y-auto border-r bg-slate-50 py-2 text-center text-sm dark:bg-slate-800/50">
             {YEARS.map((y) => (
