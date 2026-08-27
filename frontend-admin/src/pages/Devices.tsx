@@ -4,6 +4,7 @@ import { Search, Plus, RefreshCw, Server, Trash2, Check, Pencil, RotateCcw, Edit
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -2666,10 +2667,11 @@ export function Devices() {
               </div>
               <div className="space-y-2">
                 <Label>维保开始</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={form.maintenanceStart}
-                  onChange={(e) => setForm({ ...form, maintenanceStart: e.target.value })}
+                  onChange={(v) => setForm({ ...form, maintenanceStart: v })}
+                  placeholder="维保开始日期"
+                  ariaLabel="维保开始日期"
                 />
               </div>
               <div className="space-y-2">
@@ -2677,10 +2679,11 @@ export function Devices() {
                   <Label>维保截止</Label>
                   <HelpTooltip label="维保到期预警以此为依据：系统每天 08:00 检查，在截止日期前 N 天（系统设置中可配）向客户销售负责人和固定收件人发送提醒邮件。留空则不参与到期预警。" />
                 </div>
-                <Input
-                  type="date"
+                <DatePicker
                   value={form.maintenanceEnd}
-                  onChange={(e) => setForm({ ...form, maintenanceEnd: e.target.value })}
+                  onChange={(v) => setForm({ ...form, maintenanceEnd: v })}
+                  placeholder="维保截止日期"
+                  ariaLabel="维保截止日期"
                 />
               </div>
               <div className="space-y-2">
@@ -3408,11 +3411,11 @@ export function Devices() {
               />
               <div className="flex-1 space-y-1.5">
                 <Label>维保开始日期</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={batchEditForm.maintenanceStart}
-                  onChange={(e) => setBatchEditForm((f) => ({ ...f, maintenanceStart: e.target.value }))}
-                  disabled={!batchEditToggles.maintenanceStart}
+                  onChange={(v) => setBatchEditForm((f) => ({ ...f, maintenanceStart: v }))}
+                  placeholder="维保开始日期"
+                  ariaLabel="维保开始日期"
                 />
               </div>
             </div>
@@ -3424,11 +3427,11 @@ export function Devices() {
               />
               <div className="flex-1 space-y-1.5">
                 <Label>维保截止日期</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={batchEditForm.maintenanceEnd}
-                  onChange={(e) => setBatchEditForm((f) => ({ ...f, maintenanceEnd: e.target.value }))}
-                  disabled={!batchEditToggles.maintenanceEnd}
+                  onChange={(v) => setBatchEditForm((f) => ({ ...f, maintenanceEnd: v }))}
+                  placeholder="维保截止日期"
+                  ariaLabel="维保截止日期"
                 />
               </div>
             </div>

@@ -4,6 +4,7 @@ import { Plus, RefreshCw, Search, Trash2, Play, Pencil, Check, RotateCcw } from 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -1388,18 +1389,20 @@ export function InspectionSchedules() {
                   <Label>下次生成日期 *</Label>
                   <HelpTooltip label="系统每天 06:30 检查各巡检计划，为未来 14 天内到期的计划自动生成「待确认」巡检工单（需在系统设置中开启自动生成）；工单确认后才会派给工程师。生成后该日期按巡检周期自动顺延。" />
                 </div>
-                <Input
-                  type="date"
+                <DatePicker
                   value={form.nextRunAnchor}
-                  onChange={(e) => setForm({ ...form, nextRunAnchor: e.target.value })}
+                  onChange={(v) => setForm({ ...form, nextRunAnchor: v })}
+                  placeholder="下次生成日期"
+                  ariaLabel="下次生成日期"
                 />
               </div>
               <div className="space-y-2">
                 <Label>结束日期（可选）</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={form.endDate}
-                  onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                  onChange={(v) => setForm({ ...form, endDate: v })}
+                  placeholder="结束日期（可选）"
+                  ariaLabel="结束日期"
                 />
               </div>
               <div className="space-y-2 flex flex-row items-center gap-3 pt-6">
