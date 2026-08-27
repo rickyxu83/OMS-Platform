@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft, Building2 } from "lucide-react";
+import { Search, Plus, RefreshCw, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft, Building2, Star, CircleUserRound, MoreHorizontal, RotateCcw, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { useAuth } from "@/contexts/AuthContext";
@@ -179,6 +181,7 @@ const I18N = {
       retry: "重试",
       cancel: "取消",
       clear: "清除",
+      reset: "重置",
       locateAddress: "按地址定位",
       addContact: "新增联系人",
       removeContact: "删除联系人",
@@ -213,6 +216,7 @@ const I18N = {
       action: "操作",
       coordsLabel: "坐标",
       selectAllCurrent: "全选当前列表",
+      actionsMenu: "客户操作",
     },
     dialog: {
       title: "新增客户",
@@ -362,6 +366,7 @@ const I18N = {
       retry: "重試",
       cancel: "取消",
       clear: "清除",
+      reset: "重設",
       locateAddress: "按地址定位",
       addContact: "新增聯絡人",
       removeContact: "刪除聯絡人",
@@ -396,6 +401,7 @@ const I18N = {
       action: "操作",
       coordsLabel: "座標",
       selectAllCurrent: "全選目前列表",
+      actionsMenu: "客戶操作",
     },
     dialog: {
       title: "新增客戶",
@@ -536,12 +542,23 @@ const I18N = {
   },
 } as const;
 
-const LEVEL_VARIANT: Record<string, "default" | "secondary" | "purple" | "warning" | "info" | "success"> = {
-  key: "purple",
-  vip: "warning",
-  normal: "success",
-  potential: "info",
+// —— 等级 Badge → 图标+文字（去大色块，与工单/MR 列表一致）——
+const LEVEL_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  key: { icon: Star, color: "text-purple-600" },
+  vip: { icon: Star, color: "text-amber-600" },
+  normal: { icon: CircleUserRound, color: "text-slate-400" },
+  potential: { icon: CircleUserRound, color: "text-sky-600" },
 };
+
+function indicatorSpan(icon: LucideIcon, color: string, label: string) {
+  const Icon = icon;
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+      <Icon className={`h-3.5 w-3.5 ${color}`} />
+      {label}
+    </span>
+  );
+}
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
   draft: "草稿",
@@ -660,9 +677,6 @@ function previewScheduleMeta(schedule: CustomerSchedule, labels: { enabled: stri
   ].filter(Boolean).join(" · ");
 }
 
-const CUSTOMER_LIST_GRID = "grid-cols-[44px_288px_132px_176px_128px_minmax(236px,1fr)_176px]";
-const CUSTOMER_LIST_READONLY_GRID = "grid-cols-[288px_132px_176px_128px_minmax(236px,1fr)_176px]";
-
 export function Customers() {
   const { lang } = useLanguage();
   const { user, hasPermission } = useAuth();
@@ -709,8 +723,6 @@ export function Customers() {
   const canForceDeleteCustomer = canDeleteCustomer;
   const canMergeCustomer = hasPermission("customer.merge");
   const currentSalespersonName = String(user?.realName || user?.real_name || user?.name || user?.username || "").trim();
-  const customerListGrid = canDeleteCustomer ? CUSTOMER_LIST_GRID : CUSTOMER_LIST_READONLY_GRID;
-  const customerListMinWidth = canDeleteCustomer ? "min-w-[1180px]" : "min-w-[1136px]";
 
   const primaryContact = form.contacts[0] || { name: "", phone: "", email: "" };
   const salespersonOptions = useMemo(() => {
@@ -1278,6 +1290,8 @@ export function Customers() {
   function renderCustomerCard(c: Customer) {
     const lv = levelOf(c);
     const lvLabel = t.levels[lv as keyof typeof t.levels] || t.levels.normal;
+    const lvConf = LEVEL_INDICATOR[lv] || LEVEL_INDICATOR.normal;
+    const LvIcon = lvConf.icon;
     const selected = selectedCustomerIds.includes(String(c.id));
     return (
       <ResponsiveCard
@@ -1310,25 +1324,18 @@ export function Customers() {
           </span>
         }
         status={(
-          <Badge
-            role="button"
-            tabIndex={0}
-            variant={LEVEL_VARIANT[lv] || "secondary"}
-            className={`cursor-pointer ${levelFilter === lv ? "ring-2 ring-primary/30" : ""}`}
+          <button
+            type="button"
+            className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium transition-colors ${levelFilter === lv ? "bg-primary/10 text-primary ring-1 ring-primary/30" : "text-muted-foreground hover:bg-accent"}`}
+            title={`${t.list.level}：${lvLabel}`}
             onClick={(event) => {
               event.stopPropagation();
               toggleLevelFilter(lv);
             }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                event.stopPropagation();
-                toggleLevelFilter(lv);
-              }
-            }}
           >
+            <LvIcon className={`h-3.5 w-3.5 ${lvConf.color}`} />
             {lvLabel}
-          </Badge>
+          </button>
         )}
         subtitle={c.salesperson ? `${t.list.salesperson}：${c.salesperson}` : undefined}
         fields={[
@@ -1582,74 +1589,59 @@ export function Customers() {
 
       <ErrorToast message={error} />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
         {stats.map((stat, statIndex) => (
-          <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-            <CardContent className="pt-6">
-              <div className="text-sm text-muted-foreground">{stat.label}</div>
-              <div className="text-2xl font-bold mt-1">
-                                {initialLoading ? (
-                  <Skeleton className="h-8 w-16" />
-                ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <span key={stat.label} className="inline-flex items-baseline gap-1.5">
+            <span className="text-muted-foreground">{stat.label}</span>
+            {initialLoading ? (
+              <Skeleton className="h-5 w-8" />
+            ) : (
+              <span className="stat-value-enter inline-block text-base font-bold" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
+            )}
+          </span>
         ))}
       </div>
 
-      <Card className="min-w-0">
-        <CardHeader className="pb-0">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-2">
-                <CardTitle>{t.list.title}</CardTitle>
-                {refreshing ? (
-                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    <span className="btn-loader btn-loader-sm" aria-hidden="true" />
-                    {t.list.loading}
-                  </span>
-                ) : null}
-              </div>
-              {levelFilterLabel ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 gap-1 px-2 text-xs"
-                  onClick={() => setLevelFilter("all")}
-                >
-                  {levelFilterLabel}
-                  <span className="text-muted-foreground">×</span>
-                </Button>
-              ) : null}
+      <Card>
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className="relative min-w-0 flex-1 basis-[260px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder={t.list.searchPlaceholder}
+                aria-label={t.list.searchPlaceholder}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") load(searchQuery);
+                }}
+              />
             </div>
-            <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center">
-              <div className="relative w-full md:w-72">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  className="pl-9"
-                  placeholder={t.list.searchPlaceholder}
-                  aria-label={t.list.searchPlaceholder}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") load(searchQuery);
-                  }}
-                />
-              </div>
+            {levelFilterLabel ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1 px-2.5 text-xs"
+                onClick={() => setLevelFilter("all")}
+              >
+                {levelFilterLabel}
+                <span className="text-muted-foreground">×</span>
+              </Button>
+            ) : null}
+            <Button
+              className="h-9 shrink-0 whitespace-nowrap px-2.5 sm:px-3"
+              variant="outline"
+              onClick={() => { setSearchQuery(""); setLevelFilter("all"); }}
+            >
+              <RotateCcw className="mr-1.5 h-4 w-4" />
+              {t.actions.reset}
+            </Button>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {refreshing ? <span className="btn-loader btn-loader-sm" aria-hidden="true" /> : null}
               {canDeleteCustomer ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Checkbox
-                      checked={allFilteredCustomersSelected}
-                      onCheckedChange={toggleAllFilteredCustomers}
-                      disabled={deleting || filtered.length === 0}
-                      aria-label={t.list.selectAllCurrent}
-                    />
-                    {t.list.selectAllCurrent}
-                  </label>
+                <>
                   {selectedCustomerIds.length ? (
                     <Button variant="ghost" size="sm" onClick={() => setSelectedCustomerIds([])} disabled={deleting || merging}>
                       {t.actions.clearSelection}
@@ -1668,6 +1660,7 @@ export function Customers() {
                   ) : null}
                   <Button
                     variant="ghost"
+                    size="sm"
                     className="text-red-600 hover:text-red-700"
                     onClick={confirmBulkDelete}
                     disabled={deleting || merging || !selectedCustomerIds.length}
@@ -1675,58 +1668,85 @@ export function Customers() {
                     {deleting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Trash2 className="w-4 h-4 mr-2" />}
                     {deleting ? t.actions.deleting : `${t.actions.batchDelete}${selectedCustomerIds.length ? ` (${selectedCustomerIds.length})` : ""}`}
                   </Button>
-                </div>
+                </>
               ) : null}
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="min-w-0 pt-6">
-          <div className="h-[62vh] min-h-[360px] max-h-[680px] w-full max-w-full overflow-auto overscroll-x-contain rounded-md border">
-            {initialLoading ? (
-              <div className="p-2">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 border-b px-2 py-3 last:border-b-0">
-                    <Skeleton className="h-4 w-28" />
-                    <Skeleton className="h-4 w-20" />
-                    <Skeleton className="h-4 w-28" />
-                    <Skeleton className="h-4 w-16" />
-                    <Skeleton className="h-4 flex-1" />
-                  </div>
-                ))}
-              </div>
-            ) : filtered.length === 0 ? (
+        </CardContent>
+      </Card>
+
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="h-[62vh] min-h-[360px] max-h-[680px] w-full max-w-full overflow-auto overscroll-x-contain">
+          {initialLoading ? (
+            <div className="p-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 border-b px-2 py-3 last:border-b-0">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 flex-1" />
+                </div>
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="p-2">
               <EmptyState
                 title={t.list.empty}
                 {...(canManageCustomer ? { actionLabel: t.actions.create, onAction: openCreate } : {})}
               />
-            ) : (
-              <ResponsiveList items={filtered} keyExtractor={(c) => c.id} renderCard={renderCustomerCard}>
-              <div className={customerListMinWidth}>
-                <div className={`sticky top-0 z-10 grid border-b bg-muted/70 px-2 py-2 text-xs font-medium text-muted-foreground backdrop-blur ${customerListGrid} items-center gap-0`}>
-                  {canDeleteCustomer ? <div className="text-center" aria-hidden="true" /> : null}
-                  <div>{t.list.name}</div>
-                  <div className="text-center">{t.list.contact}</div>
-                  <div className="text-center">{t.list.phone}</div>
-                  <div className="text-center">
-                    <span className="inline-flex items-center justify-center gap-1.5">
-                      {t.list.level}
-                      <HelpTooltip label={t.dialog.levelHelp} />
-                    </span>
-                  </div>
-                  <div>{t.list.address}</div>
-                  <div className="pr-3 text-right">{t.list.action}</div>
-                </div>
-                {filtered.map((c, rowIndex) => {
+            </div>
+          ) : (
+            <ResponsiveList items={filtered} keyExtractor={(c) => c.id} renderCard={renderCustomerCard}>
+              <table className="w-full table-fixed caption-bottom text-sm">
+                <colgroup>
+                  {canDeleteCustomer ? <col className="w-11" /> : null}
+                  <col className="w-[30%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[22%]" />
+                  <col className="w-[8%]" />
+                </colgroup>
+                <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+                  <TableRow>
+                    {canDeleteCustomer ? (
+                      <TableHead className="w-11 text-center">
+                        <Checkbox
+                          checked={allFilteredCustomersSelected}
+                          onCheckedChange={toggleAllFilteredCustomers}
+                          disabled={deleting || filtered.length === 0}
+                          aria-label={t.list.selectAllCurrent}
+                        />
+                      </TableHead>
+                    ) : null}
+                    <TableHead>{t.list.name}</TableHead>
+                    <TableHead>{t.list.contact}</TableHead>
+                    <TableHead>{t.list.phone}</TableHead>
+                    <TableHead>
+                      <span className="inline-flex items-center gap-1.5">
+                        {t.list.level}
+                        <HelpTooltip label={t.dialog.levelHelp} />
+                      </span>
+                    </TableHead>
+                    <TableHead>{t.list.address}</TableHead>
+                    <TableHead>{t.list.action}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((c, rowIndex) => {
                     const lv = levelOf(c);
                     const lvLabel = t.levels[lv as keyof typeof t.levels] || t.levels.normal;
+                    const lvConf = LEVEL_INDICATOR[lv] || LEVEL_INDICATOR.normal;
+                    const LvIcon = lvConf.icon;
                     const selected = selectedCustomerIds.includes(String(c.id));
                     return (
-                      <div
+                      <TableRow
                         key={c.id}
                         role="button"
                         tabIndex={0}
-                        className={`list-row-enter grid cursor-pointer border-b px-2 py-2 text-sm transition-colors last:border-b-0 hover:bg-accent/30 ${customerListGrid} items-center gap-0`}
-                        style={{ animationDelay: `${Math.min(rowIndex * 30, 400)}ms` }}
+                        className="list-row-enter cursor-pointer"
+                        style={{ animationDelay: `${Math.min(rowIndex * 40, 400)}ms` }}
                         onClick={() => openCustomerDetail(c)}
                         onKeyDown={(event) => {
                           if (event.target !== event.currentTarget) return;
@@ -1737,23 +1757,23 @@ export function Customers() {
                         }}
                       >
                         {canDeleteCustomer ? (
-                          <div className="px-2 text-center" onClick={(event) => event.stopPropagation()}>
+                          <TableCell className="text-center" onClick={(event) => event.stopPropagation()}>
                             <Checkbox
                               checked={selected}
                               onCheckedChange={(checked) => toggleCustomerSelection(c.id, checked)}
                               disabled={deleting}
                               aria-label={`选择客户 ${c.name || c.id}`}
                             />
-                          </div>
+                          </TableCell>
                         ) : null}
-                        <div className="min-w-0 px-2">
+                        <TableCell className="min-w-0">
                           <div className="flex min-w-0 items-start gap-2">
                             <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                             <div className="min-w-0 flex-1">
                               {c.name ? (
                                 <button
                                   type="button"
-                                  className="block max-w-full truncate text-left font-medium text-slate-900 hover:text-primary hover:underline"
+                                  className="block max-w-full truncate text-left text-sm font-semibold transition-colors hover:text-primary hover:underline"
                                   title={c.name}
                                   onClick={(event) => filterByCustomerName(event, c.name)}
                                 >
@@ -1762,87 +1782,81 @@ export function Customers() {
                               ) : (
                                 <div className="truncate font-medium">{t.misc.unknown}</div>
                               )}
-                              {c.salesperson && (
-                                <div className="truncate text-xs text-muted-foreground">{t.list.salesperson}：{c.salesperson}</div>
-                              )}
-                              {c.latitude && c.longitude ? (
-                                <div className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
-                                  <MapPin className="w-3 h-3" />
-                                  {Number(c.latitude).toFixed(4)}, {Number(c.longitude).toFixed(4)}
-                                </div>
-                              ) : null}
+                              <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                                {c.salesperson ? <span className="truncate">{t.list.salesperson}：{c.salesperson}</span> : null}
+                                {c.latitude && c.longitude ? (
+                                  <span className="group relative inline-flex">
+                                    <MapPin className="h-3 w-3 cursor-default text-emerald-600" />
+                                    <span className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2 py-1 shadow-lg group-hover:block dark:border-slate-700 dark:bg-slate-900">
+                                      {Number(c.latitude).toFixed(4)}, {Number(c.longitude).toFixed(4)}
+                                    </span>
+                                  </span>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div className="min-w-0 px-2 text-center">
-                          <div className="truncate" title={c.contactName || t.misc.unknown}>{c.contactName || t.misc.unknown}</div>
-                        </div>
-                        <div className="min-w-0 px-2 text-center tabular-nums">{renderPhoneLink(c.contactPhone || c.phone, true)}</div>
-                        <div className="px-2 text-center">
-                          <Badge
-                            role="button"
-                            tabIndex={0}
-                            variant={LEVEL_VARIANT[lv] || "secondary"}
-                            className={`cursor-pointer ${levelFilter === lv ? "ring-2 ring-primary/30" : ""}`}
+                        </TableCell>
+                        <TableCell className="min-w-0">
+                          <span className="block truncate" title={c.contactName || t.misc.unknown}>{c.contactName || t.misc.unknown}</span>
+                        </TableCell>
+                        <TableCell className="min-w-0 tabular-nums">{renderPhoneLink(c.contactPhone || c.phone, true)}</TableCell>
+                        <TableCell>
+                          <button
+                            type="button"
+                            className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium transition-colors ${levelFilter === lv ? "bg-primary/10 text-primary ring-1 ring-primary/30" : "text-muted-foreground hover:bg-accent"}`}
+                            title={`${t.list.level}：${lvLabel}`}
                             onClick={(event) => {
                               event.stopPropagation();
                               toggleLevelFilter(lv);
                             }}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                toggleLevelFilter(lv);
-                              }
-                            }}
                           >
+                            <LvIcon className={`h-3.5 w-3.5 ${lvConf.color}`} />
                             {lvLabel}
-                          </Badge>
-                        </div>
-                        <div className="truncate px-2 text-muted-foreground">
-                          {c.address || t.misc.unknown}
-                        </div>
-                        <div className="px-2 text-right">
-                          <div className="flex justify-end gap-1">
-                            {canManageCustomer ? (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  openEdit(c);
-                                }}
-                              >
-                                <Pencil className="w-4 h-4 mr-1" />
-                                {t.actions.edit}
-                              </Button>
-                            ) : null}
-                            {canDeleteCustomer ? (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  openDelete(c);
-                                }}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                                {t.actions.delete}
-                              </Button>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
+                          </button>
+                        </TableCell>
+                        <TableCell className="min-w-0">
+                          <span className="block truncate text-muted-foreground">{c.address || t.misc.unknown}</span>
+                        </TableCell>
+                        <TableCell onClick={(event) => event.stopPropagation()}>
+                          {canManageCustomer || canDeleteCustomer ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                  title={t.list.actionsMenu}
+                                  aria-label={t.list.actionsMenu}
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {canManageCustomer ? (
+                                  <DropdownMenuItem onSelect={() => openEdit(c)}>
+                                    <Pencil className="h-4 w-4" />
+                                    {t.actions.edit}
+                                  </DropdownMenuItem>
+                                ) : null}
+                                {canManageCustomer && canDeleteCustomer ? <DropdownMenuSeparator /> : null}
+                                {canDeleteCustomer ? (
+                                  <DropdownMenuItem variant="destructive" onSelect={() => openDelete(c)}>
+                                    <Trash2 className="h-4 w-4" />
+                                    {t.actions.delete}
+                                  </DropdownMenuItem>
+                                ) : null}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
-              </div>
-              </ResponsiveList>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+                </TableBody>
+              </table>
+            </ResponsiveList>
+          )}
+        </div>
+      </div>
 
       <Dialog open={mergeDialogOpen} onOpenChange={(open) => { if (!open) closeMergeDialog(); }}>
         <DialogContent className="sm:max-w-[680px]">
@@ -1979,7 +1993,10 @@ export function Customers() {
                         <div className="text-lg font-semibold leading-7 text-slate-900">{detailTarget.name || t.misc.unknown}</div>
                         <div className="mt-1 text-sm text-muted-foreground">{detailTarget.code || t.misc.unknown}</div>
                       </div>
-                      <Badge variant={LEVEL_VARIANT[lv] || "secondary"} className="w-fit">{lvLabel}</Badge>
+                      {(() => {
+                        const conf = LEVEL_INDICATOR[lv] || LEVEL_INDICATOR.normal;
+                        return indicatorSpan(conf.icon, conf.color, lvLabel);
+                      })()}
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
