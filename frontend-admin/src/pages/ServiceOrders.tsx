@@ -1790,25 +1790,60 @@ export function ServiceOrders() {
                 aria-label={`${t.list.selectOrder} ${displayId(order)}`}
               />
             </span>
-            <span className="truncate font-mono text-[13px]" title={displayId(order)}>{displayId(order)}</span>
-            <span className="truncate text-muted-foreground font-normal">· {textValue(order.customerName) || "-"}</span>
+            <span className="truncate" title={displayId(order)}>{displayId(order)}</span>
           </span>
         }
         status={(() => { const conf = STATUS_INDICATOR[workflowStatus] || STATIC_FALLBACK; return indicatorSpan(conf.icon, conf.color, statusLabel); })()}
-        subtitle={
-          <span className="block space-y-0.5">
-            <span className="block truncate text-sm font-medium text-foreground/90">{orderMainContent(order) || "-"}</span>
-            <span className="block truncate text-xs text-muted-foreground">
-              {(() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; const Icon = mc ? mc.icon : null; return Icon ? <Icon className={`inline h-3 w-3 mr-1 align-[-2px] ${mc.color}`} /> : null; })()}
-              {modeLabel}
-              <span className="mx-1.5 text-muted-foreground/40">·</span>
-              {engineerName}
-              <span className="mx-1.5 text-muted-foreground/40">·</span>
-              {serviceTime.start}{serviceTime.end ? ` ~ ${serviceTime.end}` : ""}
-            </span>
-          </span>
-        }
-                actions={
+        subtitle={orderMainContent(order)}
+        fields={[
+          {
+            label: t.list.fieldCustomer,
+            value: (
+              <button
+                type="button"
+                className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline"
+                title={`${t.list.filterByCustomer}：${textValue(order.customerName)}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  applyNameFilter(order.customerName);
+                }}
+              >
+                {textValue(order.customerName)}
+              </button>
+            ),
+          },
+          {
+            label: t.list.fieldEngineer,
+            value: (
+              <button
+                type="button"
+                className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline disabled:cursor-default disabled:text-current disabled:no-underline"
+                title={`${t.list.filterByEngineer}：${engineerName}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  applyNameFilter(engineerText(order, ""));
+                }}
+                disabled={!engineerText(order, "")}
+              >
+                {engineerName}
+              </button>
+            ),
+          },
+          {
+            label: t.list.fieldServiceItems,
+            value: (() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; return mc ? indicatorSpan(mc.icon, mc.color, modeLabel) : <span className="text-xs text-muted-foreground">{modeLabel}</span>; })(),
+          },
+          {
+            label: t.list.fieldServiceTime,
+            value: (
+              <span className="block space-y-0.5 text-xs">
+                <span className="block"><span className="text-muted-foreground">{t.list.startShort}：</span>{serviceTime.start}</span>
+                <span className="block"><span className="text-muted-foreground">{t.list.endShort}：</span>{serviceTime.end}</span>
+              </span>
+            ),
+          },
+        ]}
+        actions={
           <>
             {canConfirmInspection && (
               <Button
@@ -2120,7 +2155,7 @@ export function ServiceOrders() {
                 {...(canCreateOrders ? { actionLabel: t.actions.create, onAction: openCreateOrder } : {})}
               />
             ) : (
-              <ResponsiveList items={filteredOrders} keyExtractor={(order) => order.id} renderCard={renderOrderCard} forceCards>
+              <ResponsiveList items={filteredOrders} keyExtractor={(order) => order.id} renderCard={renderOrderCard}>
             <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
                 <col className="w-10" />

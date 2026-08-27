@@ -17,8 +17,6 @@ interface ResponsiveListProps<T> {
   cardClassName?: string;
   /** 卡片入场动画（默认 true，与桌面行 list-row-enter 一致，封顶 400ms） */
   animateRows?: boolean;
-  /** 强制卡片模式：任何视口都渲染卡片流（children 忽略）。用于卡片式列表页（如考勤/工单改版） */
-  forceCards?: boolean;
 }
 
 const BP_CLASSES: Record<ResponsiveListBreakpoint, { desktop: string; mobile: string }> = {
@@ -39,24 +37,8 @@ export function ResponsiveList<T>({
   breakpoint = "lg",
   cardClassName = "",
   animateRows = true,
-  forceCards = false,
 }: ResponsiveListProps<T>) {
   const bp = BP_CLASSES[breakpoint];
-  if (forceCards) {
-    return (
-      <div>
-        {items.map((item, index) => (
-          <div
-            key={keyExtractor(item, index)}
-            className={`border-b p-4 last:border-b-0 ${animateRows ? "list-row-enter" : ""} ${cardClassName}`}
-            style={animateRows ? { animationDelay: `${Math.min(index * 30, 400)}ms` } : undefined}
-          >
-            {renderCard(item, index)}
-          </div>
-        ))}
-      </div>
-    );
-  }
   return (
     <>
       <div className={bp.desktop}>{children}</div>
