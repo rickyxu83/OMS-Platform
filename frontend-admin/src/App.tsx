@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { Login } from "@/pages/Login"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useAdminDomTextI18n } from "@/lib/use-admin-dom-text-i18n"
-import { SHOW_ATTENDANCE, SHOW_USER_SIGNATURE } from "@/lib/feature-flags"
+import { SHOW_ATTENDANCE } from "@/lib/feature-flags"
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from "react"
 
 const AdminLayout = lazy(() => import("@/components/AdminLayout").then((module) => ({ default: module.AdminLayout })))
@@ -205,16 +205,14 @@ export default function App() {
               </Suspense>
             }
           />
-          {SHOW_USER_SIGNATURE ? (
-            <Route
-              path="/engineer-signature/:token"
-              element={
-                <Suspense fallback={<PageLoading />}>
-                  <EngineerSignature />
-                </Suspense>
-              }
-            />
-          ) : null}
+          <Route
+            path="/engineer-signature/:token"
+            element={
+              <Suspense fallback={<PageLoading />}>
+                <EngineerSignature />
+              </Suspense>
+            }
+          />
           <Route
             path="/change-password"
             element={
