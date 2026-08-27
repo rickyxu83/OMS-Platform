@@ -38,16 +38,7 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
 
   useEffect(() => {
     if (open && startDate) setViewMonth(startDate);
-    if (open && ref.current) {
-      const rect = ref.current.getBoundingClientRect();
-      const panelWidth = 380; // 侧栏 72 + 日历 ~300
-      const right = rect.left + panelWidth > window.innerWidth - 16;
-      setAlignRight(right);
-      setPanelPos({
-        top: rect.bottom + 4,
-        left: right ? Math.max(8, rect.right - panelWidth) : rect.left,
-      });
-    }
+
   }, [open]);
 
   const label = start && end ? `${start} ~ ${end}` : start ? `${start} ~` : placeholder;
@@ -59,7 +50,19 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
       <button
         type="button"
         aria-label={ariaLabel || placeholder}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => {
+            const next = !v;
+            if (next && ref.current) {
+              const rect = ref.current.getBoundingClientRect();
+              const panelWidth = 380;
+              const right = rect.left + panelWidth > window.innerWidth - 16;
+              setAlignRight(right);
+              setPanelPos({ top: rect.bottom + 4, left: right ? Math.max(8, rect.right - panelWidth) : rect.left });
+            }
+            return next;
+          });
+        }}
         className="flex h-9 w-full items-center gap-2 rounded-md border border-slate-300 bg-white px-2.5 text-left text-sm shadow-sm transition-colors hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-[#582b8b]/20"
       >
         <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
