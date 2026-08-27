@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, Server, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet, ChevronDown, Paperclip, Merge, TriangleAlert } from "lucide-react";
+import { Search, Plus, RefreshCw, Server, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet, ChevronDown, Paperclip, Merge, TriangleAlert, X, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,8 +14,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -62,9 +64,9 @@ import {
 } from "@/lib/customer-index";
 import {
   IMPORT_TEMPLATE_MAX_ROWS, IMPORT_TEMPLATE_OPTIONS_SHEET, IMPORT_TEMPLATE_MAINTENANCE_TYPES,
-  MAINTENANCE_IMPORT_STATUS_LABELS, MAINTENANCE_TYPE_LABELS, MAINTENANCE_TYPE_BADGE,
-  MAINTENANCE_TYPE_HELP, MAINTENANCE_TYPE_ALIASES, DEVICE_STATUS_LABELS, DEVICE_STATUS_BADGE,
-  DEVICE_TABLE_GRID, DEVICE_TABLE_READONLY_GRID, DEVICE_BADGE_CLASS, DEVICE_STATUS_BADGE_CLASS,
+  MAINTENANCE_IMPORT_STATUS_LABELS, MAINTENANCE_TYPE_LABELS,
+  MAINTENANCE_TYPE_HELP, MAINTENANCE_TYPE_ALIASES, DEVICE_STATUS_LABELS,
+  MAINTENANCE_TYPE_INDICATOR, DEVICE_STATUS_INDICATOR,
   ATTACHMENT_PURPOSE_LABELS, ATTACHMENT_FORMAT_LABELS,
   MODEL_NORMALIZATION_TOAST_POSITION, MODEL_NORMALIZATION_JOB_POLL_MS, MODEL_NORMALIZATION_JOB_TIMEOUT_MS,
 } from "./devices/constants";
@@ -155,6 +157,25 @@ import {
 
 
 
+function indicatorSpan(icon: LucideIcon, color: string, label: string) {
+  const Icon = icon;
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+      <Icon className={`h-3.5 w-3.5 ${color}`} />
+      {label}
+    </span>
+  );
+}
+
+/** 已选筛选标签：点击取消 */
+function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <button type="button" onClick={onClear} className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-muted/70">
+      {label}<X className="h-3 w-3 text-muted-foreground" />
+    </button>
+  );
+}
+
 export function Devices() {
   const { hasPermission } = useAuth();
   const { lang } = useLanguage();
@@ -169,8 +190,6 @@ export function Devices() {
   const relatedOrderHref = (orderId: string | number) => (
     canViewOrderDetail ? `/service-orders?orderId=${orderId}` : `/service-report?preview=${orderId}`
   );
-  const deviceTableGrid = canManageDevices ? DEVICE_TABLE_GRID : DEVICE_TABLE_READONLY_GRID;
-  const deviceTableMinWidth = canManageDevices ? "min-w-[1262px]" : "min-w-[1092px]";
   const [devices, setDevices] = useState<Device[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [parties, setParties] = useState<MaintenanceParty[]>([]);
@@ -208,7 +227,7 @@ export function Devices() {
   const [page, setPage] = useState(1);
   const pageSize = 50;
   const [deviceTotal, setDeviceTotal] = useState(0);
-  const [deviceStats, setDeviceStats] = useState<{ total: number; ourMaintenance: number; originalManufacturer: number } | null>(null);
+  const [deviceStats, setDeviceStats] = useState<{ total: number; pendingConfirmation: number; ourMaintenance: number; originalManufacturer: number; noMaintenance: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || "");
   const [modelSuggestions, setModelSuggestions] = useState<ModelSuggestion[]>([]);
   const [modelLoading, setModelLoading] = useState(false);
@@ -468,11 +487,23 @@ export function Devices() {
   const stats = useMemo(() => {
     const s = deviceStats;
     return [
-      { label: "设备总数", value: s?.total ?? 0 },
-      { label: "我方维保", value: s?.ourMaintenance ?? 0 },
-      { label: "原厂维保", value: s?.originalManufacturer ?? 0 },
+      { key: "total", label: "设备总数", value: s?.total ?? 0 },
+      { key: "pending_confirmation", label: "待确认", value: s?.pendingConfirmation ?? 0 },
+      { key: "our_maintenance", label: "我方维保", value: s?.ourMaintenance ?? 0 },
+      { key: "original_manufacturer", label: "原厂维保", value: s?.originalManufacturer ?? 0 },
+      { key: "none", label: "无维保", value: s?.noMaintenance ?? 0 },
     ];
   }, [deviceStats]);
+
+  /** 统计条 chip 点击：总数=清除类型过滤；类型=toggle 该类型 */
+  function applyStatsFilter(key: string) {
+    setPage(1);
+    if (key === "total") {
+      setMaintenanceFilter("all");
+      return;
+    }
+    setMaintenanceFilter((current: string) => (current === key ? "all" : key));
+  }
 
   const totalPages = Math.max(1, Math.ceil(deviceTotal / pageSize));
   const initialLoading = loading && !loadedOnce;
@@ -773,7 +804,12 @@ export function Devices() {
   function renderDeviceCard(device: Device) {
     const maintenanceType = canonicalMaintenanceType(device.maintenanceType);
     const typeLabel = MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "-";
+    const typeConf = MAINTENANCE_TYPE_INDICATOR[maintenanceType] || MAINTENANCE_TYPE_INDICATOR.pending_confirmation;
+    const TypeIcon = typeConf.icon;
+    const statusKey = device.status || "active";
     const statusLabel = DEVICE_STATUS_LABELS[device.status || ""] || device.status || "在用";
+    const statusConf = DEVICE_STATUS_INDICATOR[statusKey] || DEVICE_STATUS_INDICATOR.active;
+    const StatusIcon = statusConf.icon;
     const selected = selectedDeviceIds.includes(String(device.id));
     return (
       <ResponsiveCard
@@ -806,13 +842,14 @@ export function Devices() {
           </span>
         }
         status={(
-          <button type="button" className="inline-flex" onClick={(event) => filterByStatus(event, device.status)}>
-            <Badge
-              variant={DEVICE_STATUS_BADGE[device.status || "active"] || "secondary"}
-              className={`${DEVICE_STATUS_BADGE_CLASS} cursor-pointer hover:ring-2 hover:ring-primary/20 ${statusFilter === (device.status || "active") ? "ring-2 ring-primary/30" : ""}`}
-            >
-              {statusLabel}
-            </Badge>
+          <button
+            type="button"
+            className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium transition-colors ${statusFilter === statusKey ? "bg-primary/10 text-primary ring-1 ring-primary/30" : "text-muted-foreground hover:bg-accent"}`}
+            title={`状态：${statusLabel}（点击筛选）`}
+            onClick={(event) => filterByStatus(event, statusKey)}
+          >
+            <StatusIcon className={`h-3.5 w-3.5 ${statusConf.color}`} />
+            {statusLabel}
           </button>
         )}
         subtitle={device.customerName ? (
@@ -846,13 +883,14 @@ export function Devices() {
           {
             label: "维保类型",
             value: (
-              <button type="button" className="inline-flex" onClick={(event) => filterByMaintenanceType(event, maintenanceType)}>
-                <Badge
-                  variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}
-                  className={`${DEVICE_BADGE_CLASS} cursor-pointer hover:ring-2 hover:ring-primary/20 ${maintenanceFilter === maintenanceType ? "ring-2 ring-primary/30" : ""}`}
-                >
-                  {typeLabel}
-                </Badge>
+              <button
+                type="button"
+                className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium transition-colors ${maintenanceFilter === maintenanceType ? "bg-primary/10 text-primary ring-1 ring-primary/30" : "text-muted-foreground hover:bg-accent"}`}
+                title={`维保类型：${typeLabel}（点击筛选）`}
+                onClick={(event) => filterByMaintenanceType(event, maintenanceType)}
+              >
+                <TypeIcon className={`h-3.5 w-3.5 ${typeConf.color}`} />
+                {typeLabel}
               </button>
             ),
           },
@@ -1709,42 +1747,50 @@ export function Devices() {
 
       <ErrorToast message={error} />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-        {stats.map((stat, statIndex) => (
-          <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-            <CardContent className="pt-6">
-              <div className="text-sm text-muted-foreground">{stat.label}</div>
-              <div className="text-2xl font-bold mt-1">
-                                {initialLoading ? (
-                  <Skeleton className="h-8 w-16" />
-                ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-        <Card
-          className="cursor-pointer overflow-hidden border-none shadow-sm ring-1 ring-amber-200 transition-shadow hover:ring-amber-400"
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
+        {stats.map((stat, statIndex) => {
+          const valueNode = initialLoading ? (
+            <Skeleton className="h-5 w-8" />
+          ) : (
+            <span className="stat-value-enter inline-block text-base font-bold" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
+          );
+          // 统计条 chip 可点过滤：总数=全部，维保类型=toggle（路 1：类型过滤并进统计条）
+          const isType = stat.key !== "total";
+          const active = isType && maintenanceFilter === stat.key;
+          return (
+            <button
+              key={stat.key}
+              type="button"
+              onClick={() => applyStatsFilter(stat.key)}
+              className={`inline-flex items-baseline gap-1.5 rounded-md px-1.5 py-0.5 transition-colors ${active ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-accent"}`}
+              title={isType ? `${stat.label}（点击筛选）` : `${stat.label}（点击清除类型筛选）`}
+              aria-pressed={isType ? active : undefined}
+            >
+              <span className="text-muted-foreground">{stat.label}</span>
+              {valueNode}
+            </button>
+          );
+        })}
+        <button
+          type="button"
           onClick={openSuspectedDialog}
+          className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-amber-600 transition-colors hover:bg-amber-50"
+          title="查看疑似重复设备"
         >
-          <CardContent className="pt-6">
-            <div className="text-sm text-amber-600">疑似重复设备</div>
-            <div className="text-2xl font-bold mt-1 text-amber-600">
-              {suspectedLoading && !suspectedOpen ? (
-                <Skeleton className="h-8 w-16" />
-              ) : (
-                <span className="stat-value-enter inline-block" style={{ animationDelay: "480ms" }}>{formatCount(suspectedTotal)} 组</span>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+          <TriangleAlert className="h-3.5 w-3.5" />
+          <span>疑似重复设备</span>
+          {suspectedLoading && !suspectedOpen ? (
+            <Skeleton className="h-5 w-8" />
+          ) : (
+            <span className="stat-value-enter inline-block text-base font-bold" style={{ animationDelay: "480ms" }}>{formatCount(suspectedTotal)} 组</span>
+          )}
+        </button>
       </div>
 
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-3">
-            <div className="flex-1 relative">
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className="relative min-w-0 flex-1 basis-[260px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
@@ -1757,7 +1803,7 @@ export function Devices() {
                 }}
               />
             </div>
-            <div className="relative w-full md:w-[240px]">
+            <div className="relative min-w-0 w-full sm:w-[240px]">
               <Input
                 placeholder="全部客户"
                 aria-label="按客户筛选"
@@ -1786,293 +1832,315 @@ export function Devices() {
                 }}
               />
             </div>
-            <Select value={maintenanceFilter} onValueChange={(value) => { setPage(1); setMaintenanceFilter(value); }}>
-              <SelectTrigger className="w-full md:w-[150px]">
-                <SelectValue placeholder="维保类型" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部类型</SelectItem>
-                <SelectItem value="pending_confirmation">待确认</SelectItem>
-                <SelectItem value="our_maintenance">我方维保</SelectItem>
-                <SelectItem value="original_manufacturer">原厂维保</SelectItem>
-                <SelectItem value="none">无维保</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full md:w-[130px]">
-                <SelectValue placeholder="设备状态" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部状态</SelectItem>
-                <SelectItem value="active">{DEVICE_STATUS_LABELS.active}</SelectItem>
-                <SelectItem value="maintenance">{DEVICE_STATUS_LABELS.maintenance}</SelectItem>
-                <SelectItem value="inactive">{DEVICE_STATUS_LABELS.inactive}</SelectItem>
-                <SelectItem value="scrapped">{DEVICE_STATUS_LABELS.scrapped}</SelectItem>
-              </SelectContent>
-            </Select>
             <Button
+              className="h-9 shrink-0 whitespace-nowrap px-2.5 sm:px-3"
               variant="outline"
               onClick={() => {
                 setSearchQuery("");
                 setCustomerFilter("all");
+                setFilterCustomerInput("");
                 setMaintenanceFilter("all");
                 setStatusFilter("all");
                 setPage(1);
               }}
             >
-              <RotateCcw className="w-4 h-4 mr-2" />
+              <RotateCcw className="w-4 h-4 mr-1.5" />
               重置
             </Button>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {refreshing ? <span className="btn-loader btn-loader-sm" aria-hidden="true" /> : null}
+              {canManageDevices ? (
+                <>
+                  {selectedDeviceIds.length ? (
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedDeviceIds([])} disabled={saving}>
+                      清空选择
+                    </Button>
+                  ) : null}
+                  {canEditDevices ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={openBatchEdit}
+                      disabled={saving || !selectedDeviceIds.length}
+                    >
+                      <Edit3 className="w-4 h-4 mr-2" />
+                      批量编辑{selectedDeviceIds.length ? ` (${selectedDeviceIds.length})` : ""}
+                    </Button>
+                  ) : null}
+                  {canDeleteDevices ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700"
+                      onClick={bulkDeleteDevices}
+                      disabled={saving || !selectedDeviceIds.length}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      批量删除{selectedDeviceIds.length ? ` (${selectedDeviceIds.length})` : ""}
+                    </Button>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
           </div>
+          {maintenanceFilter !== "all" || statusFilter !== "all" || customerFilter !== "all" ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">已选筛选（点击取消）：</span>
+              {maintenanceFilter !== "all" ? (
+                <FilterChip label={`维保类型：${MAINTENANCE_TYPE_LABELS[maintenanceFilter] || maintenanceFilter}`} onClear={() => { setPage(1); setMaintenanceFilter("all"); }} />
+              ) : null}
+              {statusFilter !== "all" ? (
+                <FilterChip label={`状态：${DEVICE_STATUS_LABELS[statusFilter] || statusFilter}`} onClear={() => setStatusFilter("all")} />
+              ) : null}
+              {customerFilter !== "all" ? (
+                <FilterChip label={`客户：${filterCustomerInput || customerFilter}`} onClear={() => { setCustomerFilter("all"); setFilterCustomerInput(""); }} />
+              ) : null}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-2">
-              <CardTitle>设备列表（共 {deviceTotal} 台）</CardTitle>
-              {refreshing ? (
-                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <span className="btn-loader btn-loader-sm" aria-hidden="true" />
-                  正在更新
-                </span>
-              ) : null}
-            </div>
-            {canManageDevices ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Checkbox
-                    checked={allFilteredDevicesSelected}
-                    onCheckedChange={toggleAllFilteredDevices}
-                    disabled={saving || filtered.length === 0}
-                    aria-label="全选当前设备列表"
-                  />
-                  全选当前列表
-                </label>
-                {selectedDeviceIds.length ? (
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedDeviceIds([])} disabled={saving}>
-                    清空选择
-                  </Button>
-                ) : null}
-                {canEditDevices ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={openBatchEdit}
-                    disabled={saving || !selectedDeviceIds.length}
-                  >
-                    <Edit3 className="w-4 h-4 mr-2" />
-                    批量编辑{selectedDeviceIds.length ? ` (${selectedDeviceIds.length})` : ""}
-                  </Button>
-                ) : null}
-                {canDeleteDevices ? (
-                  <Button
-                    variant="ghost"
-                    className="text-red-600 hover:text-red-700"
-                    onClick={bulkDeleteDevices}
-                    disabled={saving || !selectedDeviceIds.length}
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    批量删除{selectedDeviceIds.length ? ` (${selectedDeviceIds.length})` : ""}
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
-            {initialLoading ? (
-              <div className="p-2">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-4 w-36" />
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-4 w-16" />
-                    <Skeleton className="h-4 flex-1" />
-                    <Skeleton className="h-6 w-14 rounded-full" />
-                  </div>
-                ))}
-              </div>
-            ) : filtered.length === 0 ? (
-              <EmptyState title="未找到匹配设备" description="可调整搜索关键词或筛选条件" />
-            ) : (
-              <ResponsiveList items={filtered} keyExtractor={(device) => device.id} renderCard={renderDeviceCard}>
-              <div className={deviceTableMinWidth}>
-                <div className={`sticky top-0 z-10 hidden border-b bg-muted/70 px-4 py-2 text-xs font-medium text-muted-foreground backdrop-blur md:grid ${deviceTableGrid} md:items-center md:gap-4`}>
-                  {canSelectDevices ? <div aria-hidden="true" /> : null}
-                  <div aria-hidden="true" />
-                  <div className="min-w-0 text-left">型号 / 客户</div>
-                  <div className="min-w-0 text-left">SN</div>
-                  <div className="text-left">MR单</div>
-                  <div className="text-center">维保类型</div>
-                  <div className="min-w-0 text-left">维保方 / 截止</div>
-                  <div className="text-center">状态</div>
-                  {canManageDevices ? <div className="text-center">操作</div> : null}
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto">
+          {initialLoading ? (
+            <div className="p-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 flex-1" />
+                  <Skeleton className="h-6 w-14 rounded-full" />
                 </div>
-                {filtered.map((device, rowIndex) => {
-                  const maintenanceType = canonicalMaintenanceType(device.maintenanceType);
-                  const typeLabel = MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "-";
-                  const statusLabel = DEVICE_STATUS_LABELS[device.status || ""] || device.status || "在用";
-                  const selected = selectedDeviceIds.includes(String(device.id));
-                  return (
-                    <div
-                      key={device.id}
-                      role="button"
-                      tabIndex={0}
-                      className={`list-row-enter grid cursor-pointer grid-cols-1 gap-3 border-b p-4 transition-colors last:border-b-0 hover:bg-accent/30 md:grid ${deviceTableGrid} md:items-center md:gap-4`}
-                      style={{ animationDelay: `${Math.min(rowIndex * 30, 400)}ms` }}
-                      onClick={() => openDeviceDetail(device)}
-                      onKeyDown={(event) => {
-                        if (event.target !== event.currentTarget) return;
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          openDeviceDetail(device);
-                        }
-                      }}
-                    >
-                      {canSelectDevices ? (
-                        <div className="flex items-center md:justify-center" onClick={(event) => event.stopPropagation()}>
-                          <Checkbox
-                            checked={selected}
-                            onCheckedChange={(checked) => toggleDeviceSelection(device.id, checked)}
-                            disabled={saving}
-                            aria-label={`选择设备 ${deviceDisplayName(device)}`}
-                          />
-                        </div>
-                      ) : null}
-                      <Server className="hidden h-5 w-5 text-primary md:block" />
-                      <div className="min-w-0">
-                        {device.model ? (
-                          <button
-                            type="button"
-                            className="block max-w-full truncate text-left font-medium text-slate-900 hover:text-primary hover:underline"
-                            title={device.model}
-                            onClick={(event) => filterByModel(event, device.model)}
-                          >
-                            {device.model}
-                          </button>
-                        ) : (
-                          <div className="truncate font-medium">-</div>
-                        )}
-                        {device.customerName ? (
-                          <button
-                            type="button"
-                            className="block max-w-full truncate text-left text-sm text-muted-foreground hover:text-primary hover:underline"
-                            title={device.customerName}
-                            onClick={(event) => filterByCustomer(event, device)}
-                          >
-                            {device.customerName}
-                          </button>
-                        ) : (
-                          <div className="truncate text-sm text-muted-foreground">-</div>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs text-muted-foreground md:hidden">SN</div>
-                        {device.serialNo ? (
-                          <button
-                            type="button"
-                            className="block max-w-full truncate text-left text-sm transition-colors hover:text-primary hover:underline"
-                            title="点击复制序列号"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void copySerialNo(device.serialNo);
-                            }}
-                          >
-                            {device.serialNo}
-                          </button>
-                        ) : (
-                          <div className="truncate text-sm">-</div>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs text-muted-foreground md:hidden">MR单</div>
-                        <div className="truncate text-sm" title={device.mrNo || "-"}>{device.mrNo || "-"}</div>
-                      </div>
-                      <div className="flex md:justify-center">
-                        <button type="button" className="inline-flex" onClick={(event) => filterByMaintenanceType(event, maintenanceType)}>
-                          <Badge
-                            variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}
-                            className={`${DEVICE_BADGE_CLASS} cursor-pointer hover:ring-2 hover:ring-primary/20 ${maintenanceFilter === maintenanceType ? "ring-2 ring-primary/30" : ""}`}
-                          >
-                            {typeLabel}
-                          </Badge>
-                        </button>
-                      </div>
-                      <div className="min-w-0">
-                        {device.maintenancePartyName ? (
-                          <button
-                            type="button"
-                            className="block max-w-full truncate text-left text-sm font-medium text-slate-900 hover:text-primary hover:underline"
-                            title={device.maintenancePartyName}
-                            onClick={(event) => filterByMaintenanceParty(event, device.maintenancePartyName)}
-                          >
-                            {device.maintenancePartyName}
-                          </button>
-                        ) : (
-                          <div className="truncate text-sm">-</div>
-                        )}
-                        <div className="text-xs text-muted-foreground">
-                          截止 {formatDate(device.maintenanceEnd)}
-                        </div>
-                      </div>
-                      <div className="flex md:justify-center">
-                        <button type="button" className="inline-flex" onClick={(event) => filterByStatus(event, device.status)}>
-                          <Badge
-                            variant={DEVICE_STATUS_BADGE[device.status || "active"] || "secondary"}
-                            className={`${DEVICE_STATUS_BADGE_CLASS} cursor-pointer hover:ring-2 hover:ring-primary/20 ${statusFilter === (device.status || "active") ? "ring-2 ring-primary/30" : ""}`}
-                          >
-                            {statusLabel}
-                          </Badge>
-                        </button>
-                      </div>
-                      {canManageDevices ? (
-                        <div className="flex gap-2 md:justify-end" onClick={(event) => event.stopPropagation()}>
-                          {canEditDevices ? (
-                            <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEdit(device)}>
-                              <Pencil className="w-4 h-4 mr-1" />
-                              编辑
-                            </Button>
-                          ) : null}
-                          {canDeleteDevices ? (
-                            <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => deleteDevice(device)} disabled={saving}>
-                              <Trash2 className="w-4 h-4 mr-1" />
-                              删除
-                            </Button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-              </ResponsiveList>
-            )}
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3">
-              <div className="text-sm text-muted-foreground">
-                共 {deviceTotal} 台设备 · 第 {page}/{totalPages} 页
-              </div>
-              <div className="flex items-center gap-1">
-                <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page <= 1 || loading}>
-                  第一页
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}>
-                  上一页
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages || loading}>
-                  下一页
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page >= totalPages || loading}>
-                  最后一页
-                </Button>
-              </div>
+              ))}
             </div>
+          ) : filtered.length === 0 ? (
+            <div className="p-2">
+              <EmptyState title="未找到匹配设备" description="可调整搜索关键词或筛选条件" />
+            </div>
+          ) : (
+            <ResponsiveList items={filtered} keyExtractor={(device) => device.id} renderCard={renderDeviceCard}>
+              <table className="w-full table-fixed caption-bottom text-sm">
+                <colgroup>
+                  {canSelectDevices ? <col className="w-11" /> : null}
+                  <col className="w-[27%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[10%]" />
+                  {canManageDevices ? <col className="w-[8%]" /> : null}
+                </colgroup>
+                <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+                  <TableRow>
+                    {canSelectDevices ? (
+                      <TableHead className="w-11 text-center">
+                        <Checkbox
+                          checked={allFilteredDevicesSelected}
+                          onCheckedChange={toggleAllFilteredDevices}
+                          disabled={saving || filtered.length === 0}
+                          aria-label="全选当前设备列表"
+                        />
+                      </TableHead>
+                    ) : null}
+                    <TableHead>型号 / 客户</TableHead>
+                    <TableHead>SN</TableHead>
+                    <TableHead>MR单</TableHead>
+                    <TableHead>
+                      <span className="inline-flex items-center gap-1.5">
+                        维保类型
+                        <HelpTooltip label={MAINTENANCE_TYPE_HELP} />
+                      </span>
+                    </TableHead>
+                    <TableHead>维保方 / 截止</TableHead>
+                    <TableHead>状态</TableHead>
+                    {canManageDevices ? <TableHead>操作</TableHead> : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((device, rowIndex) => {
+                    const maintenanceType = canonicalMaintenanceType(device.maintenanceType);
+                    const typeLabel = MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "-";
+                    const typeConf = MAINTENANCE_TYPE_INDICATOR[maintenanceType] || MAINTENANCE_TYPE_INDICATOR.pending_confirmation;
+                    const TypeIcon = typeConf.icon;
+                    const statusKey = device.status || "active";
+                    const statusLabel = DEVICE_STATUS_LABELS[statusKey] || device.status || "在用";
+                    const statusConf = DEVICE_STATUS_INDICATOR[statusKey] || DEVICE_STATUS_INDICATOR.active;
+                    const StatusIcon = statusConf.icon;
+                    const selected = selectedDeviceIds.includes(String(device.id));
+                    return (
+                      <TableRow
+                        key={device.id}
+                        role="button"
+                        tabIndex={0}
+                        className="list-row-enter cursor-pointer"
+                        style={{ animationDelay: `${Math.min(rowIndex * 40, 400)}ms` }}
+                        onClick={() => openDeviceDetail(device)}
+                        onKeyDown={(event) => {
+                          if (event.target !== event.currentTarget) return;
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            openDeviceDetail(device);
+                          }
+                        }}
+                      >
+                        {canSelectDevices ? (
+                          <TableCell className="text-center" onClick={(event) => event.stopPropagation()}>
+                            <Checkbox
+                              checked={selected}
+                              onCheckedChange={(checked) => toggleDeviceSelection(device.id, checked)}
+                              disabled={saving}
+                              aria-label={`选择设备 ${deviceDisplayName(device)}`}
+                            />
+                          </TableCell>
+                        ) : null}
+                        <TableCell className="min-w-0">
+                          <div className="min-w-0">
+                            {device.model ? (
+                              <button
+                                type="button"
+                                className="block max-w-full truncate text-left text-sm font-semibold transition-colors hover:text-primary hover:underline"
+                                title={device.model}
+                                onClick={(event) => filterByModel(event, device.model)}
+                              >
+                                {device.model}
+                              </button>
+                            ) : (
+                              <div className="truncate font-medium">-</div>
+                            )}
+                            {device.customerName ? (
+                              <button
+                                type="button"
+                                className="block max-w-full truncate text-left text-xs text-muted-foreground transition-colors hover:text-primary hover:underline"
+                                title={device.customerName}
+                                onClick={(event) => filterByCustomer(event, device)}
+                              >
+                                {device.customerName}
+                              </button>
+                            ) : (
+                              <div className="truncate text-xs text-muted-foreground">-</div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="min-w-0">
+                          {device.serialNo ? (
+                            <button
+                              type="button"
+                              className="block max-w-full truncate text-left font-mono text-xs transition-colors hover:text-primary hover:underline"
+                              title="点击复制序列号"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void copySerialNo(device.serialNo);
+                              }}
+                            >
+                              {device.serialNo}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="min-w-0">
+                          <span className="block truncate text-sm" title={device.mrNo || "-"}>{device.mrNo || "-"}</span>
+                        </TableCell>
+                        <TableCell>
+                          <button
+                            type="button"
+                            className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium transition-colors ${maintenanceFilter === maintenanceType ? "bg-primary/10 text-primary ring-1 ring-primary/30" : "text-muted-foreground hover:bg-accent"}`}
+                            title={`维保类型：${typeLabel}（点击筛选）`}
+                            onClick={(event) => filterByMaintenanceType(event, maintenanceType)}
+                          >
+                            <TypeIcon className={`h-3.5 w-3.5 ${typeConf.color}`} />
+                            {typeLabel}
+                          </button>
+                        </TableCell>
+                        <TableCell className="min-w-0">
+                          <div className="min-w-0">
+                            {device.maintenancePartyName ? (
+                              <button
+                                type="button"
+                                className="block max-w-full truncate text-left text-sm font-medium transition-colors hover:text-primary hover:underline"
+                                title={device.maintenancePartyName}
+                                onClick={(event) => filterByMaintenanceParty(event, device.maintenancePartyName)}
+                              >
+                                {device.maintenancePartyName}
+                              </button>
+                            ) : (
+                              <div className="truncate text-sm text-muted-foreground">-</div>
+                            )}
+                            <div className="truncate text-xs text-muted-foreground">截止 {formatDate(device.maintenanceEnd)}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <button
+                            type="button"
+                            className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium transition-colors ${statusFilter === statusKey ? "bg-primary/10 text-primary ring-1 ring-primary/30" : "text-muted-foreground hover:bg-accent"}`}
+                            title={`状态：${statusLabel}（点击筛选）`}
+                            onClick={(event) => filterByStatus(event, statusKey)}
+                          >
+                            <StatusIcon className={`h-3.5 w-3.5 ${statusConf.color}`} />
+                            {statusLabel}
+                          </button>
+                        </TableCell>
+                        {canManageDevices ? (
+                          <TableCell onClick={(event) => event.stopPropagation()}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                  title="设备操作"
+                                  aria-label="设备操作"
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {canEditDevices ? (
+                                  <DropdownMenuItem onSelect={() => openEdit(device)}>
+                                    <Pencil className="h-4 w-4" />
+                                    编辑
+                                  </DropdownMenuItem>
+                                ) : null}
+                                {canEditDevices && canDeleteDevices ? <DropdownMenuSeparator /> : null}
+                                {canDeleteDevices ? (
+                                  <DropdownMenuItem variant="destructive" onSelect={() => deleteDevice(device)} disabled={saving}>
+                                    <Trash2 className="h-4 w-4" />
+                                    删除
+                                  </DropdownMenuItem>
+                                ) : null}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        ) : null}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </table>
+            </ResponsiveList>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5">
+          <div className="text-sm text-muted-foreground">
+            共 {deviceTotal} 台设备 · 第 {page}/{totalPages} 页
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page <= 1 || loading}>
+              第一页
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}>
+              上一页
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages || loading}>
+              下一页
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page >= totalPages || loading}>
+              最后一页
+            </Button>
+          </div>
+        </div>
+      </div>
 
       <Dialog open={Boolean(detailTarget)} onOpenChange={(open) => { if (!open) closeDetail(); }}>
         <DialogContent className="max-h-[92vh] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-[760px]">
@@ -2084,6 +2152,8 @@ export function Devices() {
             const maintenanceType = canonicalMaintenanceType(detailTarget.maintenanceType);
             const typeLabel = MAINTENANCE_TYPE_LABELS[maintenanceType] || maintenanceType || "-";
             const statusLabel = DEVICE_STATUS_LABELS[detailTarget.status || ""] || detailTarget.status || "在用";
+            const detailStatusConf = DEVICE_STATUS_INDICATOR[detailTarget.status || "active"] || DEVICE_STATUS_INDICATOR.active;
+            const detailTypeConf = MAINTENANCE_TYPE_INDICATOR[maintenanceType] || MAINTENANCE_TYPE_INDICATOR.pending_confirmation;
             const relatedServiceOrders = Array.isArray(detailTarget.relatedServiceOrders) ? detailTarget.relatedServiceOrders : [];
             const partHistory = Array.isArray(detailTarget.partHistory) ? detailTarget.partHistory : [];
             const attachmentKeywordNormalized = attachmentKeyword.trim().toLowerCase();
@@ -2166,9 +2236,9 @@ export function Devices() {
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">{detailTarget.customerName || "-"}</div>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant={DEVICE_STATUS_BADGE[detailTarget.status || "active"] || "secondary"}>{statusLabel}</Badge>
-                        <Badge variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}>{typeLabel}</Badge>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                        {indicatorSpan(detailStatusConf.icon, detailStatusConf.color, statusLabel)}
+                        {indicatorSpan(detailTypeConf.icon, detailTypeConf.color, typeLabel)}
                       </div>
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -2259,7 +2329,7 @@ export function Devices() {
                       <div className="mt-3 grid gap-3 text-sm">
                         <div>
                           <div className="text-xs text-muted-foreground">维保类型</div>
-                          <div className="mt-1"><Badge variant={MAINTENANCE_TYPE_BADGE[maintenanceType] || "outline"}>{typeLabel}</Badge></div>
+                          <div className="mt-1">{indicatorSpan(detailTypeConf.icon, detailTypeConf.color, typeLabel)}</div>
                         </div>
                         <div>
                           <div className="text-xs text-muted-foreground">维保方</div>

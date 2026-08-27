@@ -1458,12 +1458,14 @@ async function list(req, res) {
     query(`SELECT COUNT(*) AS total FROM devices d JOIN customers c ON c.id = d.customer_id LEFT JOIN maintenance_parties mp ON mp.id = d.maintenance_party_id ${whereSql}`, baseParams),
   ])
 
-  // 统计卡片：总数/我方维保/原厂维保（与列表同一筛选口径，含维保类型过滤）
+  // 统计条：总数/待确认/我方维保/原厂维保/无维保（与列表同一筛选口径；别名归组与前端 canonicalMaintenanceType 一致）
   const statsRows = await query(
     `SELECT
        COUNT(*) AS total,
-       SUM(d.maintenance_type = 'our_maintenance') AS our_maintenance,
-       SUM(d.maintenance_type = 'original_manufacturer') AS original_manufacturer
+       SUM(CASE WHEN d.maintenance_type IS NULL OR d.maintenance_type = '' OR d.maintenance_type = 'pending_confirmation' THEN 1 ELSE 0 END) AS pending_confirmation,
+       SUM(CASE WHEN d.maintenance_type IN ('our_maintenance', 'our') THEN 1 ELSE 0 END) AS our_maintenance,
+       SUM(CASE WHEN d.maintenance_type IN ('original_manufacturer', 'vendor') THEN 1 ELSE 0 END) AS original_manufacturer,
+       SUM(CASE WHEN d.maintenance_type = 'none' THEN 1 ELSE 0 END) AS no_maintenance
      FROM devices d
      JOIN customers c ON c.id = d.customer_id
      LEFT JOIN maintenance_parties mp ON mp.id = d.maintenance_party_id
@@ -1480,8 +1482,10 @@ async function list(req, res) {
     pageSize,
     stats: {
       total: Number(statsRow.total || 0),
+      pendingConfirmation: Number(statsRow.pending_confirmation || 0),
       ourMaintenance: Number(statsRow.our_maintenance || 0),
       originalManufacturer: Number(statsRow.original_manufacturer || 0),
+      noMaintenance: Number(statsRow.no_maintenance || 0),
     },
   })
 }
