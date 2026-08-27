@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw, Pencil, Clock3, Hourglass, PenLine, Upload, CircleCheck, Archive, CircleSlash, CircleCheckBig, Wrench, Radio, Building2, PackagePlus, Settings, SearchCheck, BookOpen, MoreHorizontal, Play, Square, type LucideIcon } from "lucide-react";
+import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw, Pencil, Clock3, Hourglass, PenLine, Upload, CircleCheck, Archive, CircleSlash, CircleCheckBig, Wrench, Radio, Building2, PackagePlus, Settings, SearchCheck, BookOpen, MoreHorizontal, Play, Square, CircleDot, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -2213,18 +2213,7 @@ export function ServiceOrders() {
                           <div className="min-w-0">
                             <button
                               type="button"
-                              className="block max-w-full truncate text-left font-mono text-[13px] font-semibold transition-colors hover:text-primary"
-                              title={displayId(order)}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openDetailOrder(order);
-                              }}
-                            >
-                              {displayId(order)}
-                            </button>
-                            <button
-                              type="button"
-                              className="block max-w-full truncate text-left text-xs text-muted-foreground transition-colors hover:text-primary hover:underline"
+                              className="block max-w-full truncate text-left text-sm font-semibold transition-colors hover:text-primary hover:underline"
                               title={`${t.list.filterByCustomer}：${textValue(order.customerName)}`}
                               onClick={(event) => {
                                 event.stopPropagation();
@@ -2232,6 +2221,17 @@ export function ServiceOrders() {
                               }}
                             >
                               {textValue(order.customerName)}
+                            </button>
+                            <button
+                              type="button"
+                              className="block max-w-full truncate text-left font-mono text-xs text-muted-foreground transition-colors hover:text-primary"
+                              title={displayId(order)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openDetailOrder(order);
+                              }}
+                            >
+                              {displayId(order)}
                             </button>
                           </div>
                         </TableCell>
@@ -2265,16 +2265,21 @@ export function ServiceOrders() {
                                 return ed && ed !== sd ? `${sd} ~ ${ed}` : sd;
                               })()}</div>
                               {(serviceTime.start || serviceTime.end) ? (
-                                <div className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden min-w-[180px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg group-hover:block dark:border-slate-700 dark:bg-slate-900">
-                                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><Play className="h-2.5 w-2.5" /></span>
-                                    开始 <span className="font-medium text-foreground">{serviceTime.start || "-"}</span>
-                                  </div>
-                                  <div className="my-1 ml-2 h-3 border-l border-dashed border-slate-300" />
-                                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-slate-600"><Square className="h-2.5 w-2.5" /></span>
-                                    结束 <span className="font-medium text-foreground">{serviceTime.end || "-"}</span>
-                                  </div>
+                                <div className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg group-hover:block dark:border-slate-700 dark:bg-slate-900">
+                                  {([
+                                    { key: "departure", label: "出发", at: order.report?.departureAt, dot: "bg-sky-100 text-sky-700" },
+                                    { key: "arrive", label: "到达", at: order.report?.actualStartAt, dot: "bg-emerald-100 text-emerald-700" },
+                                    { key: "leave", label: "完成", at: order.report?.actualEndAt, dot: "bg-amber-100 text-amber-700" },
+                                    { key: "return", label: "返回", at: order.report?.returnAt, dot: "bg-slate-200 text-slate-600" },
+                                  ] as const).filter((seg) => seg.at).map((seg, i, arr) => (
+                                    <div key={seg.key}>
+                                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                                        <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${seg.dot}`}><CircleDot className="h-2.5 w-2.5" /></span>
+                                        {seg.label} <span className="font-medium text-foreground">{formatDateTime(seg.at)}</span>
+                                      </div>
+                                      {i < arr.length - 1 ? <div className="my-1 ml-2 h-3 border-l border-dashed border-slate-300" /> : null}
+                                    </div>
+                                  ))}
                                 </div>
                               ) : null}
                             </div>
