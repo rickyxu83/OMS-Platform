@@ -1493,37 +1493,37 @@ function normalizeTravelOverrides(order, body) {
 }
 
 // 把工程师自报的原始去程出发、回程返回时间留痕进快照，供审批人对照“自报 vs 工单”。
-// 仅在路上时间且确有覆盖时写入，避免污染无差异的快照。参见 docs/adr/0002。
+// 仅在对应程且确有覆盖时写入，避免污染无差异的快照。参见 docs/adr/0002。
 function snapshotWithReportedTravel(snapshot, segmentKey, overrides = {}) {
-  if (segmentKey !== 'travel') return snapshot
   const next = { ...snapshot }
-  if (overrides.departureAt) next.reportedDepartureAt = toIsoMinute(overrides.departureAt)
-  if (overrides.returnAt) next.reportedReturnAt = toIsoMinute(overrides.returnAt)
+  if (segmentKey === 'travel_out' && overrides.departureAt) next.reportedDepartureAt = toIsoMinute(overrides.departureAt)
+  if (segmentKey === 'travel_back' && overrides.returnAt) next.reportedReturnAt = toIsoMinute(overrides.returnAt)
   return next
 }
 
-// 路上时间合并成一条“来回路上实际时间”。去程出发、回程返回可由工程师自报覆盖
-// （overrides），到达/完工两个锚点始终取工单值。每一程各自过 overtimeWindow
-// （掐平日 18:00、整点取整），再把有效的时长相加。参见 docs/adr/0002。
-function travelOvertimeSegment(row, overrides = {}) {
+// 路上时间拆成去程/回程两条独立申请：去程=出发→到达、回程=完工→返回，
+// 去程出发、回程返回可由工程师自报覆盖（overrides），到达/完工两个锚点始终取工单值。
+// 每一程各自过 overtimeWindow（掐平日 18:00、整点取整），无有效加班时长的程不生成。参见 docs/adr/0002。
+function travelOvertimeSegments(row, overrides = {}) {
   const departureAt = overrides.departureAt || row.departure_at
   const returnAt = overrides.returnAt || row.return_at
   const legs = [
-    overtimeWindow(departureAt, row.actual_start_at), // 去程：出发 -> 到达
-    overtimeWindow(row.actual_end_at, returnAt), // 回程：完工 -> 返回
-  ].filter(Boolean)
-  if (!legs.length) return null
-  return {
-    key: 'travel',
-    kind: 'travel',
-    label: '来回路上实际时间',
-    startAt: toIsoMinute(legs[0].startAt),
-    endAt: toIsoMinute(legs[legs.length - 1].endAt),
-    hours: Math.round(legs.reduce((sum, leg) => sum + Number(leg.hours || 0), 0) * 100) / 100,
-    dayType: legs.some((leg) => leg.dayType === 'legal_holiday') ? 'legal_holiday' : legs[0].dayType,
-    payMultiplier: null,
-    allowedResults: ['comp_time'],
-  }
+    { key: 'travel_out', label: '去程路上时间', window: overtimeWindow(departureAt, row.actual_start_at) },
+    { key: 'travel_back', label: '回程路上时间', window: overtimeWindow(row.actual_end_at, returnAt) },
+  ]
+  return legs
+    .filter((leg) => leg.window)
+    .map((leg) => ({
+      key: leg.key,
+      kind: 'travel',
+      label: leg.label,
+      startAt: toIsoMinute(leg.window.startAt),
+      endAt: toIsoMinute(leg.window.endAt),
+      hours: leg.window.hours,
+      dayType: leg.window.dayType,
+      payMultiplier: null,
+      allowedResults: ['comp_time'],
+    }))
 }
 
 function workOvertimeSegment(row) {
@@ -1544,9 +1544,8 @@ function workOvertimeSegment(row) {
 
 function overtimeSegments(row, usedSegments = new Set()) {
   const segments = []
-  if (!usedSegments.has('travel')) {
-    const travel = travelOvertimeSegment(row)
-    if (travel) segments.push(travel)
+  for (const travel of travelOvertimeSegments(row)) {
+    if (!usedSegments.has(travel.key)) segments.push(travel)
   }
   if (!usedSegments.has('work')) {
     const work = workOvertimeSegment(row)
@@ -1685,13 +1684,18 @@ async function usedOvertimeSegments(orderIds, userId) {
        AND status NOT IN ('rejected', 'withdrawn', 'voided')`,
     { ...params, userId },
   )
-  // 时段只剩 work / travel 两类。历史遗留的 travel_out / travel_back 申请仍按
-  // travel 占用对待，避免老数据被重复申请。参见 docs/adr/0002。
+  // 时段分 work / travel_out / travel_back 三类。历史合并的 travel 申请对去程、回程
+  // 两段均有占用，避免老数据被重复申请。参见 docs/adr/0002。
   return rows.reduce((map, row) => {
     const key = Number(row.source_id)
     if (!map.has(key)) map.set(key, new Set())
     const detail = row.source_detail || 'work'
-    map.get(key).add(detail === 'travel_out' || detail === 'travel_back' ? 'travel' : detail)
+    if (detail === 'travel') {
+      map.get(key).add('travel_out')
+      map.get(key).add('travel_back')
+    } else {
+      map.get(key).add(detail)
+    }
     return map
   }, new Map())
 }
@@ -1715,21 +1719,21 @@ async function listOvertimeServiceOrders(req, res) {
 
 // 校验并归一化一个时段的加班结果。路上固定转调休，工作段按 body 的 overtimeResult。
 function resolveSegmentResult(segmentKey, body) {
-  if (segmentKey === 'travel') return 'comp_time'
+  if (segmentKey === 'travel_out' || segmentKey === 'travel_back') return 'comp_time'
   const overtimeResult = text(body?.overtimeResult)
   if (!overtimeResults.has(overtimeResult)) throw badRequest('加班处理结果不正确')
   return overtimeResult
 }
 
 // 在同一事务里插入一条工单加班申请（含审批链）。已占用或无有效加班时长则跳过（返回 null）。
-// 一个工单、一个工程师，每种时段（travel / work）只允许一条未作废申请；历史遗留的
-// travel_out/travel_back 申请仍按 travel 占用对待。参见 docs/adr/0002。
+// 一个工单、一个工程师，每种时段（travel_out / travel_back / work）只允许一条未作废申请；
+// 历史合并的 travel 申请同时占用去程、回程两段。参见 docs/adr/0002。
 async function insertServiceOrderOvertimeSegment(connection, {
   employee, order, orderSnapshot, serviceOrderId, segmentKey, overtimeResult, travelOverrides, userId,
 }) {
-  const segment = segmentKey === 'travel'
-    ? travelOvertimeSegment(order, travelOverrides)
-    : workOvertimeSegment(order)
+  const segment = segmentKey === 'work'
+    ? workOvertimeSegment(order)
+    : travelOvertimeSegments(order, travelOverrides).find((item) => item.key === segmentKey)
   if (!segment) return null
   if (segment.kind === 'travel' && overtimeResult !== 'comp_time') throw badRequest('路上时间只能转调休')
   if (!segment.allowedResults.includes(overtimeResult)) throw badRequest('处理方式不适用于该时段')
@@ -1744,7 +1748,7 @@ async function insertServiceOrderOvertimeSegment(connection, {
        AND (
          source_detail = :segmentKey
          OR (:segmentKey = 'work' AND source_detail IS NULL)
-         OR (:segmentKey = 'travel' AND source_detail IN ('travel_out', 'travel_back'))
+         OR (:segmentKey IN ('travel_out', 'travel_back') AND source_detail = 'travel')
        )
        AND submitted_by = :userId
        AND status NOT IN ('rejected', 'withdrawn', 'voided')
@@ -1792,19 +1796,22 @@ async function insertServiceOrderOvertimeSegment(connection, {
   return { id: inserted.insertId, status, segmentKey: segment.key, hours: segment.hours }
 }
 
-// 一个工单一把申请：路上 + 工作两段一起提交，后端各生成一条申请。
-// 已占用或无有效加班时长的时段自动跳过；两段都没生成才报错。
-// 兼容旧的单时段 body（只带一个 segmentKey）。参见 docs/adr/0002。
+// 一个工单一把申请：去程路上 + 回程路上 + 工作三段一起提交，后端各生成一条申请。
+// 已占用或无有效加班时长的时段自动跳过；都没生成才报错。
+// 兼容旧的单时段 body（只带一个 segmentKey，'travel' 展开为去程+回程）。参见 docs/adr/0002。
 async function createServiceOrderOvertimeRequest(req, res) {
   await ensureSchema()
   assertAttendanceApplicantRole(req.user.role)
   const serviceOrderId = Number(req.params.id)
   if (!serviceOrderId) throw badRequest('工单 ID 不正确')
 
-  // 请求的时段集合：显式传单个 segmentKey 时只处理该段（向后兼容），否则默认两段都报。
+  // 请求的时段集合：显式传单个 segmentKey 时只处理该段；旧客户端按 'travel' 申请时
+  // 展开为去程+回程两段（向后兼容）；默认三段都报。
   const requestedKey = text(req.body?.segmentKey)
-  if (requestedKey && !['travel', 'work'].includes(requestedKey)) throw badRequest('工单时段不正确')
-  const segmentKeys = requestedKey ? [requestedKey] : ['travel', 'work']
+  if (requestedKey && !['travel', 'travel_out', 'travel_back', 'work'].includes(requestedKey)) throw badRequest('工单时段不正确')
+  const segmentKeys = requestedKey
+    ? (requestedKey === 'travel' ? ['travel_out', 'travel_back'] : [requestedKey])
+    : ['travel_out', 'travel_back', 'work']
 
   const result = await transaction(async (connection) => {
     const employee = await currentEmployeeForConnection(connection, req.user.id)
@@ -1817,7 +1824,7 @@ async function createServiceOrderOvertimeRequest(req, res) {
 
     // 路上时间允许工程师自报去程出发、回程返回时间（默认带工单值），只落在本条申请上，
     // 工单侧不改。工作段锁死按工单，不接受覆盖。参见 docs/adr/0002。
-    const travelOverrides = segmentKeys.includes('travel')
+    const travelOverrides = segmentKeys.some((key) => key === 'travel_out' || key === 'travel_back')
       ? normalizeTravelOverrides(order, req.body)
       : {}
 

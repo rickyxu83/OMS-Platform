@@ -148,7 +148,11 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     [overtimeOrders, selectedOvertimeOrderId],
   );
   const selectedOvertimeRows = useMemo(() => overtimeRows(selectedOvertimeOrder), [selectedOvertimeOrder]);
-  const travelSegment = useMemo(() => selectedOvertimeRows.find((item) => item.key === "travel") || null, [selectedOvertimeRows]);
+  // 路上时间 2026-08-27 起拆成去程(travel_out)/回程(travel_back)两条独立时段；无有效加班时长的程后端不返回
+  const travelSegments = useMemo(() => selectedOvertimeRows.filter((item) => item.kind === "travel"), [selectedOvertimeRows]);
+  const travelOutSegment = useMemo(() => travelSegments.find((item) => item.key === "travel_out") || null, [travelSegments]);
+  const travelBackSegment = useMemo(() => travelSegments.find((item) => item.key === "travel_back") || null, [travelSegments]);
+  const hasTravelSegment = travelSegments.length > 0;
   const workSegment = useMemo(() => selectedOvertimeRows.find((item) => item.key === "work") || null, [selectedOvertimeRows]);
 
   useEffect(() => {
@@ -156,18 +160,18 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     setTravelReturnAt(toDateTimeLocal(selectedOvertimeOrder?.returnAt));
   }, [selectedOvertimeOrderId, selectedOvertimeOrder?.departureAt, selectedOvertimeOrder?.returnAt]);
 
+  // 去程/回程预览时长分开核算（各自的日类型：法定节假日/休息日/工作日可能不同）
   const travelPreview = useMemo(() => {
-    if (!selectedOvertimeOrder || !travelSegment) return null;
+    if (!selectedOvertimeOrder || !hasTravelSegment) return null;
     const arrival = toDateTimeLocal(selectedOvertimeOrder.actualStartAt);
     const finish = toDateTimeLocal(selectedOvertimeOrder.actualEndAt);
-    const dayType = travelSegment.dayType;
-    const outbound = travelDepartureAt && arrival ? previewOvertimeHours(travelDepartureAt, arrival, dayType) : 0;
-    const back = travelReturnAt && finish ? previewOvertimeHours(finish, travelReturnAt, dayType) : 0;
-    return { hours: Math.round((outbound + back) * 100) / 100, dayType };
-  }, [selectedOvertimeOrder, travelSegment, travelDepartureAt, travelReturnAt]);
+    const outbound = travelDepartureAt && arrival ? previewOvertimeHours(travelDepartureAt, arrival, travelOutSegment?.dayType) : 0;
+    const back = travelReturnAt && finish ? previewOvertimeHours(finish, travelReturnAt, travelBackSegment?.dayType) : 0;
+    return { outbound, back };
+  }, [selectedOvertimeOrder, hasTravelSegment, travelOutSegment?.dayType, travelBackSegment?.dayType, travelDepartureAt, travelReturnAt]);
 
   const travelInvalid = useMemo(() => {
-    if (!travelSegment || !selectedOvertimeOrder) return "";
+    if (!hasTravelSegment || !selectedOvertimeOrder) return "";
     const arrival = parseLocalDateTime(selectedOvertimeOrder.actualStartAt);
     const finish = parseLocalDateTime(selectedOvertimeOrder.actualEndAt);
     const departure = parseLocalDateTime(travelDepartureAt);
@@ -175,7 +179,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     if (departure && arrival && departure > arrival) return "去程出发时间不能晚于工单到达时间";
     if (back && finish && back < finish) return "回程返回时间不能早于工单完工时间";
     return "";
-  }, [travelSegment, selectedOvertimeOrder, travelDepartureAt, travelReturnAt]);
+  }, [hasTravelSegment, selectedOvertimeOrder, travelDepartureAt, travelReturnAt]);
 
   const naturalDayLeave = form.requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
   const annualPreview = ["leave", "comp_time"].includes(form.requestType)
@@ -439,7 +443,11 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       <div className="grid gap-2 md:grid-cols-2">
                         {selectedOvertimeRows.map((segment) => {
                           const isTravel = segment.kind === "travel";
-                          const segHours = isTravel ? (travelPreview?.hours ?? segment.hours) : segment.hours;
+                          const segHours = segment.key === "travel_out"
+                            ? (travelPreview?.outbound ?? segment.hours)
+                            : segment.key === "travel_back"
+                              ? (travelPreview?.back ?? segment.hours)
+                              : segment.hours;
                           return (
                             <div key={segment.key} className="rounded-md border bg-background p-3 text-left text-sm">
                               <div className="flex items-center justify-between gap-2">
@@ -447,9 +455,11 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                                 <Check className="h-4 w-4 shrink-0 text-primary" />
                               </div>
                               <div className="mt-1 text-xs text-muted-foreground">
-                                {isTravel
-                                  ? `${formatDateTime(travelDepartureAt) || "-"} 出发 / ${formatDateTime(travelReturnAt) || "-"} 返回`
-                                  : `${formatDateTime(segment.startAt)} - ${formatDateTime(segment.endAt)}`}
+                                {segment.key === "travel_out"
+                                  ? `${formatDateTime(travelDepartureAt) || "-"} 出发 → 到达 ${formatDateTime(selectedOvertimeOrder.actualStartAt || undefined) || "-"}`
+                                  : segment.key === "travel_back"
+                                    ? `完工 ${formatDateTime(selectedOvertimeOrder.actualEndAt || undefined) || "-"} → 返回 ${formatDateTime(travelReturnAt) || "-"}`
+                                    : `${formatDateTime(segment.startAt)} - ${formatDateTime(segment.endAt)}`}
                               </div>
                               <div className="mt-0.5 text-xs text-muted-foreground">
                                 {hours(segHours)} 小时
@@ -464,7 +474,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                         ) : null}
                       </div>
                     </div>
-                    {travelSegment ? (
+                    {hasTravelSegment ? (
                       <div className="space-y-3 rounded-md border bg-muted/10 p-3">
                         <div className="flex items-center justify-between gap-2">
                           <Label className="text-sm">去程/回程时间</Label>
@@ -498,7 +508,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                           <p className="text-xs text-destructive">{travelInvalid}</p>
                         ) : (
                           <p className="text-xs text-muted-foreground">
-                            预计核算路上加班 {hours(travelPreview?.hours || 0)} 小时（掐平日 18:00、按整点核算，最终以审批核算为准）
+                            预计核算：去程 {hours(travelPreview?.outbound || 0)} 小时 · 回程 {hours(travelPreview?.back || 0)} 小时（掐平日 18:00、按整点核算，最终以审批核算为准）
                           </p>
                         )}
                       </div>
@@ -717,13 +727,24 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       <span className="text-muted-foreground">工单</span>
                       <span className="font-medium">{selectedOvertimeOrder?.orderNo || (selectedOvertimeOrder ? "工单 #" + selectedOvertimeOrder.id : "未选择")}（{selectedOvertimeOrder?.customerName || "-"}）</span>
                     </div>
-                    {travelSegment ? (
+                    {travelOutSegment ? (
                       <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
-                        <span className="text-muted-foreground">来回路上</span>
+                        <span className="text-muted-foreground">去程路上</span>
                         <span className="font-medium">
-                          {hours(travelPreview?.hours || 0)} 小时 · 固定转调休
+                          {hours(travelPreview?.outbound || 0)} 小时 · 固定转调休
                           <span className="block text-xs text-muted-foreground">
-                            {formatDateTime(travelDepartureAt) || "-"} 出发 / {formatDateTime(travelReturnAt) || "-"} 返回
+                            {formatDateTime(travelDepartureAt) || "-"} 出发 → 到达 {formatDateTime(selectedOvertimeOrder?.actualStartAt || undefined) || "-"}
+                          </span>
+                        </span>
+                      </div>
+                    ) : null}
+                    {travelBackSegment ? (
+                      <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
+                        <span className="text-muted-foreground">回程路上</span>
+                        <span className="font-medium">
+                          {hours(travelPreview?.back || 0)} 小时 · 固定转调休
+                          <span className="block text-xs text-muted-foreground">
+                            完工 {formatDateTime(selectedOvertimeOrder?.actualEndAt || undefined) || "-"} → 返回 {formatDateTime(travelReturnAt) || "-"}
                           </span>
                         </span>
                       </div>

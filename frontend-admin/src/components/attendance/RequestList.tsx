@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeftRight, CalendarClock, CalendarDays, CalendarOff, CircleCheck, CircleSlash, CircleX, Clock3, Coins, Coffee, Flag, Hourglass, Loader2, Paperclip, PencilLine, Undo2, Users, Wrench, Zap, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,13 @@ const OVERTIME_KIND_LABELS: Record<string, string> = {
   travel: "来回路上实际",
   work: "实际工作时间",
 };
+// 工单路上时间 2026-08-27 起拆成去程/回程两条独立申请（sourceDetail=travel_out/travel_back），
+// 旧的合并 travel 记录仍显示「来回路上实际」
+function overtimeKindLabel(item: AttendanceRequest) {
+  if (item.overtimeKind === "travel" && item.sourceDetail === "travel_out") return "去程路上";
+  if (item.overtimeKind === "travel" && item.sourceDetail === "travel_back") return "回程路上";
+  return OVERTIME_KIND_LABELS[item.overtimeKind || ""] || "-";
+}
 
 const OVERTIME_RESULT_LABELS: Record<string, string> = {
   comp_time: "转调休",
@@ -45,7 +52,7 @@ function requestDetailContent(item: AttendanceRequest) {
     const DayTypeIcon = OVERTIME_DAY_TYPE_ICONS[item.overtimeDayType || ""];
     return (
       <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-        <span className="text-sm font-medium">{OVERTIME_KIND_LABELS[item.overtimeKind || ""] || "-"}</span>
+        <span className="text-sm font-medium">{overtimeKindLabel(item)}</span>
         {ResultIcon ? (
           <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
             <ResultIcon className="h-3 w-3" />
@@ -92,6 +99,33 @@ function chineseMonthDay(value?: string) {
   const date = String(value || '')
   if (!/^\d{4}-\d{2}-\d{2}/.test(date)) return ''
   return `${Number(date.slice(5, 7))}月${Number(date.slice(8, 10))}日`
+}
+
+// 工单分组：同一工单（service_order + sourceId）≥2 条的申请合并成组，供审批人按组一次审批。
+// 单段与非工单申请保持普通行；组的插入位置取组内首条出现的位置，保持列表原有排序。
+type RequestGroupEntry = { type: "group"; key: string; items: AttendanceRequest[] } | { type: "single"; item: AttendanceRequest };
+function groupRequestsByServiceOrder(items: AttendanceRequest[]): RequestGroupEntry[] {
+  const byKey = new Map<string, AttendanceRequest[]>();
+  for (const item of items) {
+    const key = item.sourceType === "service_order" && item.sourceId ? `so-${item.sourceId}` : null;
+    if (!key) continue;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key)!.push(item);
+  }
+  const seen = new Set<string>();
+  const result: RequestGroupEntry[] = [];
+  for (const item of items) {
+    const key = item.sourceType === "service_order" && item.sourceId ? `so-${item.sourceId}` : null;
+    if (!key) {
+      result.push({ type: "single", item });
+      continue;
+    }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const group = byKey.get(key)!;
+    result.push(group.length >= 2 ? { type: "group", key, items: group } : { type: "single", item: group[0] });
+  }
+  return result;
 }
 
 // 申请时间列：假类用中文日期 + 半天标注（整天不显示时段，半天标「下午/中午」）；
@@ -370,6 +404,8 @@ export function RequestList({
   toolbar,
   onDownloadProof,
   onPreviewOrder,
+  groupByServiceOrder = false,
+  groupActions,
 }: {
   title: string;
   description: string;
@@ -381,8 +417,64 @@ export function RequestList({
   toolbar?: ReactNode;
   onDownloadProof?: (file: { id: number | string; originalName: string; mimeType?: string }) => void;
   onPreviewOrder?: (order: ServiceOrderSummary) => void;
+  /** 开启后同一工单（service_order + sourceId）≥2 条的申请合并成组展示，组头渲染 groupActions（审批人一次审批全组） */
+  groupByServiceOrder?: boolean;
+  groupActions?: (group: AttendanceRequest[]) => ReactNode;
 }) {
   const hasActions = typeof actions === "function";
+  const colCount = (showEmployee ? 1 : 0) + 5 + (hasActions ? 1 : 0);
+
+  const renderRow = (item: AttendanceRequest, hideActions: boolean) => {
+    const duration = requestDurationParts(item);
+    return (
+      <TableRow key={item.id}>
+        {showEmployee ? <TableCell className="font-medium">{item.employeeName || "-"}</TableCell> : null}
+        <TableCell>{requestTypeIndicator(item.requestType)}</TableCell>
+        <TableCell>
+          <div>{requestDetailContent(item)}</div>
+          {requestMetaRow(item, onPreviewOrder, onDownloadProof)}
+        </TableCell>
+        <TableCell>{requestTimeRange(item)}</TableCell>
+        <TableCell className="text-right tabular-nums">
+          {duration ? (
+            <>
+              <span className="text-sm font-semibold">{duration.value}</span>
+              <span className="ml-0.5 text-xs text-muted-foreground">{duration.unit}</span>
+            </>
+          ) : (
+            <span className="text-muted-foreground">-</span>
+          )}
+        </TableCell>
+        <TableCell><StatusWithChain status={item.status} steps={item.approvals} /></TableCell>
+        {hasActions ? (
+          <TableCell>
+            {hideActions ? null : <div className="flex flex-wrap gap-2">{actions?.(item)}</div>}
+          </TableCell>
+        ) : null}
+      </TableRow>
+    );
+  };
+
+  const renderGroupHeader = (group: AttendanceRequest[], groupKey: string) => {
+    const first = group[0];
+    const orderLabel = first.serviceOrder?.orderNo || (first.sourceId ? `#${first.sourceId}` : "-");
+    const customerName = first.serviceOrder?.customerName || "";
+    const totalHours = group.reduce((sum, item) => sum + Number(item.hours || 0), 0);
+    return (
+      <TableRow key={`header-${groupKey}`} className="bg-muted/40 hover:bg-muted/40">
+        <TableCell colSpan={colCount} className="py-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <Wrench className="h-3.5 w-3.5 shrink-0" />
+            {showEmployee ? <span className="font-medium text-foreground">{first.employeeName || "-"}</span> : null}
+            <span className="font-medium text-foreground">工单 {orderLabel}</span>
+            {customerName ? <span>{customerName}</span> : null}
+            <span>共 {group.length} 段 · 合计 {hours(totalHours)} 小时</span>
+            {groupActions ? <span className="ml-auto flex items-center gap-2">{groupActions(group)}</span> : null}
+          </div>
+        </TableCell>
+      </TableRow>
+    );
+  };
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-4">
@@ -441,36 +533,16 @@ export function RequestList({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item) => {
-                  const duration = requestDurationParts(item);
-                  return (
-                  <TableRow key={item.id}>
-                    {showEmployee ? <TableCell className="font-medium">{item.employeeName || "-"}</TableCell> : null}
-                    <TableCell>{requestTypeIndicator(item.requestType)}</TableCell>
-                    <TableCell>
-                      <div>{requestDetailContent(item)}</div>
-                      {requestMetaRow(item, onPreviewOrder, onDownloadProof)}
-                    </TableCell>
-                    <TableCell>{requestTimeRange(item)}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {duration ? (
-                        <>
-                          <span className="text-sm font-semibold">{duration.value}</span>
-                          <span className="ml-0.5 text-xs text-muted-foreground">{duration.unit}</span>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell><StatusWithChain status={item.status} steps={item.approvals} /></TableCell>
-                    {hasActions ? (
-                      <TableCell>
-                        <div className="flex flex-wrap gap-2">{actions?.(item)}</div>
-                      </TableCell>
-                    ) : null}
-                  </TableRow>
-                  );
-                })}
+                {(groupByServiceOrder ? groupRequestsByServiceOrder(items) : items.map((item) => ({ type: "single" as const, item }))).map((entry) =>
+                  entry.type === "group" ? (
+                    <Fragment key={entry.key}>
+                      {renderGroupHeader(entry.items, entry.key)}
+                      {entry.items.map((item) => renderRow(item, true))}
+                    </Fragment>
+                  ) : (
+                    renderRow(entry.item, false)
+                  ),
+                )}
               </TableBody>
             </Table>
           </div>

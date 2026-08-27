@@ -549,6 +549,57 @@ export function Attendance() {
     }
   }
 
+  // 同工单成组审批：组内每段按各自当前状态走对应审批路径（与行内 config 映射保持一致），
+  // 统一 toast 汇总、一次 load() 刷新；驳回弹一次原因应用于全组
+  const [groupActionKey, setGroupActionKey] = useState("");
+  const GROUP_APPROVE_PATH: Record<string, string> = {
+    pending_delegate: "approve-delegate",
+    pending_approval: "approve",
+    pending_supervisor: "approve-supervisor",
+    pending_hr: "approve-hr",
+    pending_vp: "approve-vp",
+    pending_admin: "approve-admin",
+  };
+  async function approveGroup(items: AttendanceRequest[]) {
+    const key = items.map((item) => item.id).join("-");
+    setGroupActionKey(key);
+    try {
+      const results = await Promise.allSettled(items.map((item) => {
+        const path = GROUP_APPROVE_PATH[item.status || ""];
+        if (!path) return Promise.reject(new Error("当前状态不能审批"));
+        return api.post(`/attendance/requests/${item.id}/${path}`);
+      }));
+      const okCount = results.filter((result) => result.status === "fulfilled").length;
+      if (okCount === items.length) {
+        toast.success(`已通过该工单全部 ${okCount} 段申请`);
+      } else {
+        toast.warning(`已通过 ${okCount}/${items.length} 段，其余未成功`);
+      }
+      await load();
+    } finally {
+      setGroupActionKey("");
+    }
+  }
+  function rejectGroup(items: AttendanceRequest[]) {
+    setPendingAction({
+      title: "驳回整组申请",
+      description: <>{items[0]?.employeeName || "-"} · 工单 {items[0]?.serviceOrder?.orderNo || "-"} 共 {items.length} 段，将按同一原因全部驳回</>,
+      confirmLabel: "确认驳回",
+      destructive: true,
+      reasonRequired: true,
+      reasonLabel: "驳回原因",
+      reasonPlaceholder: "请填写驳回原因（将通知申请人）",
+      run: async (reason) => {
+        const results = await Promise.allSettled(items.map((item) => api.post(`/attendance/requests/${item.id}/reject`, { reason })));
+        const okCount = results.filter((result) => result.status === "fulfilled").length;
+        if (okCount === items.length) toast.success(`已驳回该工单全部 ${okCount} 段申请`);
+        else toast.warning(`已驳回 ${okCount}/${items.length} 段`);
+        await load();
+        return okCount > 0;
+      },
+    });
+  }
+
   function rejectDutyBatch(month: string) {
     setPendingAction({
       title: "退回值班津贴批次",
@@ -1033,6 +1084,21 @@ export function Attendance() {
               onDownloadProof={previewProof}
               onPreviewOrder={openOrderPreview}
               emptyText={showApprovalHistory && approvalView === "done" ? "暂无相关申请记录" : "暂无待审批的申请"}
+              groupByServiceOrder
+              groupActions={showApprovalHistory && approvalView === "done" ? undefined : (group) => {
+                const key = group.map((item) => item.id).join("-");
+                const busy = groupActionKey === key;
+                return (
+                  <>
+                    <Button size="sm" disabled={busy} onClick={() => approveGroup(group)}>
+                      {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />} 全部通过
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => rejectGroup(group)}>
+                      <X className="mr-1 h-4 w-4" /> 全部驳回
+                    </Button>
+                  </>
+                );
+              }}
               toolbar={showApprovalHistory ? (
                 <>
                   {[
