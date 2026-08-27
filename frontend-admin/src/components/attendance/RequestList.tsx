@@ -365,54 +365,79 @@ export function RequestList({
       />
     );
   };
-  const renderTableRow = (item: AttendanceRequest) => (
-    <TableRow key={item.id}>
-      {showEmployee ? <TableCell className="font-medium">{item.employeeName || "-"}</TableCell> : null}
-      <TableCell>{requestTypeIndicator(item.requestType)}</TableCell>
-      <TableCell>
-        <div>{requestDetailContent(item)}</div>
-        {detailCellExtra(item)}
-      </TableCell>
-      <TableCell>
-        <div className="flex flex-col items-start gap-1">
-          {requestTimeRange(item)}
-          {requestDuration(item) ? (
-            <Badge variant={REQUEST_TYPE_VARIANT[item.requestType || ""] || "secondary"}>{requestDuration(item)}</Badge>
-          ) : null}
-        </div>
-      </TableCell>
-      <TableCell><StatusWithChain status={item.status} steps={item.approvals} /></TableCell>
-      {hasActions ? (
+  const renderTableRow = (item: AttendanceRequest) => {
+    const duration = requestDurationParts(item);
+    return (
+      <TableRow key={item.id}>
+        {showEmployee ? <TableCell className="font-medium">{item.employeeName || "-"}</TableCell> : null}
+        <TableCell>{requestTypeIndicator(item.requestType)}</TableCell>
         <TableCell>
-          <div className="flex flex-wrap gap-2">{actions?.(item)}</div>
+          <div>{requestDetailContent(item)}</div>
+          {requestMetaRow(item, onPreviewOrder, onDownloadProof)}
         </TableCell>
-      ) : null}
-    </TableRow>
-  );
+        <TableCell>{requestTimeRange(item)}</TableCell>
+        <TableCell className="text-right tabular-nums">
+          {duration ? (
+            <>
+              <span className="text-sm font-semibold">{duration.value}</span>
+              <span className="ml-0.5 text-xs text-muted-foreground">{duration.unit}</span>
+            </>
+          ) : (
+            <span className="text-muted-foreground">-</span>
+          )}
+        </TableCell>
+        <TableCell><StatusWithChain status={item.status} steps={item.approvals} /></TableCell>
+        {hasActions ? (
+          <TableCell>
+            <div className="flex flex-wrap gap-2">{actions?.(item)}</div>
+          </TableCell>
+        ) : null}
+      </TableRow>
+    );
+  };
   const renderBatchTableRow = (group: RequestGroup) => {
     const rep = group[0];
+    const orderLabel = rep.serviceOrder?.orderNo || (rep.sourceId ? `#${rep.sourceId}` : "-");
+    const customerName = rep.serviceOrder?.customerName || "";
+    const totalHours = group.reduce((sum, item) => sum + Number(item.hours || 0), 0);
+    const kindsText = group.map((item) => overtimeKindLabel(item)).join(" + ");
+    const anyTriple = group.some((item) => item.isTriplePay);
+    const pendingItem = group.find((item) => (item.status || "").startsWith("pending"));
+    const groupStatus = pendingItem?.status || rep.status || "";
+    const startDate = String(rep.startAt || "").slice(0, 10);
+    const endDate = String(group[group.length - 1].endAt || rep.startAt || "").slice(0, 10);
+    const dateText = chineseMonthDay(startDate) + (endDate && endDate !== startDate ? ` → ${chineseMonthDay(endDate)}` : "");
     return (
       <TableRow key={rep.id}>
         {showEmployee ? <TableCell className="font-medium">{rep.employeeName || "-"}</TableCell> : null}
-        <TableCell>{requestTypeIndicator("overtime")}</TableCell>
+        <TableCell>{requestTypeIndicator(rep.requestType)}</TableCell>
         <TableCell>
-          <div className="space-y-1.5">
-            {group.map((seg) => (
-              <div key={seg.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                {requestDetailContent(seg)}
-                <span className="text-xs text-muted-foreground">{segmentTimeText(seg)}</span>
-              </div>
-            ))}
+          <div className="flex items-center gap-2">
+            <Wrench className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            {onPreviewOrder && rep.serviceOrder ? (
+              <button type="button" onClick={() => onPreviewOrder(rep.serviceOrder as ServiceOrderSummary)} className="shrink-0 text-sm font-medium text-primary underline-offset-2 hover:underline">工单 {orderLabel}</button>
+            ) : (
+              <span className="shrink-0 text-sm font-medium">工单 {orderLabel}</span>
+            )}
+            {customerName ? <span className="min-w-0 truncate text-xs text-muted-foreground">{customerName}</span> : null}
+            <SegmentsHoverCard group={group} />
+            {anyTriple ? (
+              <span className="inline-flex shrink-0 animate-pulse items-center gap-0.5 text-[11px] font-semibold text-rose-600"><Zap className="h-3 w-3" />3倍</span>
+            ) : null}
           </div>
-          {detailCellExtra(rep)}
+          <div className="mt-0.5 truncate text-xs text-muted-foreground" title={kindsText}>{kindsText}</div>
         </TableCell>
         <TableCell>
-          <div className="flex flex-col items-start gap-1">
-            {batchUnionRange(group)}
-            <Badge variant="warning">{`共 ${hours(batchTotalHours(group))} 小时`}</Badge>
-          </div>
+          <span className="text-sm font-medium tabular-nums">{dateText}</span>
+          <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">
+            {String(rep.startAt || "").slice(11, 16)} – {String(group[group.length - 1].endAt || group[group.length - 1].startAt || "").slice(11, 16)}
+          </span>
         </TableCell>
-        <TableCell><StatusWithChain status={rep.status} steps={rep.approvals} /></TableCell>
+        <TableCell className="text-right tabular-nums">
+          <span className="text-sm font-semibold">{hours(totalHours)}</span>
+          <span className="ml-0.5 text-xs text-muted-foreground">小时</span>
+        </TableCell>
+        <TableCell><StatusWithChain status={groupStatus} steps={rep.approvals} /></TableCell>
         {hasActions ? (
           <TableCell>
             <div className="flex flex-wrap gap-2">{actions?.(rep)}</div>
@@ -729,4 +754,91 @@ function requestTypeIndicator(type?: string) {
 
 export function requestTypeLabel(type?: string) {
   return REQUEST_TYPE_LABELS[type || ""] || type || "-";
+}
+
+// —— 8-27 meta 行 ——
+function requestMetaRow(
+  item: AttendanceRequest,
+  onPreviewOrder?: (order: ServiceOrderSummary) => void,
+  onDownloadProof?: (file: { id: number | string; originalName: string; mimeType?: string }) => void,
+) {
+  const segs: ReactNode[] = [];
+  const titleParts: string[] = [];
+
+  // reason 为系统生成（含工单号）且工单段已展示单号时跳过，避免同一单号重复出现
+  const linkedOrderNo = item.requestType === "overtime" && item.sourceType === "service_order" ? item.serviceOrder?.orderNo : undefined;
+  const reasonRedundant = Boolean(item.reason && linkedOrderNo && (item.reason as string).includes(linkedOrderNo));
+  if (item.reason && !reasonRedundant) {
+    segs.push(<span key="reason" className="min-w-0 truncate">{item.reason}</span>);
+    titleParts.push(item.reason);
+  }
+
+  if (item.requestType === "overtime" && item.sourceType === "service_order") {
+    const order = item.serviceOrder || ({ id: item.sourceId || "-", unavailable: true } as ServiceOrderSummary);
+    const orderLabel = order.orderNo || `#${order.id}`;
+    if (order.unavailable) {
+      segs.push(<span key="order" className="inline-flex shrink-0 items-center gap-1"><Wrench className="h-3 w-3" />关联工单 {orderLabel} 暂不可用</span>);
+      titleParts.push(`关联工单 ${orderLabel} 暂不可用`);
+    } else {
+      const typeLabel = serviceOrderTypeLabel(order);
+      const facts = [order.customerName, order.deviceName, typeLabel === "- / -" ? "" : typeLabel].filter((value) => value && value !== "-");
+      segs.push(
+        <span key="order" className="inline-flex shrink-0 items-center gap-1">
+          <Wrench className="h-3 w-3" />
+          {onPreviewOrder ? (
+            <button
+              type="button"
+              onClick={() => onPreviewOrder(order)}
+              className="font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              工单 {orderLabel}
+            </button>
+          ) : (
+            <span className="font-medium text-foreground/70">工单 {orderLabel}</span>
+          )}
+          {facts.length ? <span className="max-w-52 truncate text-muted-foreground/70">{facts.join(" · ")}</span> : null}
+        </span>,
+      );
+      titleParts.push([`工单 ${orderLabel}`, ...facts, order.issueDescription ? `问题：${order.issueDescription}` : ""].filter(Boolean).join(" · "));
+    }
+  }
+
+  if (item.delegateEmployeeName) {
+    segs.push(<span key="delegate" className="inline-flex shrink-0 items-center gap-1"><Users className="h-3 w-3" />代理人 {item.delegateEmployeeName}</span>);
+    titleParts.push(`代理人 ${item.delegateEmployeeName}`);
+  }
+  if (typeof item.workingDays === "number") {
+    segs.push(<span key="days" className="inline-flex shrink-0 items-center gap-1"><CalendarDays className="h-3 w-3" />{days(item.workingDays)} 个工作日</span>);
+    titleParts.push(`${days(item.workingDays)} 个工作日`);
+  }
+  if (item.proofFiles?.length) {
+    segs.push(
+      <span key="proof" className="inline-flex shrink-0 items-center gap-1">
+        <Paperclip className="h-3 w-3" />
+        {item.proofFiles.map((file, index) => (
+          <span key={file.id}>
+            {index ? "、" : ""}
+            <button type="button" className="inline-block max-w-40 truncate align-middle text-primary underline-offset-2 hover:underline" onClick={() => onDownloadProof?.(file)}>
+              {file.originalName || `附件 #${file.id}`}
+            </button>
+          </span>
+        ))}
+      </span>,
+    );
+    titleParts.push(`附件 ${item.proofFiles.map((file) => file.originalName || `#${file.id}`).join("、")}`);
+  } else if (item.proofFileCount) {
+    segs.push(<span key="proof" className="inline-flex shrink-0 items-center gap-1"><Paperclip className="h-3 w-3" />证明附件 {item.proofFileCount} 份</span>);
+    titleParts.push(`证明附件 ${item.proofFileCount} 份`);
+  }
+
+  if (!segs.length) return null;
+  return (
+    <div className="mt-0.5 flex items-center text-xs text-muted-foreground">
+      <div className="flex min-w-0 flex-1 items-center gap-x-2 overflow-hidden whitespace-nowrap" title={titleParts.join(" · ")}>
+        {segs.flatMap((seg, index) =>
+          index === 0 ? [seg] : [<span key={`sep-${index}`} className="shrink-0 text-muted-foreground/40">·</span>, seg],
+        )}
+      </div>
+    </div>
+  );
 }
