@@ -1091,10 +1091,10 @@ export function Attendance() {
                 return (
                   <>
                     <Button size="sm" disabled={busy} onClick={() => approveGroup(group)}>
-                      {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />} 全部通过
+                      {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />} 通过
                     </Button>
                     <Button size="sm" variant="outline" disabled={busy} onClick={() => rejectGroup(group)}>
-                      <X className="mr-1 h-4 w-4" /> 全部驳回
+                      <X className="mr-1 h-4 w-4" /> 驳回
                     </Button>
                   </>
                 );

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeftRight, CalendarClock, CalendarDays, CalendarOff, CircleCheck, CircleSlash, CircleX, Clock3, Coins, Coffee, Flag, Hourglass, Loader2, Paperclip, PencilLine, Undo2, Users, Wrench, Zap, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, CalendarClock, CalendarDays, CalendarOff, Circle, CircleCheck, CircleSlash, CircleX, Clock3, Coins, Coffee, Flag, Hourglass, Loader2, Paperclip, PencilLine, Undo2, Users, Wrench, Zap, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -111,6 +111,10 @@ function groupRequestsByServiceOrder(items: AttendanceRequest[]): RequestGroupEn
     if (!key) continue;
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key)!.push(item);
+  }
+  // 组内段按开始时间排序：去程（最早出发）→ 工作 → 回程（最晚结束），天然时间序
+  for (const group of byKey.values()) {
+    group.sort((a, b) => String(a.startAt || "").localeCompare(String(b.startAt || "")));
   }
   const seen = new Set<string>();
   const result: RequestGroupEntry[] = [];
@@ -316,19 +320,35 @@ function chainSummary(steps: ApprovalStep[]) {
       : `${steps.length} 级审批 · 已全部通过`;
 }
 function ChainSteps({ steps }: { steps: ApprovalStep[] }) {
+  // 步骤条：节点图标 + 连接线；当前待签核节点旋转动效，已通过段连线染绿
   return (
-    <div className="space-y-0.5 border-l pl-3 leading-5 text-muted-foreground">
-      {steps.map((step) => (
-        <div key={step.id}>
-          {approvalStepLabel(step)}：{approvalStepStatus(step)}
-          {step.assigneeEmployeeName ? `（${step.assigneeEmployeeName}）` : step.stepType !== "role" && step.assigneeRole ? `（${roleLabel(step.assigneeRole)}）` : ""}
-          {step.approvedByName ? ` · ${step.approvedByName}` : ""}
-          {step.approvedAt ? ` · ${formatDateTime(step.approvedAt)}` : ""}
-          {step.rejectedByName ? ` · ${step.rejectedByName}` : ""}
-          {step.rejectedAt ? ` · ${formatDateTime(step.rejectedAt)}` : ""}
-          {step.rejectedReason ? ` · ${step.rejectedReason}` : ""}
-        </div>
-      ))}
+    <div>
+      {steps.map((step, index) => {
+        const state = step.status === "approved" ? "done" : step.status === "rejected" ? "rejected" : step.status === "pending" ? "current" : step.status === "skipped" ? "skipped" : "waiting";
+        const Icon = state === "done" ? CircleCheck : state === "rejected" ? CircleX : state === "current" ? Loader2 : state === "skipped" ? CircleSlash : Circle;
+        const iconCls =
+          state === "done" ? "text-emerald-500" :
+          state === "rejected" ? "text-rose-500" :
+          state === "current" ? "animate-spin text-sky-500" :
+          "text-slate-300";
+        return (
+          <div key={step.id} className="relative flex gap-2.5 pb-3 last:pb-0">
+            {index < steps.length - 1 ? (
+              <span className={`absolute left-[7px] top-4 h-full w-px ${state === "done" ? "bg-emerald-300" : "border-l border-dashed border-slate-200"}`} />
+            ) : null}
+            <Icon className={`relative z-10 h-4 w-4 shrink-0 bg-background ${iconCls}`} />
+            <div className={`text-xs leading-5 ${state === "current" ? "font-medium text-foreground" : "text-muted-foreground"}`}>
+              {approvalStepLabel(step)}：{approvalStepStatus(step)}
+              {step.assigneeEmployeeName ? `（${step.assigneeEmployeeName}）` : step.stepType !== "role" && step.assigneeRole ? `（${roleLabel(step.assigneeRole)}）` : ""}
+              {step.approvedByName ? ` · ${step.approvedByName}` : ""}
+              {step.approvedAt ? ` · ${formatDateTime(step.approvedAt)}` : ""}
+              {step.rejectedByName ? ` · ${step.rejectedByName}` : ""}
+              {step.rejectedAt ? ` · ${formatDateTime(step.rejectedAt)}` : ""}
+              {step.rejectedReason ? ` · ${step.rejectedReason}` : ""}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
