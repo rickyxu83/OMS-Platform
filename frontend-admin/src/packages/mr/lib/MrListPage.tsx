@@ -88,15 +88,22 @@ function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilt
           ))}
           {steps.length ? (
             <div className="mt-1.5 border-t border-slate-100 pt-1.5">
-              {steps.map((step) => (
-                <div key={`${step.seq}-${step.stepKey}`} className="flex items-center gap-1.5 py-0.5 text-muted-foreground">
-                  <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${step.action === 'approve' ? 'bg-emerald-100 text-emerald-700' : step.action === 'reject' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'}`}>
-                    {step.action === 'approve' ? <CircleCheck className="h-2.5 w-2.5" /> : step.action === 'reject' ? <CircleX className="h-2.5 w-2.5" /> : <Hourglass className="h-2.5 w-2.5 animate-pulse" />}
-                  </span>
-                  <span className="flex-1 truncate">{step.stepLabel}{step.approverName ? ` · ${step.approverName}` : ''}</span>
-                  {step.decidedAt ? <span className="shrink-0 text-[11px]">{shortDate(step.decidedAt)}</span> : null}
-                </div>
-              ))}
+              {(() => {
+                const currentIdx = steps.findIndex((step) => !step.action)
+                return steps.map((step, idx) => {
+                  const isCurrent = idx === currentIdx
+                  const isWaiting = idx > currentIdx && currentIdx >= 0
+                  return (
+                    <div key={`${step.seq}-${step.stepKey}`} className={`flex items-center gap-1.5 py-0.5 ${isCurrent ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${step.action === 'approve' ? 'bg-emerald-100 text-emerald-700' : step.action === 'reject' ? 'bg-rose-100 text-rose-600' : isCurrent ? 'bg-amber-100 text-amber-600 ring-2 ring-amber-300' : 'bg-slate-100 text-slate-400'}`}>
+                        {step.action === 'approve' ? <CircleCheck className="h-2.5 w-2.5" /> : step.action === 'reject' ? <CircleX className="h-2.5 w-2.5" /> : <Hourglass className={`h-2.5 w-2.5 ${isCurrent ? 'animate-pulse' : ''}`} />}
+                      </span>
+                      <span className={`flex-1 truncate ${isCurrent ? 'font-medium' : ''}`}>{step.stepLabel}{step.approverName ? ` · ${step.approverName}` : ''}{isCurrent ? '（签核中）' : isWaiting ? '' : ''}</span>
+                      {step.decidedAt ? <span className="shrink-0 text-[11px]">{shortDate(step.decidedAt)}</span> : null}
+                    </div>
+                  )
+                })
+              })()}
             </div>
           ) : null}
         </div>
