@@ -47,6 +47,57 @@ const PURCHASE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = 
   waiting_contract: { icon: FileText, color: 'text-sky-600' },
 }
 
+/** 状态按钮 + hover 悬浮时间线卡（fixed 定位，脱离表格层叠上下文，不被下行遮挡） */
+function StatusHoverButton({ orderStatus, order, onFilter }: { orderStatus: MrStatus; order: { createdAt?: string | null; submittedAt?: string | null; approvedAt?: string | null; rejectedAt?: string | null; voidedAt?: string | null }; onFilter: () => void }) {
+  const [hover, setHover] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const conf = STATUS_INDICATOR[orderStatus]
+  const Icon = conf ? conf.icon : null
+  const segs = ([
+    { label: '创建', at: order.createdAt },
+    { label: '提交签核', at: order.submittedAt },
+    { label: '签核通过', at: order.approvedAt },
+    { label: '驳回', at: order.rejectedAt },
+    { label: '作废', at: order.voidedAt },
+  ]).filter((seg) => seg.at)
+  return (
+    <span className="inline-block">
+      <button
+        ref={btnRef}
+        type="button"
+        className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80"
+        title={`按状态筛选：${STATUS_LABELS[orderStatus]}`}
+        onClick={(event) => { event.stopPropagation(); onFilter() }}
+        onMouseEnter={() => {
+          if (btnRef.current) {
+            const rect = btnRef.current.getBoundingClientRect()
+            setPos({ top: rect.bottom + 4, left: rect.left })
+          }
+          setHover(true)
+        }}
+        onMouseLeave={() => setHover(false)}
+      >
+        {Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null}
+        {STATUS_LABELS[orderStatus]}
+      </button>
+      {hover && pos && segs.length ? (
+        <div className="pointer-events-none fixed z-[100] min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ top: pos.top, left: pos.left }}>
+          {segs.map((seg, i) => (
+            <div key={seg.label}>
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#582b8b]/10 text-[#582b8b]"><CircleDot className="h-2.5 w-2.5" /></span>
+                {seg.label} <span className="font-medium text-foreground">{shortDate(seg.at)}</span>
+              </div>
+              {i < segs.length - 1 ? <div className="my-1 ml-2 h-3 border-l border-dashed border-slate-300" /> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </span>
+  )
+}
+
 const PURCHASE_LABELS: Record<string, string> = {
   pending: '待采购',
   done: '采购完成',
@@ -316,29 +367,7 @@ export function MrListPage() {
                   </TableCell>
                   <TableCell className="truncate pr-6 text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
                   <TableCell className="truncate">
-                    <div className="group relative inline-block">
-                      <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`按状态筛选：${STATUS_LABELS[orderStatus]}`} onClick={(event) => { event.stopPropagation(); setStatus(orderStatus) }}>
-                        {(() => { const conf = STATUS_INDICATOR[orderStatus]; const Icon = conf ? conf.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null })()}
-                        {STATUS_LABELS[orderStatus]}
-                      </button>
-                      <div className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg group-hover:block dark:border-slate-700 dark:bg-slate-900">
-                        {([
-                          { label: '创建', at: order.createdAt },
-                          { label: '提交签核', at: order.submittedAt },
-                          { label: '签核通过', at: order.approvedAt },
-                          { label: '驳回', at: order.rejectedAt },
-                          { label: '作废', at: order.voidedAt },
-                        ]).filter((seg) => seg.at).map((seg, i, arr) => (
-                          <div key={seg.label}>
-                            <div className="flex items-center gap-1.5 text-muted-foreground">
-                              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#582b8b]/10 text-[#582b8b]"><CircleDot className="h-2.5 w-2.5" /></span>
-                              {seg.label} <span className="font-medium text-foreground">{shortDate(seg.at)}</span>
-                            </div>
-                            {i < arr.length - 1 ? <div className="my-1 ml-2 h-3 border-l border-dashed border-slate-300" /> : null}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <StatusHoverButton orderStatus={orderStatus} order={order} onFilter={() => setStatus(orderStatus)} />
                     {orderStatus === 'approved' && order.purchaseStatus ? <button type="button" className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`按采购状态筛选：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
                       {(() => { const conf = PURCHASE_INDICATOR[order.purchaseStatus || '']; const Icon = conf ? conf.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null })()}
                       {PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}
