@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, BarChart3, Sparkles, TrendingDown, TrendingUp, Users, Wrench, MapPin, Search, ListTodo, Send, Clock3, Hourglass, PenLine, Upload, CircleCheck, CircleSlash, CircleCheckBig, CircleX, Archive, Pencil, Radio, Building2, HardDrive, ClipboardCheck, BookOpen, MoreHorizontal, type LucideIcon } from "lucide-react";
+import { ArrowRight, BarChart3, Sparkles, TrendingDown, TrendingUp, Users, Wrench, MapPin, Search, Send, Clock3, Hourglass, PenLine, Upload, CircleCheck, CircleSlash, CircleCheckBig, CircleX, Archive, Pencil, Radio, Building2, HardDrive, ClipboardCheck, BookOpen, MoreHorizontal, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -319,12 +319,6 @@ const I18N = {
       title: "客户地理分布",
       description: "实时展示各区域客户密度及服务点位",
     },
-    todo: {
-      label: "条待办",
-      mrPart: "MR 签核",
-      attendancePart: "考勤审批",
-      action: "去处理",
-    },
     recent: {
       title: "最近工单",
       viewAll: "查看全部",
@@ -472,12 +466,6 @@ const I18N = {
     map: {
       title: "客戶地理分佈",
       description: "即時展示各區域客戶密度及服務點位",
-    },
-    todo: {
-      label: "條待辦",
-      mrPart: "MR 簽核",
-      attendancePart: "考勤審批",
-      action: "去處理",
     },
     recent: {
       title: "最近工單",
@@ -793,24 +781,6 @@ export function Dashboard() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [isCompactViewport, setIsCompactViewport] = useState(false);
-  const [todoSummary, setTodoSummary] = useState<{ total: number; mr: number; attendance: number }>({ total: 0, mr: 0, attendance: 0 });
-
-  // 待办提醒条：复用待办中心聚合接口，拉取失败静默（辅助提示不打断主页）
-  useEffect(() => {
-    let cancelled = false;
-    api.get("/approval-tasks?view=pending")
-      .then((data) => {
-        if (cancelled) return;
-        const taskItems = Array.isArray(data?.items) ? data.items : [];
-        setTodoSummary({
-          total: Number(data?.pendingCount || 0),
-          mr: taskItems.filter((task: any) => String(task?.businessType || "").startsWith("mr")).length,
-          attendance: taskItems.filter((task: any) => task?.businessType === "attendance").length,
-        });
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1092,30 +1062,6 @@ export function Dashboard() {
           );
         })}
       </div>
-
-      {todoSummary.total > 0 ? (
-        <button
-          type="button"
-          onClick={() => navigate("/approval-tasks")}
-          className="flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50/70 px-4 py-2.5 text-left text-sm transition-colors hover:bg-red-50 dark:border-red-900/50 dark:bg-red-950/20"
-        >
-          <span className="inline-flex items-center gap-2 text-red-700 dark:text-red-300">
-            <ListTodo className="h-4 w-4 shrink-0" />
-            <span>
-              <span className="font-bold">{todoSummary.total}</span> {t.todo.label}
-              {todoSummary.mr || todoSummary.attendance ? (
-                <span className="text-red-600/80 dark:text-red-300/80">
-                  {"（"}{[todoSummary.mr ? `${todoSummary.mr} ${t.todo.mrPart}` : "", todoSummary.attendance ? `${todoSummary.attendance} ${t.todo.attendancePart}` : ""].filter(Boolean).join(" · ")}{"）"}
-                </span>
-              ) : null}
-            </span>
-          </span>
-          <span className="inline-flex shrink-0 items-center gap-1 font-medium text-red-600 dark:text-red-300">
-            {t.todo.action}
-            <ArrowRight className="h-3.5 w-3.5" />
-          </span>
-        </button>
-      ) : null}
 
       {canUseWorkSummary && workSummary && (
         <Card className="border-purple-100 bg-purple-50/40">
