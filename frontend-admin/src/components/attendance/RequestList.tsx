@@ -169,13 +169,25 @@ type RequestGroup = AttendanceRequest[];
 function groupBatchItems(items: AttendanceRequest[]): RequestGroup[] {
   const groups: RequestGroup[] = [];
   const byBatch = new Map<string, RequestGroup>();
+  // batch_id 兜底：历史单（batch null）按同工单 + 同状态归组，避免待审批与已撤回混组
+  const byLegacy = new Map<string, RequestGroup>();
   for (const item of items) {
     const key = item.batchId || "";
     if (key && byBatch.has(key)) {
       byBatch.get(key)!.push(item);
       continue;
     }
-    const group: RequestGroup = [item];
+    let group: RequestGroup = [item];
+    if (!key) {
+      const legacyKey = item.sourceType === "service_order" && item.sourceId
+        ? `so-${item.sourceId}-${String(item.status || "")}`
+        : "";
+      if (legacyKey && byLegacy.has(legacyKey)) {
+        byLegacy.get(legacyKey)!.push(item);
+        continue;
+      }
+      if (legacyKey) byLegacy.set(legacyKey, group);
+    }
     groups.push(group);
     if (key) byBatch.set(key, group);
   }
