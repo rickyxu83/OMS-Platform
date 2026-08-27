@@ -167,27 +167,17 @@ function statusBadge(status?: string) {
 // —— batch 归组（specs/003：工单加班路+工作同批审批，列表合并显示为一条）——
 type RequestGroup = AttendanceRequest[];
 function groupBatchItems(items: AttendanceRequest[]): RequestGroup[] {
+  // 仅按 batchId 归组（同一批申请的路+工作/去程+回程+工作合并为一条）；
+  // 历史单（batch_id null）各自平铺，避免不同批次的单被宽兜底并成一组的段数虚高
   const groups: RequestGroup[] = [];
   const byBatch = new Map<string, RequestGroup>();
-  // batch_id 兜底：历史单（batch null）按同工单 + 同状态归组，避免待审批与已撤回混组
-  const byLegacy = new Map<string, RequestGroup>();
   for (const item of items) {
     const key = item.batchId || "";
     if (key && byBatch.has(key)) {
       byBatch.get(key)!.push(item);
       continue;
     }
-    let group: RequestGroup = [item];
-    if (!key) {
-      const legacyKey = item.sourceType === "service_order" && item.sourceId
-        ? `so-${item.sourceId}-${String(item.status || "")}`
-        : "";
-      if (legacyKey && byLegacy.has(legacyKey)) {
-        byLegacy.get(legacyKey)!.push(item);
-        continue;
-      }
-      if (legacyKey) byLegacy.set(legacyKey, group);
-    }
+    const group: RequestGroup = [item];
     groups.push(group);
     if (key) byBatch.set(key, group);
   }
