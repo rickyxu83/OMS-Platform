@@ -22,6 +22,7 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const [alignRight, setAlignRight] = useState(false);
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null);
   const startDate = start ? parse(start, "yyyy-MM-dd", new Date()) : undefined;
   const endDate = end ? parse(end, "yyyy-MM-dd", new Date()) : undefined;
   const [viewMonth, setViewMonth] = useState<Date>(startDate || new Date());
@@ -40,7 +41,12 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
     if (open && ref.current) {
       const rect = ref.current.getBoundingClientRect();
       const panelWidth = 380; // 侧栏 72 + 日历 ~300
-      setAlignRight(rect.left + panelWidth > window.innerWidth - 16);
+      const right = rect.left + panelWidth > window.innerWidth - 16;
+      setAlignRight(right);
+      setPanelPos({
+        top: rect.bottom + 4,
+        left: right ? Math.max(8, rect.right - panelWidth) : rect.left,
+      });
     }
   }, [open]);
 
@@ -60,7 +66,8 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
         <span className={start ? "truncate text-slate-900" : "truncate text-slate-400"}>{label}</span>
       </button>
       {open ? (
-        <div className={`absolute top-full z-50 mt-1 flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900 ${alignRight ? "right-0" : "left-0"}`}>
+        <div className="fixed z-[100] flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                style={panelPos ? { top: panelPos.top, left: panelPos.left } : undefined}>
           {/* 侧栏：年份纵列 */}
           <div className="max-h-[320px] w-[72px] overflow-y-auto border-r bg-slate-50 py-2 text-center text-sm dark:bg-slate-800/50">
             {YEARS.map((y) => (

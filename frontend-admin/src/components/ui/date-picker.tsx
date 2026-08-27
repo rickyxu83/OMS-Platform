@@ -20,6 +20,7 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const [alignRight, setAlignRight] = useState(false);
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null);
   const selected = value ? parse(value, "yyyy-MM-dd", new Date()) : undefined;
   const [viewMonth, setViewMonth] = useState<Date>(selected || new Date());
 
@@ -56,7 +57,8 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
         <span className={value ? "truncate text-slate-900" : "truncate text-slate-400"}>{value || placeholder}</span>
       </button>
       {open ? (
-        <div className={`absolute top-full z-50 mt-1 flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900 ${alignRight ? "right-0" : "left-0"}`}>
+        <div className="fixed z-[100] flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                style={panelPos ? { top: panelPos.top, left: panelPos.left } : undefined}>
           <div className="max-h-[320px] w-[72px] overflow-y-auto border-r bg-slate-50 py-2 text-center text-sm dark:bg-slate-800/50">
             {YEARS.map((y) => (
               <button
