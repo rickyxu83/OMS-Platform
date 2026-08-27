@@ -469,6 +469,14 @@ function SegmentsHoverCard({ group }: { group: AttendanceRequest[] }) {
   );
 }
 
+// 组行时间列段前缀简称：去程/回程/工作；旧合并 travel 显示「路上」
+function segmentShortLabel(item: AttendanceRequest) {
+  if (item.sourceDetail === "travel_out") return "去程";
+  if (item.sourceDetail === "travel_back") return "回程";
+  if (item.overtimeKind === "work") return "工作";
+  return "路上";
+}
+
 export function RequestList({
   title,
   description,
@@ -565,7 +573,17 @@ export function RequestList({
           </div>
           <div className="mt-0.5 truncate text-xs text-muted-foreground" title={kindsText}>{kindsText}</div>
         </TableCell>
-        <TableCell><span className="text-sm font-medium tabular-nums">{dateText}</span></TableCell>
+        <TableCell>
+          <div className="text-sm font-medium tabular-nums">{dateText}</div>
+          <div className="mt-0.5 space-y-0.5 text-xs tabular-nums text-muted-foreground">
+            {group.map((item) => (
+              <div key={item.id}>
+                <span className="inline-block w-8">{segmentShortLabel(item)}</span>
+                {String(item.startAt || "").slice(11, 16)} – {String(item.endAt || item.startAt || "").slice(11, 16)}
+              </div>
+            ))}
+          </div>
+        </TableCell>
         <TableCell className="text-right tabular-nums">
           <span className="text-sm font-semibold">{hours(totalHours)}</span>
           <span className="ml-0.5 text-xs text-muted-foreground">小时</span>
