@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw } from "lucide-react";
+import { AlertTriangle, RefreshCw, Search, Loader2, Plus, Trash2, CheckCircle, Download, FileDown, ChevronDown, FileSpreadsheet, Send, RotateCcw, Pencil, Clock3, Hourglass, PenLine, Upload, CircleCheck, Archive, CircleSlash, CircleCheckBig, Wrench, Radio, Building2, PackagePlus, Settings, SearchCheck, BookOpen, MoreHorizontal, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -767,6 +767,44 @@ const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "second
   remote: "info",
   office: "purple",
 };
+
+// —— 考勤风格扩散：状态/模式/类型 徽章 → 图标+文字（去 Badge 大色块的刺眼感）——
+const STATUS_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  draft: { icon: Pencil, color: "text-slate-400" },
+  assigned: { icon: Send, color: "text-sky-600" },
+  in_progress: { icon: Clock3, color: "text-indigo-600" },
+  pending_confirmation: { icon: Hourglass, color: "text-amber-600" },
+  awaiting_customer_signature: { icon: PenLine, color: "text-amber-600" },
+  submitted: { icon: Upload, color: "text-emerald-600" },
+  approved: { icon: CircleCheck, color: "text-emerald-600" },
+  archived: { icon: Archive, color: "text-slate-400" },
+  cancelled: { icon: CircleSlash, color: "text-rose-500" },
+  completed: { icon: CircleCheckBig, color: "text-emerald-600" },
+};
+const MODE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  onsite: { icon: Wrench, color: "text-sky-600" },
+  remote: { icon: Radio, color: "text-purple-600" },
+  office: { icon: Building2, color: "text-indigo-600" },
+};
+const TYPE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  install: { icon: PackagePlus, color: "text-sky-600" },
+  repair: { icon: Wrench, color: "text-amber-600" },
+  maintain: { icon: Settings, color: "text-teal-600" },
+  inspect: { icon: SearchCheck, color: "text-indigo-600" },
+  training: { icon: BookOpen, color: "text-purple-600" },
+  remote: { icon: Radio, color: "text-purple-600" },
+  other: { icon: MoreHorizontal, color: "text-slate-400" },
+};
+const STATIC_FALLBACK = { icon: Send, color: "text-slate-400" };
+function indicatorSpan(icon: LucideIcon, color: string, label: string) {
+  const Icon = icon;
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+      <Icon className={`h-3.5 w-3.5 ${color}`} />
+      {label}
+    </span>
+  );
+}
 
 const SERVICE_TYPE_SEARCH_ALIASES: Record<string, string> = {
   install: "安装 install",
@@ -1755,7 +1793,7 @@ export function ServiceOrders() {
             <span className="truncate" title={displayId(order)}>{displayId(order)}</span>
           </span>
         }
-        status={<Badge variant={STATUS_BADGE_VARIANT[workflowStatus] || "secondary"}>{statusLabel}</Badge>}
+        status={(() => { const conf = STATUS_INDICATOR[workflowStatus] || STATIC_FALLBACK; return indicatorSpan(conf.icon, conf.color, statusLabel); })()}
         subtitle={orderMainContent(order)}
         fields={[
           {
@@ -1794,9 +1832,9 @@ export function ServiceOrders() {
           {
             label: t.list.fieldServiceItems,
             value: (
-              <span className="flex flex-wrap gap-1.5">
-                <Badge variant={MODE_BADGE_VARIANT[order.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
-                <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>{itemsLabel}</Badge>
+              <span className="flex flex-wrap gap-x-2 gap-y-0.5">
+                {(() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; return mc ? indicatorSpan(mc.icon, mc.color, modeLabel) : <span className="text-xs text-muted-foreground">{modeLabel}</span>; })()}
+                {(() => { const tc = TYPE_INDICATOR[order.serviceType || ""]; return tc ? indicatorSpan(tc.icon, tc.color, itemsLabel) : <span className="text-xs text-muted-foreground">{itemsLabel}</span>; })()}
               </span>
             ),
           },
@@ -2224,8 +2262,8 @@ export function ServiceOrders() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-1.5">
-                            <Badge variant={MODE_BADGE_VARIANT[order.serviceMode || ""] || "secondary"}>{modeLabel}</Badge>
-                            <Badge variant={TYPE_BADGE_VARIANT[order.serviceType || ""] || "outline"}>{itemsLabel}</Badge>
+                            {(() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; return mc ? indicatorSpan(mc.icon, mc.color, modeLabel) : null; })()}
+                            {(() => { const tc = TYPE_INDICATOR[order.serviceType || ""]; return tc ? indicatorSpan(tc.icon, tc.color, itemsLabel) : null; })()}
                           </div>
                         </TableCell>
                         <TableCell className="min-w-0">
@@ -2258,9 +2296,7 @@ export function ServiceOrders() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={STATUS_BADGE_VARIANT[getWorkflowStatus(order)] || "secondary"}>
-                            {statusLabel}
-                          </Badge>
+                          {(() => { const conf = STATUS_INDICATOR[getWorkflowStatus(order)] || STATIC_FALLBACK; return indicatorSpan(conf.icon, conf.color, statusLabel); })()}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
