@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, BarChart3, Sparkles, TrendingDown, TrendingUp, Users, Wrench, MapPin, Search, Send, Clock3, Hourglass, PenLine, Upload, CircleCheck, CircleSlash, CircleCheckBig, CircleX, Archive, Pencil, Radio, Building2, HardDrive, ClipboardCheck, BookOpen, MoreHorizontal, type LucideIcon } from "lucide-react";
+import { ArrowRight, BarChart3, Sparkles, TrendingDown, TrendingUp, Users, Wrench, MapPin, Search, ListTodo, Send, Clock3, Hourglass, PenLine, Upload, CircleCheck, CircleSlash, CircleCheckBig, CircleX, Archive, Pencil, Radio, Building2, HardDrive, ClipboardCheck, BookOpen, MoreHorizontal, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -311,6 +311,7 @@ const I18N = {
       monthCustomers: "本月客户数量",
       monthEngineerVisits: "本月工程师拜访数",
       realtime: "实时统计",
+      noToday: "今日暂无工单",
       trend14: "近 14 天工单量",
       vsAvg: "较 14 日均值",
     },
@@ -318,9 +319,14 @@ const I18N = {
       title: "客户地理分布",
       description: "实时展示各区域客户密度及服务点位",
     },
+    todo: {
+      label: "待处理",
+      mrPart: "MR 签核",
+      attendancePart: "考勤审批",
+      action: "去处理",
+    },
     recent: {
       title: "最近工单",
-      description: "最新工单",
       viewAll: "查看全部",
       loading: "正在加载",
       empty: "暂无工单",
@@ -459,6 +465,7 @@ const I18N = {
       monthCustomers: "本月客戶數量",
       monthEngineerVisits: "本月工程師拜訪數",
       realtime: "即時統計",
+      noToday: "今日暫無工單",
       trend14: "近 14 天工單量",
       vsAvg: "較 14 日均值",
     },
@@ -466,9 +473,14 @@ const I18N = {
       title: "客戶地理分佈",
       description: "即時展示各區域客戶密度及服務點位",
     },
+    todo: {
+      label: "待處理",
+      mrPart: "MR 簽核",
+      attendancePart: "考勤審批",
+      action: "去處理",
+    },
     recent: {
       title: "最近工單",
-      description: "最新的服務記錄",
       viewAll: "查看全部",
       loading: "正在載入",
       empty: "暫無工單",
@@ -781,6 +793,24 @@ export function Dashboard() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [isCompactViewport, setIsCompactViewport] = useState(false);
+  const [todoSummary, setTodoSummary] = useState<{ total: number; mr: number; attendance: number }>({ total: 0, mr: 0, attendance: 0 });
+
+  // 待办提醒条：复用待办中心聚合接口，拉取失败静默（辅助提示不打断主页）
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/approval-tasks?view=pending")
+      .then((data) => {
+        if (cancelled) return;
+        const taskItems = Array.isArray(data?.items) ? data.items : [];
+        setTodoSummary({
+          total: Number(data?.pendingCount || 0),
+          mr: taskItems.filter((task: any) => String(task?.businessType || "").startsWith("mr")).length,
+          attendance: taskItems.filter((task: any) => task?.businessType === "attendance").length,
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -856,10 +886,10 @@ export function Dashboard() {
     ? (todayTrendCount - avgPreviousTrend) / avgPreviousTrend
     : null;
   const stats = [
-    { title: t.stats.todayTotal, value: summary.todayTotal ?? 0, icon: Wrench, color: "text-purple-600", bg: "bg-purple-50", delta: todayDelta, spark: null as number[] | null },
-    { title: t.stats.monthTotal, value: summary.monthTotal ?? 0, icon: BarChart3, color: "text-blue-600", bg: "bg-blue-50", delta: null as number | null, spark: orderTrend.length ? orderTrend : null },
-    { title: t.stats.monthCustomers, value: summary.monthCustomers ?? 0, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50", delta: null as number | null, spark: null as number[] | null },
-    { title: t.stats.monthEngineerVisits, value: summary.monthEngineerVisits ?? 0, icon: TrendingUp, color: "text-orange-600", bg: "bg-orange-50", delta: null as number | null, spark: null as number[] | null },
+    { key: "today", title: t.stats.todayTotal, value: summary.todayTotal ?? 0, icon: Wrench, color: "text-purple-600", bg: "bg-purple-50", delta: todayDelta, spark: null as number[] | null },
+    { key: "month", title: t.stats.monthTotal, value: summary.monthTotal ?? 0, icon: BarChart3, color: "text-blue-600", bg: "bg-blue-50", delta: null as number | null, spark: orderTrend.length ? orderTrend : null },
+    { key: "customers", title: t.stats.monthCustomers, value: summary.monthCustomers ?? 0, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50", delta: null as number | null, spark: null as number[] | null },
+    { key: "visits", title: t.stats.monthEngineerVisits, value: summary.monthEngineerVisits ?? 0, icon: TrendingUp, color: "text-orange-600", bg: "bg-orange-50", delta: null as number | null, spark: null as number[] | null },
   ];
   const displayWorkSummary = normalizeWorkSummaryForDisplay(workSummary?.summary);
 
@@ -1034,33 +1064,58 @@ export function Dashboard() {
                     )}
                   </div>
                 </div>
-                {loading ? (
-                  <p className="text-xs text-muted-foreground mt-2">{t.stats.realtime}</p>
-                ) : stat.spark ? (
+                {loading ? null : stat.spark ? (
                   <div className="mt-2">
                     <Sparkline data={stat.spark} className={`h-8 w-full ${stat.color}`} />
                     <p className="mt-1 text-xs text-muted-foreground">{t.stats.trend14}</p>
                   </div>
-                ) : stat.delta !== null && stat.delta !== undefined ? (
-                  <p className="mt-2 flex items-center gap-1 text-xs">
-                    {stat.delta >= 0 ? (
-                      <TrendingUp className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
-                    ) : (
-                      <TrendingDown className="h-3.5 w-3.5 text-red-500" aria-hidden="true" />
-                    )}
-                    <span className={stat.delta >= 0 ? "font-medium text-emerald-600" : "font-medium text-red-500"}>
-                      {stat.delta >= 0 ? "+" : ""}{Math.round(stat.delta * 100)}%
-                    </span>
-                    <span className="text-muted-foreground">{t.stats.vsAvg}</span>
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground mt-2">{t.stats.realtime}</p>
-                )}
+                ) : stat.key === "today" ? (
+                  // 今日为 0 时不显示 -100% 红箭头（刺眼且无信息量），改中性文案
+                  todayTrendCount === 0 ? (
+                    <p className="mt-2 text-xs text-muted-foreground">{t.stats.noToday}</p>
+                  ) : stat.delta !== null && stat.delta !== undefined ? (
+                    <p className="mt-2 flex items-center gap-1 text-xs">
+                      {stat.delta >= 0 ? (
+                        <TrendingUp className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+                      ) : (
+                        <TrendingDown className="h-3.5 w-3.5 text-red-500" aria-hidden="true" />
+                      )}
+                      <span className={stat.delta >= 0 ? "font-medium text-emerald-600" : "font-medium text-red-500"}>
+                        {stat.delta >= 0 ? "+" : ""}{Math.round(stat.delta * 100)}%
+                      </span>
+                      <span className="text-muted-foreground">{t.stats.vsAvg}</span>
+                    </p>
+                  ) : null
+                ) : null}
               </CardContent>
             </Card>
           );
         })}
       </div>
+
+      {todoSummary.total > 0 ? (
+        <button
+          type="button"
+          onClick={() => navigate("/approval-tasks")}
+          className="flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50/70 px-4 py-2.5 text-left text-sm transition-colors hover:bg-red-50 dark:border-red-900/50 dark:bg-red-950/20"
+        >
+          <span className="inline-flex items-center gap-2 text-red-700 dark:text-red-300">
+            <ListTodo className="h-4 w-4 shrink-0" />
+            <span>
+              {t.todo.label} <span className="font-bold">{todoSummary.total}</span>
+              {todoSummary.mr || todoSummary.attendance ? (
+                <span className="text-red-600/80 dark:text-red-300/80">
+                  {"（"}{[todoSummary.mr ? `${todoSummary.mr} ${t.todo.mrPart}` : "", todoSummary.attendance ? `${todoSummary.attendance} ${t.todo.attendancePart}` : ""].filter(Boolean).join(" · ")}{"）"}
+                </span>
+              ) : null}
+            </span>
+          </span>
+          <span className="inline-flex shrink-0 items-center gap-1 font-medium text-red-600 dark:text-red-300">
+            {t.todo.action}
+            <ArrowRight className="h-3.5 w-3.5" />
+          </span>
+        </button>
+      ) : null}
 
       {canUseWorkSummary && workSummary && (
         <Card className="border-purple-100 bg-purple-50/40">
@@ -1209,11 +1264,16 @@ export function Dashboard() {
         </section>
 
         <section className="lg:col-span-2">
-          <div className="mb-3 px-1 sm:mb-4">
-            <div className="min-w-0">
-              <h2 className="text-lg font-semibold sm:text-xl">{t.recent.title}</h2>
-              <p className="text-sm text-muted-foreground">{t.recent.description}</p>
-            </div>
+          <div className="mb-3 flex items-center justify-between gap-2 px-1 sm:mb-4">
+            <h2 className="text-lg font-semibold sm:text-xl">{t.recent.title}</h2>
+            <button
+              type="button"
+              className="inline-flex shrink-0 items-center gap-1 text-sm text-primary transition-colors hover:underline"
+              onClick={() => navigate(useOwnScope ? "/service-report" : "/service-orders")}
+            >
+              {t.recent.viewAll}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
           </div>
           <Card className="h-[300px] lg:h-[440px]">
             <CardContent className="min-h-0 flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-6">
