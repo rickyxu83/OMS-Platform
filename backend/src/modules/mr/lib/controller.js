@@ -581,10 +581,13 @@ async function list(req, res) {
   const mrIds = rows.map((row) => row.id).filter(Boolean)
   let approvalsByMr = {}
   if (mrIds.length) {
+    // 只取每个 MR 最新一轮 cycle 的步骤（驳回重提交会开新一轮，旧轮不显示避免重复）
     const approvalRows = await query(
-      `SELECT mr_id, cycle, seq, step_key, step_label, approver_id, approver_name_snapshot, action, decided_at
-       FROM mr_approvals WHERE mr_id IN (${mrIds.map(() => '?').join(',')})
-       ORDER BY mr_id, cycle DESC, seq`,
+      `SELECT a.mr_id, a.cycle, a.seq, a.step_key, a.step_label, a.approver_id, a.approver_name_snapshot, a.action, a.decided_at
+       FROM mr_approvals a
+       INNER JOIN (SELECT mr_id, MAX(cycle) AS max_cycle FROM mr_approvals WHERE mr_id IN (${mrIds.map(() => '?').join(',')}) GROUP BY mr_id) latest
+         ON latest.mr_id = a.mr_id AND latest.max_cycle = a.cycle
+       ORDER BY a.mr_id, a.seq`,
       mrIds,
     )
     for (const a of approvalRows) {
