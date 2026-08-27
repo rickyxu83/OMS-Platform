@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { Login } from "@/pages/Login"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useAdminDomTextI18n } from "@/lib/use-admin-dom-text-i18n"
-import { SHOW_MR_ATTENDANCE } from "@/lib/feature-flags"
+import { SHOW_ATTENDANCE, SHOW_USER_SIGNATURE } from "@/lib/feature-flags"
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from "react"
 
 const AdminLayout = lazy(() => import("@/components/AdminLayout").then((module) => ({ default: module.AdminLayout })))
@@ -59,12 +59,12 @@ const ADMIN_ROUTE_FALLBACKS: Array<{ path: string; permissions: string[] }> = [
   { path: "/attendance-duty", permissions: ROUTE_ACCESS_PERMISSIONS["attendance-duty"] },
   { path: "/timesheets", permissions: ROUTE_ACCESS_PERMISSIONS.timesheets },
 ]
-/** 暗启动隐藏路由：SHOW_MR_ATTENDANCE=false 时登录默认跳转候选剔除 MR/考勤/待办（与菜单过滤一致） */
-const FEATURE_FLAG_HIDDEN_ROUTE_PATHS = new Set(["/mr", "/attendance", "/attendance-duty", "/approval-tasks"])
+/** 暗启动隐藏路由：SHOW_ATTENDANCE=false 时登录默认跳转候选剔除考勤（与菜单过滤一致）；MR/待办已点亮常驻 */
+const FEATURE_FLAG_HIDDEN_ROUTE_PATHS = new Set(["/attendance", "/attendance-duty"])
 
 function firstAccessibleAdminPath(hasPermission: (...permissions: string[]) => boolean) {
   return ADMIN_ROUTE_FALLBACKS.find((route) => (
-    (SHOW_MR_ATTENDANCE || !FEATURE_FLAG_HIDDEN_ROUTE_PATHS.has(route.path)) && hasPermission(...route.permissions)
+    (SHOW_ATTENDANCE || !FEATURE_FLAG_HIDDEN_ROUTE_PATHS.has(route.path)) && hasPermission(...route.permissions)
   ))?.path || "/login"
 }
 
@@ -205,7 +205,7 @@ export default function App() {
               </Suspense>
             }
           />
-          {SHOW_MR_ATTENDANCE ? (
+          {SHOW_USER_SIGNATURE ? (
             <Route
               path="/engineer-signature/:token"
               element={
@@ -237,12 +237,10 @@ export default function App() {
               </ProtectedAdminPage>
             }
           />
-          {SHOW_MR_ATTENDANCE ? (
-            <Route
-              path="/approval-tasks"
-              element={<ProtectedAdminPage><ApprovalTasks /></ProtectedAdminPage>}
-            />
-          ) : null}
+          <Route
+            path="/approval-tasks"
+            element={<ProtectedAdminPage><ApprovalTasks /></ProtectedAdminPage>}
+          />
           <Route
             path="/service-orders"
             element={
@@ -251,8 +249,7 @@ export default function App() {
               </ProtectedAdminPage>
             }
           />
-          {SHOW_MR_ATTENDANCE ? (
-            <>
+          <>
               <Route
                 path="/mr"
                 element={
@@ -280,7 +277,6 @@ export default function App() {
                 }
               />
             </>
-          ) : null}
           <Route
             path="/service-report"
             element={
@@ -337,7 +333,7 @@ export default function App() {
               </ProtectedAdminPage>
             }
           />
-          {SHOW_MR_ATTENDANCE ? (
+          {SHOW_ATTENDANCE ? (
             <>
               <Route
                 path="/attendance"

@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { SignatureCapture } from "@/components/SignatureCapture";
-import { SHOW_MR_ATTENDANCE } from "@/lib/feature-flags";
+import { SHOW_USER_SIGNATURE } from "@/lib/feature-flags";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
 import { getPreferredWorkspace, setPreferredWorkspace, workspaceLabel } from "@/config/app";
@@ -470,7 +470,7 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
                       ) : (
                         <Badge variant="warning">未维护</Badge>
                       )}
-                      {SHOW_MR_ATTENDANCE ? (
+                      {SHOW_USER_SIGNATURE ? (
                         <Button variant="outline" size="sm" className="gap-1.5" onClick={generateSignatureLink} disabled={generatingLink}>
                           <QrCode className="h-4 w-4" />
                           {generatingLink ? "生成中..." : "手机签名"}
