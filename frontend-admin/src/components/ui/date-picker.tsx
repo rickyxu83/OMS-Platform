@@ -55,7 +55,7 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
     if (panelPos.top + h > vh - 8) {
       setPanelPos((p) => (p ? { ...p, top: Math.max(8, vh - h - 8) } : p));
     }
-  }, [open, panelPos]);
+  }, [open, panelPos, typeof window !== "undefined" ? window.innerHeight : 0]);
 
   const viewYear = viewMonth.getFullYear();
   const viewMonthIdx = viewMonth.getMonth();

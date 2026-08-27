@@ -54,7 +54,7 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
     if (panelPos.top + h > vh - 8) {
       setPanelPos((p) => (p ? { ...p, top: Math.max(8, vh - h - 8) } : p));
     }
-  }, [open, panelPos]);
+  }, [open, panelPos, typeof window !== "undefined" ? window.innerHeight : 0]);
 
   const label = start && end ? `${start} ~ ${end}` : start ? `${start} ~` : placeholder;
   const viewYear = viewMonth.getFullYear();
