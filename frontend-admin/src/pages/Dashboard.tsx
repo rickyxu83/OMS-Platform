@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, BarChart3, Sparkles, TrendingDown, TrendingUp, Users, Wrench, MapPin, Search,  } from "lucide-react";
+import { ArrowRight, BarChart3, Sparkles, TrendingDown, TrendingUp, Users, Wrench, MapPin, Search, Send, Clock3, Hourglass, PenLine, Upload, CircleCheck, CircleSlash, CircleCheckBig, CircleX, Archive, Pencil, Radio, Building2, HardDrive, ClipboardCheck, BookOpen, MoreHorizontal, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -13,7 +12,6 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
-import { serviceItemsBadgeColor } from "@/lib/service-items";
 import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
 import { Skeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
@@ -570,51 +568,50 @@ const I18N = {
   },
 } as const;
 
-const STATUS_BADGE_VARIANT: Record<string, "draft" | "warning" | "secondary" | "success" | "destructive" | "purple" | "info"> = {
-  draft: "draft",
-  assigned: "warning",
-  in_progress: "purple",
-  submitted: "success",
-  pending_confirmation: "warning",
-  awaiting_customer_signature: "warning",
-  approved: "success",
-  archived: "secondary",
-  cancelled: "destructive",
-  completed: "success",
+// —— 状态/类型 Badge → 图标+文字指示器（与全站列表页一致）——
+function indicatorSpan(icon: LucideIcon, color: string, label: string) {
+  const Icon = icon;
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+      <Icon className={`h-3.5 w-3.5 ${color}`} />
+      {label}
+    </span>
+  );
+}
+
+const STATUS_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  draft: { icon: Pencil, color: "text-slate-400" },
+  assigned: { icon: Send, color: "text-sky-600" },
+  in_progress: { icon: Clock3, color: "text-indigo-600" },
+  pending_confirmation: { icon: Hourglass, color: "text-amber-600" },
+  awaiting_customer_signature: { icon: PenLine, color: "text-amber-600" },
+  submitted: { icon: Upload, color: "text-emerald-600" },
+  approved: { icon: CircleCheck, color: "text-emerald-600" },
+  archived: { icon: Archive, color: "text-slate-400" },
+  cancelled: { icon: CircleSlash, color: "text-rose-500" },
+  completed: { icon: CircleCheckBig, color: "text-emerald-600" },
+  rejected: { icon: CircleX, color: "text-rose-500" },
 };
 
-const TYPE_BADGE_VARIANT: Record<string, "cyan" | "orange" | "info" | "purple" | "warning" | "secondary"> = {
-  install: "cyan",
-  repair: "orange",
-  maintain: "info",
-  inspect: "purple",
-  training: "warning",
-  remote: "info",
-  other: "secondary",
+const TYPE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  install: { icon: HardDrive, color: "text-sky-600" },
+  repair: { icon: Wrench, color: "text-amber-600" },
+  maintain: { icon: Clock3, color: "text-teal-600" },
+  inspect: { icon: ClipboardCheck, color: "text-indigo-600" },
+  training: { icon: BookOpen, color: "text-purple-600" },
+  remote: { icon: Radio, color: "text-purple-600" },
+  other: { icon: MoreHorizontal, color: "text-slate-400" },
 };
 
-const MODE_BADGE_VARIANT: Record<string, "teal" | "info" | "purple" | "secondary"> = {
-  onsite: "teal",
-  remote: "info",
-  office: "purple",
-};
+function statusIndicatorOf(status: string, label: string) {
+  const conf = STATUS_INDICATOR[status] || { icon: Clock3, color: "text-slate-400" };
+  return indicatorSpan(conf.icon, conf.color, label);
+}
 
-const SERVICE_ITEM_BADGE_VARIANT: Record<string, "cyan" | "orange" | "info" | "purple" | "warning" | "teal" | "secondary"> = {
-  cyan: "cyan",
-  orange: "orange",
-  info: "info",
-  purple: "purple",
-  warning: "warning",
-  teal: "teal",
-  secondary: "secondary",
-};
-
-const PRIORITY_BADGE_VARIANT: Record<string, "secondary" | "indigo" | "warning" | "destructive"> = {
-  low: "secondary",
-  normal: "indigo",
-  high: "warning",
-  urgent: "destructive",
-};
+function typeIndicatorOf(serviceType: string | undefined, label: string) {
+  const conf = TYPE_INDICATOR[serviceType || ""] || TYPE_INDICATOR.other;
+  return indicatorSpan(conf.icon, conf.color, label);
+}
 
 function normalizeStatus(s: string, labels: Record<string, string>) {
   return labels[s] || s;
@@ -1014,15 +1011,15 @@ export function Dashboard() {
           const Icon = stat.icon;
           return (
             <Card key={stat.title} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-              <CardHeader className="flex flex-row items-center justify-between px-3 pb-2 pt-3 sm:px-6 sm:pt-6">
+              <CardHeader className="flex flex-row items-center justify-between px-3 pb-2 pt-3 sm:px-4 sm:pt-4">
                 <CardTitle className="text-xs font-medium text-muted-foreground sm:text-sm">
                   {stat.title}
                 </CardTitle>
-                <div className={`rounded-lg p-1.5 sm:p-2 ${stat.bg}`}>
+                <div className={`rounded-lg p-1.5 ${stat.bg}`}>
                   <Icon className={`w-4 h-4 ${stat.color}`} />
                 </div>
               </CardHeader>
-              <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
+              <CardContent className="px-3 pb-3 sm:px-4 sm:pb-4">
                 <div className="flex items-baseline gap-2">
                   <div className="text-2xl font-bold sm:text-3xl tabular-nums">
                     {loading ? (
@@ -1246,25 +1243,14 @@ export function Dashboard() {
                         order.status === "in_progress" ? "bg-primary" : "bg-muted-foreground/30"
                       }`} />
                       <div className="min-w-0 flex-1">
-                        <div className="flex min-w-0 items-center justify-between gap-2 sm:hidden lg:flex xl:hidden">
+                        <div className="flex min-w-0 items-center justify-between gap-2">
                           <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
-                          <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-xs font-normal">
-                            {order.statusLabel}
-                          </Badge>
+                          <span className="shrink-0">{statusIndicatorOf(order.status, order.statusLabel)}</span>
                         </div>
-                        <span className="mt-1 block min-w-0 truncate text-sm text-muted-foreground sm:hidden lg:block xl:hidden" title={order.title}>{order.title}</span>
-                        <div className="mt-1 flex min-w-0 items-center gap-3 text-xs text-muted-foreground sm:hidden lg:flex xl:hidden">
+                        <span className="mt-0.5 block min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
+                        <div className="mt-0.5 flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
                           <span className="shrink-0 whitespace-nowrap">{order.date}</span>
                           <span className="min-w-0 truncate font-medium text-foreground" title={order.engineer}>{order.engineer}</span>
-                        </div>
-                        <div className="hidden min-w-0 grid-cols-[minmax(0,8rem)_minmax(0,12rem)_5.5rem_2.5rem_4rem] items-center gap-3 sm:grid lg:hidden xl:grid xl:grid-cols-[minmax(0,9rem)_minmax(0,14rem)_5.5rem_2.5rem_4rem]">
-                          <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
-                          <span className="min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
-                          <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{order.date}</span>
-                          <span className="shrink-0 whitespace-nowrap text-xs font-medium">{order.engineer}</span>
-                          <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-xs font-normal">
-                            {order.statusLabel}
-                          </Badge>
                         </div>
                       </div>
                     </div>
@@ -1322,9 +1308,9 @@ export function Dashboard() {
               const fileText = filesSummary(previewOrder, t.detail);
               return (
                 <div className="space-y-5 py-2">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant={STATUS_BADGE_VARIANT[status] || "secondary"}>{statusLabel}</Badge>
-                    <Badge variant={SERVICE_ITEM_BADGE_VARIANT[serviceItemsBadgeColor(previewOrder)] || "secondary"}>{typeLabel}</Badge>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    {statusIndicatorOf(status, statusLabel)}
+                    {typeIndicatorOf(previewOrder.serviceType, typeLabel)}
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-3">
