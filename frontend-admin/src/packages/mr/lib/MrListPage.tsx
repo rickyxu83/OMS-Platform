@@ -272,13 +272,7 @@ export function MrListPage() {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            MR 申请单（{items.length}）
-            <HelpTooltip label="MR 流转：草稿 → 签核中（按签核步骤逐级审批）→ 已通过 / 已驳回；已通过的 MR 可作废。签核通过后系统自动生成 PDF 归档（每 2 分钟重试失败的归档任务），签核过程中的通知邮件每分钟处理一次。快速筛选：点击列表中的客户名、销售名或状态徽章即可按该对象过滤，筛选标签可取消。" />
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+                <CardContent>
           <div ref={tableScrollRef} className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
             <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
@@ -306,7 +300,7 @@ export function MrListPage() {
               const orderStatus = (order.status || 'draft') as MrStatus
               const stepLabel = order.currentStepKey === 'sales' ? '业务负责人' : (order.currentStepLabel || '')
               return (
-                <TableRow key={order.id} className="cursor-pointer" onClick={() => navigate(`/mr/${order.id}`)}>
+                <TableRow key={order.id} className="cursor-pointer hover:relative hover:z-10" onClick={() => navigate(`/mr/${order.id}`)}>
                   <TableCell>
                     <button type="button" className="block max-w-full text-left transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={order.customerName ? `按客户筛选：${order.customerName}` : undefined} onClick={(event) => { event.stopPropagation(); if (order.customerId) { setCustomerFilterId(String(order.customerId)); setCustomerFilterName(order.customerName || '') } else { navigate(`/mr/${order.id}`) } }}>
                       <span className="block truncate font-medium">{order.customerName || '未选择客户'}</span>
