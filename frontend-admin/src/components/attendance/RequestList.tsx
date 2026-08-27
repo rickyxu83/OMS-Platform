@@ -538,6 +538,8 @@ export function RequestList({
     const customerName = first.serviceOrder?.customerName || "";
     const totalHours = group.reduce((sum, item) => sum + Number(item.hours || 0), 0);
     const kindsText = group.map((item) => overtimeKindLabel(item)).join(" + ");
+    // 组内任一段为 3 倍薪资（法定节假日+加班费）时，警示提到组行直接可见，不只藏在段明细浮层里
+    const anyTriple = group.some((item) => item.isTriplePay);
     const pendingItem = group.find((item) => (item.status || "").startsWith("pending"));
     const groupStatus = pendingItem?.status || first.status || "";
     const startDate = String(first.startAt || "").slice(0, 10);
@@ -557,6 +559,9 @@ export function RequestList({
             )}
             {customerName ? <span className="min-w-0 truncate text-xs text-muted-foreground">{customerName}</span> : null}
             <SegmentsHoverCard group={group} />
+            {anyTriple ? (
+              <span className="inline-flex shrink-0 animate-pulse items-center gap-0.5 text-[11px] font-semibold text-rose-600"><Zap className="h-3 w-3" />3倍</span>
+            ) : null}
           </div>
           <div className="mt-0.5 truncate text-xs text-muted-foreground" title={kindsText}>{kindsText}</div>
         </TableCell>
