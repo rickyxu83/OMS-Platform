@@ -222,7 +222,10 @@ export function previewOvertimeHours(startAt: string, endAt: string, dayType?: s
   }
   const effEnd = new Date(end);
   effEnd.setMinutes(0, 0, 0);
-  if (effEnd <= effStart) return 0;
+  if (effEnd <= effStart) {
+    // 保底镜像后端 overtimeWindow：掐整归零但确有加班时段（如 11:10–11:35 仅 25 分钟）→ 0.5 小时
+    return end > rawStart ? 0.5 : 0;
+  }
   const hours = Math.round((effEnd.getTime() - effStart.getTime()) / 3600000);
   return hours > 0 ? hours : 0;
 }

@@ -1447,7 +1447,19 @@ function overtimeWindow(startAt, endAt) {
     : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0)
   const effectiveStart = ceilToHour(start > overtimeStart ? start : overtimeStart)
   const effectiveEnd = floorToHour(end)
-  if (effectiveEnd <= effectiveStart) return null
+  if (effectiveEnd <= effectiveStart) {
+    // 掐整后归零但实际存在加班时段（如法定节假日去程 11:10–11:35 仅 25 分钟）：按 0.5 小时
+    // 保底计，时段显示原始起止。平日 18:00 前无加班事实的窗口已在上方拦截，不受保底影响。
+    // 产品裁决 2026-08-27；前端 previewOvertimeHours 同步镜像。参见 docs/adr/0002。
+    const rawStart = start > overtimeStart ? start : overtimeStart
+    if (end <= rawStart) return null
+    return {
+      startAt: formatMysqlDateTime(rawStart),
+      endAt: formatMysqlDateTime(end),
+      hours: 0.5,
+      dayType,
+    }
+  }
   const hours = Math.round((effectiveEnd.getTime() - effectiveStart.getTime()) / 3600000)
   if (hours <= 0) return null
   return {

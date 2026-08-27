@@ -988,6 +988,76 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.match(thrown?.message || '', /回程返回时间不能早于工单完工时间/)
   }
 
+  // 休息日短去程：掐整后不足一小时，按 0.5 小时保底生成 travel_out（时段保留原始起止）
+  {
+    const executeCalls = []
+    const orderRow = {
+      id: 88, order_no: 'SO-MIN', status: 'completed', customer_name: 'C',
+      service_at: '2026-07-18 11:35:00', departure_at: '2026-07-18 11:10:00',
+      actual_start_at: '2026-07-18 11:35:00', actual_end_at: '2026-07-18 14:50:00', return_at: '2026-07-18 20:35:00',
+    }
+    let insertId = 1200
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/SELECT p\.\*, u\.role/.test(sql)) {
+          return [[{ id: 5, user_id: 42, employee_name: '申请人', role: 'engineer', attendance_enabled: 1 }], []]
+        }
+        if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
+        if (/SELECT id\s+FROM attendance_requests/.test(sql)) return [[], []]
+        if (/FROM attendance_approval_role_rule_steps/.test(sql)) return [[{ approver_role: 'engineering_supervisor' }], []]
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
+        if (/FROM attendance_supervisor_role_rules/.test(sql)) return [[{ supervisor_role: 'engineering_supervisor' }], []]
+        if (/INSERT INTO attendance_requests/.test(sql)) return [{ insertId: insertId++ }, []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    // 2026-07-18 周六（休息日全天算加班）：去程 11:10–11:35 仅 25 分钟 → 保底 0.5h；
+    // 工作 11:35–14:50 掐整 12:00–14:00 = 2h；回程 14:50–20:35 掐整 15:00–20:00 = 5h
+    const req = { user: { id: 42, role: 'engineer' }, params: { id: '88' }, body: { overtimeResult: 'comp_time' } }
+    const res = createResponse()
+    await controller.createServiceOrderOvertimeRequest(req, res)
+    assert.equal(res.statusCode, 201)
+    assert.equal(res.body.created.length, 3)
+    const inserts = executeCalls.filter((call) => /INSERT INTO attendance_requests/.test(call.sql))
+    const travelOut = inserts.find((call) => call.params.sourceDetail === 'travel_out')
+    assert.ok(travelOut, '去程应按保底生成')
+    assert.equal(travelOut.params.hours, 0.5)
+    assert.equal(travelOut.params.startAt, '2026-07-18 11:10')
+    assert.equal(travelOut.params.endAt, '2026-07-18 11:35')
+    assert.equal(inserts.find((call) => call.params.sourceDetail === 'work').params.hours, 2)
+    assert.equal(inserts.find((call) => call.params.sourceDetail === 'travel_back').params.hours, 5)
+  }
+
+  // 平日 18:00 前的短窗口：无加班事实，保底不生效（去程不生成，工作全程 18:00 前也不生成）
+  {
+    const orderRow = {
+      id: 88, order_no: 'SO-EARLY', status: 'completed', customer_name: 'C',
+      service_at: '2026-07-14 16:35:00', departure_at: '2026-07-14 16:10:00',
+      actual_start_at: '2026-07-14 16:35:00', actual_end_at: '2026-07-14 17:40:00', return_at: '2026-07-14 17:55:00',
+    }
+    const { controller } = await loadController({
+      connectionExecute: async (sql) => {
+        if (/SELECT p\.\*, u\.role/.test(sql)) {
+          return [[{ id: 5, user_id: 42, employee_name: '申请人', role: 'engineer', attendance_enabled: 1 }], []]
+        }
+        if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
+        if (/SELECT id\s+FROM attendance_requests/.test(sql)) return [[], []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = { user: { id: 42, role: 'engineer' }, params: { id: '88' }, body: { overtimeResult: 'comp_time' } }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.createServiceOrderOvertimeRequest(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 400)
+    assert.match(thrown?.message || '', /没有可申请的加班时段/)
+  }
+
   // travel_out / travel_back 单段申请：均为合法 segmentKey，只生成对应程一条申请（休息日各 1h）
   {
     for (const segmentKey of ['travel_out', 'travel_back']) {
