@@ -2,6 +2,7 @@
  * Devices 页常量：导入模板规格、维保/状态标签映射、表格布局类、型号规范化任务参数。
  */
 import type { MaintenanceImportItem } from "./types";
+import { CircleCheck, CircleMinus, CircleSlash, Hourglass, PauseCircle, ShieldCheck, Wrench, type LucideIcon } from "lucide-react";
 
 export const IMPORT_TEMPLATE_MAX_ROWS = 1000;
 
@@ -51,20 +52,22 @@ export const DEVICE_STATUS_LABELS: Record<string, string> = {
   scrapped: "已报废",
 };
 
-export const DEVICE_STATUS_BADGE: Record<string, "success" | "secondary" | "warning" | "destructive"> = {
-  active: "success",
-  inactive: "secondary",
-  maintenance: "warning",
-  scrapped: "destructive",
+// —— 维保类型/设备状态 Badge → 图标+文字指示器（与工单/MR/客户列表同语言）——
+export const MAINTENANCE_TYPE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  pending_confirmation: { icon: Hourglass, color: "text-amber-600" },
+  none: { icon: CircleMinus, color: "text-slate-400" },
+  vendor: { icon: ShieldCheck, color: "text-sky-600" },
+  original_manufacturer: { icon: ShieldCheck, color: "text-sky-600" },
+  our: { icon: ShieldCheck, color: "text-purple-600" },
+  our_maintenance: { icon: ShieldCheck, color: "text-purple-600" },
 };
 
-export const DEVICE_TABLE_GRID = "md:grid-cols-[32px_28px_minmax(220px,1.2fr)_minmax(190px,1fr)_92px_118px_minmax(180px,0.95fr)_86px_156px]";
-
-export const DEVICE_TABLE_READONLY_GRID = "md:grid-cols-[28px_minmax(240px,1.2fr)_minmax(200px,1fr)_92px_118px_minmax(200px,1fr)_86px]";
-
-export const DEVICE_BADGE_CLASS = "inline-flex h-6 min-w-[74px] justify-center px-2";
-
-export const DEVICE_STATUS_BADGE_CLASS = "inline-flex h-6 min-w-[56px] justify-center px-2";
+export const DEVICE_STATUS_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  active: { icon: CircleCheck, color: "text-emerald-600" },
+  inactive: { icon: PauseCircle, color: "text-slate-400" },
+  maintenance: { icon: Wrench, color: "text-amber-600" },
+  scrapped: { icon: CircleSlash, color: "text-rose-500" },
+};
 
 
 export const ATTACHMENT_PURPOSE_LABELS: Record<string, string> = {

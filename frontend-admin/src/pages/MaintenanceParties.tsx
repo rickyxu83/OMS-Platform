@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, RefreshCw, Search, Wrench, Trash2, Pencil, Check, RotateCcw } from "lucide-react";
+import { Plus, RefreshCw, Search, Wrench, Trash2, Pencil, Check, RotateCcw, ShieldCheck, MoreHorizontal, X, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { formatDate } from "@/lib/format";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,6 +33,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { matchesSearchText } from "@/lib/text-i18n";
 import { useUrlParam } from "@/lib/use-url-param";
 import { EmptyState } from "@/components/EmptyState";
+import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 
 interface Party {
   id: string | number;
@@ -79,6 +80,7 @@ const I18N = {
       all: "全部类型",
       vendor: "原厂联系人",
       partner: "合作维保方",
+      activeHint: "已选筛选（点击取消）：",
     },
     list: {
       title: "维保方列表",
@@ -93,6 +95,7 @@ const I18N = {
       contactLine: "联系人：{contact} · 电话：{phone}",
       officialWebsite: "官网地址：{url}",
       selectAllCurrent: "全选当前列表",
+      actionsMenu: "维保方操作",
     },
     dialog: {
       createTitle: "新增维保方",
@@ -167,6 +170,7 @@ const I18N = {
       all: "全部類型",
       vendor: "原廠聯絡人",
       partner: "合作維保方",
+      activeHint: "已選篩選（點擊取消）：",
     },
     list: {
       title: "維保方列表",
@@ -181,6 +185,7 @@ const I18N = {
       contactLine: "聯絡人：{contact} · 電話：{phone}",
       officialWebsite: "官網地址：{url}",
       selectAllCurrent: "全選目前列表",
+      actionsMenu: "維保方操作",
     },
     dialog: {
       createTitle: "新增維保方",
@@ -226,14 +231,30 @@ const I18N = {
   },
 } as const;
 
-const TYPE_VARIANT: Record<string, "default" | "info" | "secondary" | "purple"> = {
-  vendor_contact: "info",
-  original_manufacturer: "info",
-  vendor: "info",
-  our_maintenance: "purple",
-  partner: "purple",
-  our: "purple",
+// —— 类型 Badge → 图标+文字指示器（与设备资产页一致）——
+const TYPE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  original_manufacturer: { icon: ShieldCheck, color: "text-sky-600" },
+  our_maintenance: { icon: ShieldCheck, color: "text-purple-600" },
 };
+
+function indicatorSpan(icon: LucideIcon, color: string, label: string) {
+  const Icon = icon;
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+      <Icon className={`h-3.5 w-3.5 ${color}`} />
+      {label}
+    </span>
+  );
+}
+
+/** 已选筛选标签：点击取消 */
+function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <button type="button" onClick={onClear} className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-muted/70">
+      {label}<X className="h-3 w-3 text-muted-foreground" />
+    </button>
+  );
+}
 
 function isOriginalManufacturer(type?: string) {
   return type === "original_manufacturer" || type === "vendor_contact" || type === "vendor";
@@ -408,11 +429,20 @@ export function MaintenanceParties() {
     const vendor = parties.filter((p) => canonicalPartyType(p.partyType) === "original_manufacturer").length;
     const partner = parties.filter((p) => canonicalPartyType(p.partyType) === "our_maintenance").length;
     return [
-      { label: t.stats.total, value: total },
-      { label: t.stats.vendor, value: vendor },
-      { label: t.stats.partner, value: partner },
+      { key: "total", label: t.stats.total, value: total },
+      { key: "original_manufacturer", label: t.stats.vendor, value: vendor },
+      { key: "our_maintenance", label: t.stats.partner, value: partner },
     ];
   }, [parties, t.stats]);
+
+  /** 统计条 chip 点击：总数=清除类型过滤；类型=toggle */
+  function applyStatsFilter(key: string) {
+    if (key === "total") {
+      setTypeFilter("all");
+      return;
+    }
+    setTypeFilter((current: string) => (current === key ? "all" : key));
+  }
   const initialLoading = loading && !loadedOnce;
   const refreshing = loading && loadedOnce;
 
@@ -600,6 +630,99 @@ export function MaintenanceParties() {
     }
   }
 
+
+  /** 移动端维保方卡片（ResponsiveList renderCard 用），字段/操作与桌面行一致 */
+  function renderPartyCard(p: Party) {
+    const canonical = canonicalPartyType(p.partyType);
+    const typeLabel = t.types[p.partyType as keyof typeof t.types] || p.partyType || t.misc.unknown;
+    const typeConf = TYPE_INDICATOR[canonical] || TYPE_INDICATOR.our_maintenance;
+    const TypeIcon = typeConf.icon;
+    const selected = selectedPartyIds.includes(String(p.id));
+    const contacts = contactsForParty(p);
+    const phones = contactPhones(contacts, p.phone);
+    return (
+      <ResponsiveCard
+        onClick={() => openPartyDetail(p)}
+        title={
+          <span className="flex min-w-0 items-center gap-2">
+            {canDeleteParties ? (
+              <span className="inline-flex" onClick={(event) => event.stopPropagation()}>
+                <Checkbox
+                  checked={selected}
+                  onCheckedChange={(checked) => togglePartySelection(p.id, checked)}
+                  disabled={saving}
+                  aria-label={`${t.list.selectAllCurrent} ${p.name || p.id}`}
+                />
+              </span>
+            ) : null}
+            <Wrench className="h-4 w-4 shrink-0 text-primary" />
+            {p.name ? (
+              <button
+                type="button"
+                className="min-w-0 truncate text-left hover:text-primary hover:underline"
+                title={p.name}
+                onClick={(event) => filterByPartyName(event, p.name)}
+              >
+                {p.name}
+              </button>
+            ) : (
+              <span className="truncate">{t.misc.unknown}</span>
+            )}
+          </span>
+        }
+        status={(
+          <button
+            type="button"
+            className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium transition-colors ${typeFilter === canonical ? "bg-primary/10 text-primary ring-1 ring-primary/30" : "text-muted-foreground hover:bg-accent"}`}
+            title={`${t.list.type}：${typeLabel}`}
+            onClick={(event) => filterByPartyType(event, p.partyType)}
+          >
+            <TypeIcon className={`h-3.5 w-3.5 ${typeConf.color}`} />
+            {typeLabel}
+          </button>
+        )}
+        subtitle={p.remark || undefined}
+        fields={[
+          { label: t.list.contacts, value: contactNamesText(contacts, t.misc.unknown) },
+          { label: t.list.phone, value: phones.length ? phones.slice(0, 2).map((phone) => renderPhoneLink(phone, true)) : t.misc.unknown },
+          { label: t.list.website, value: p.officialWebsite || t.misc.unknown },
+        ]}
+        actions={(
+          <>
+            {canEditParties ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground hover:bg-transparent hover:text-sky-600"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openEdit(p);
+                }}
+              >
+                <Pencil className="w-4 h-4 mr-1" />
+                {t.actions.edit}
+              </Button>
+            ) : null}
+            {canDeleteParties ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground hover:bg-transparent hover:text-rose-600"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  deleteParty(p);
+                }}
+                disabled={saving}
+              >
+                <Trash2 className="w-4 h-4 mr-1" />
+                {t.actions.delete}
+              </Button>
+            ) : null}
+          </>
+        )}
+      />
+    );
+  }
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -623,27 +746,36 @@ export function MaintenanceParties() {
 
       <ErrorToast message={error} />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {stats.map((stat, statIndex) => (
-          <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-            <CardContent className="pt-6">
-              <div className="text-sm text-muted-foreground">{stat.label}</div>
-              <div className="text-2xl font-bold mt-1">
-                                {initialLoading ? (
-                  <Skeleton className="h-8 w-16" />
-                ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
+        {stats.map((stat, statIndex) => {
+          const valueNode = initialLoading ? (
+            <Skeleton className="h-5 w-8" />
+          ) : (
+            <span className="stat-value-enter inline-block text-base font-bold" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
+          );
+          // 统计条 chip 可点过滤：总数=全部，类型=toggle（与设备资产页同语言）
+          const isType = stat.key !== "total";
+          const active = isType && typeFilter === stat.key;
+          return (
+            <button
+              key={stat.key}
+              type="button"
+              onClick={() => applyStatsFilter(stat.key)}
+              className={`inline-flex items-baseline gap-1.5 rounded-md px-1.5 py-0.5 transition-colors ${active ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-accent"}`}
+              title={stat.label}
+              aria-pressed={isType ? active : undefined}
+            >
+              <span className="text-muted-foreground">{stat.label}</span>
+              {valueNode}
+            </button>
+          );
+        })}
       </div>
 
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-3">
-            <div className="flex-1 relative">
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className="relative min-w-0 flex-1 basis-[260px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
@@ -656,228 +788,239 @@ export function MaintenanceParties() {
                 }}
               />
             </div>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder={t.filters.typePlaceholder} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t.filters.all}</SelectItem>
-                <SelectItem value="original_manufacturer">{t.filters.vendor}</SelectItem>
-                <SelectItem value="our_maintenance">{t.filters.partner}</SelectItem>
-              </SelectContent>
-            </Select>
             <Button
+              className="h-9 shrink-0 whitespace-nowrap px-2.5 sm:px-3"
               variant="outline"
               onClick={() => {
                 setSearchQuery("");
                 setTypeFilter("all");
               }}
             >
-              <RotateCcw className="w-4 h-4 mr-2" />
+              <RotateCcw className="w-4 h-4 mr-1.5" />
               {t.actions.reset}
             </Button>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {refreshing ? <span className="btn-loader btn-loader-sm" aria-hidden="true" /> : null}
+              {canDeleteParties ? (
+                <>
+                  {selectedPartyIds.length ? (
+                    <Button variant="ghost" size="sm" onClick={() => setSelectedPartyIds([])} disabled={saving}>
+                      {t.actions.clearSelection}
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-red-600 hover:text-red-700"
+                    onClick={bulkDeleteParties}
+                    disabled={saving || !selectedPartyIds.length}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    {t.actions.batchDelete}{selectedPartyIds.length ? ` (${selectedPartyIds.length})` : ""}
+                  </Button>
+                </>
+              ) : null}
+            </div>
           </div>
+          {typeFilter !== "all" ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">{t.filters.activeHint}</span>
+              <FilterChip
+                label={`${t.list.type}：${typeFilter === "original_manufacturer" ? t.filters.vendor : t.filters.partner}`}
+                onClear={() => setTypeFilter("all")}
+              />
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-2">
-              <CardTitle>{t.list.title} ({filtered.length})</CardTitle>
-              {refreshing ? (
-                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <span className="btn-loader btn-loader-sm" aria-hidden="true" />
-                  {t.list.loading}
-                </span>
-              ) : null}
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto">
+          {initialLoading ? (
+            <div className="flex h-full items-center justify-center text-muted-foreground">
+              <span className="btn-loader mr-2" aria-hidden="true" /> {t.list.loading}
             </div>
-            {canDeleteParties ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Checkbox
-                    checked={allFilteredPartiesSelected}
-                    onCheckedChange={toggleAllFilteredParties}
-                    disabled={saving || filtered.length === 0}
-                    aria-label={t.list.selectAllCurrent}
-                  />
-                  {t.list.selectAllCurrent}
-                </label>
-                {selectedPartyIds.length ? (
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedPartyIds([])} disabled={saving}>
-                    {t.actions.clearSelection}
-                  </Button>
-                ) : null}
-                <Button
-                  variant="ghost"
-                  className="text-red-600 hover:text-red-700"
-                  onClick={bulkDeleteParties}
-                  disabled={saving || !selectedPartyIds.length}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  {t.actions.batchDelete}{selectedPartyIds.length ? ` (${selectedPartyIds.length})` : ""}
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto rounded-md border">
-            {initialLoading ? (
-              <div className="flex h-full items-center justify-center text-muted-foreground">
-                <span className="btn-loader mr-2" aria-hidden="true" /> {t.list.loading}
-              </div>
-            ) : filtered.length === 0 ? (
+          ) : filtered.length === 0 ? (
+            <div className="p-2">
               <EmptyState
                 title={t.list.empty}
                 {...(canCreateParties ? { actionLabel: t.actions.create, onAction: openCreate } : {})}
               />
-            ) : (
-                <table className="w-full min-w-[1040px] table-fixed caption-bottom text-sm">
-                  <colgroup>
-                    {canDeleteParties ? <col className="w-11" /> : null}
-                    <col className="w-[320px]" />
-                    <col className="w-[128px]" />
-                    <col className="w-[150px]" />
-                    <col className="w-[190px]" />
-                    <col />
-                    {canManageParties ? <col className="w-[168px]" /> : null}
-                  </colgroup>
-                  <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
-                    <TableRow>
-                      {canDeleteParties ? <TableHead className="w-11 text-center" /> : null}
-                      <TableHead>{t.list.name}</TableHead>
-                      <TableHead className="w-[128px] text-center">{t.list.type}</TableHead>
-                      <TableHead className="text-center">{t.list.contacts}</TableHead>
-                      <TableHead className="text-center">{t.list.phone}</TableHead>
-                      <TableHead>{t.list.website}</TableHead>
-                      {canManageParties ? <TableHead className="w-[168px] text-right pr-5">{t.list.action}</TableHead> : null}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.map((p) => {
-                      const typeLabel = t.types[p.partyType as keyof typeof t.types] || p.partyType || t.misc.unknown;
-                      const selected = selectedPartyIds.includes(String(p.id));
-                      const contacts = contactsForParty(p);
-                      const phones = contactPhones(contacts, p.phone);
-                      return (
-                        <TableRow
-                          key={p.id}
-                          role="button"
-                          tabIndex={0}
-                          className="cursor-pointer"
-                          onClick={() => openPartyDetail(p)}
-                          onKeyDown={(event) => {
-                            if (event.target !== event.currentTarget) return;
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              openPartyDetail(p);
-                            }
-                          }}
-                        >
-                          {canDeleteParties ? (
-                            <TableCell onClick={(event) => event.stopPropagation()}>
-                              <Checkbox
-                                checked={selected}
-                                onCheckedChange={(checked) => togglePartySelection(p.id, checked)}
-                                disabled={saving}
-                                aria-label={`${t.list.selectAllCurrent} ${p.name || p.id}`}
-                              />
-                            </TableCell>
-                          ) : null}
-                          <TableCell className="min-w-0">
-                            <div className="flex min-w-0 items-center gap-2">
-                              <Wrench className="h-4 w-4 shrink-0 text-primary" />
-                              <div className="min-w-0">
-                                {p.name ? (
-                                  <button
-                                    type="button"
-                                    className="block max-w-full truncate text-left font-medium text-slate-900 hover:text-primary hover:underline"
-                                    title={p.name}
-                                    onClick={(event) => filterByPartyName(event, p.name)}
-                                  >
-                                    {p.name}
-                                  </button>
-                                ) : (
-                                  <div className="truncate font-medium">{t.misc.unknown}</div>
-                                )}
-                                {p.remark ? (
-                                  <div className="mt-0.5 max-w-[260px] truncate text-xs text-muted-foreground" title={p.remark}>
-                                    {p.remark}
-                                  </div>
-                                ) : null}
-                              </div>
+            </div>
+          ) : (
+            <ResponsiveList items={filtered} keyExtractor={(p) => p.id} renderCard={renderPartyCard}>
+              <table className="w-full table-fixed caption-bottom text-sm">
+                <colgroup>
+                  {canDeleteParties ? <col className="w-11" /> : null}
+                  <col className="w-[30%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[17%]" />
+                  <col className="w-[17%]" />
+                  {canManageParties ? <col className="w-[8%]" /> : null}
+                </colgroup>
+                <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+                  <TableRow>
+                    {canDeleteParties ? (
+                      <TableHead className="w-11 text-center">
+                        <Checkbox
+                          checked={allFilteredPartiesSelected}
+                          onCheckedChange={toggleAllFilteredParties}
+                          disabled={saving || filtered.length === 0}
+                          aria-label={t.list.selectAllCurrent}
+                        />
+                      </TableHead>
+                    ) : null}
+                    <TableHead>{t.list.name}</TableHead>
+                    <TableHead>{t.list.type}</TableHead>
+                    <TableHead>{t.list.contacts}</TableHead>
+                    <TableHead>{t.list.phone}</TableHead>
+                    <TableHead>{t.list.website}</TableHead>
+                    {canManageParties ? <TableHead>{t.list.action}</TableHead> : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((p, rowIndex) => {
+                    const canonical = canonicalPartyType(p.partyType);
+                    const typeLabel = t.types[p.partyType as keyof typeof t.types] || p.partyType || t.misc.unknown;
+                    const typeConf = TYPE_INDICATOR[canonical] || TYPE_INDICATOR.our_maintenance;
+                    const TypeIcon = typeConf.icon;
+                    const selected = selectedPartyIds.includes(String(p.id));
+                    const contacts = contactsForParty(p);
+                    const phones = contactPhones(contacts, p.phone);
+                    return (
+                      <TableRow
+                        key={p.id}
+                        role="button"
+                        tabIndex={0}
+                        className="list-row-enter cursor-pointer"
+                        style={{ animationDelay: `${Math.min(rowIndex * 40, 400)}ms` }}
+                        onClick={() => openPartyDetail(p)}
+                        onKeyDown={(event) => {
+                          if (event.target !== event.currentTarget) return;
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            openPartyDetail(p);
+                          }
+                        }}
+                      >
+                        {canDeleteParties ? (
+                          <TableCell className="text-center" onClick={(event) => event.stopPropagation()}>
+                            <Checkbox
+                              checked={selected}
+                              onCheckedChange={(checked) => togglePartySelection(p.id, checked)}
+                              disabled={saving}
+                              aria-label={`${t.list.selectAllCurrent} ${p.name || p.id}`}
+                            />
+                          </TableCell>
+                        ) : null}
+                        <TableCell className="min-w-0">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Wrench className="h-4 w-4 shrink-0 text-primary" />
+                            <div className="min-w-0">
+                              {p.name ? (
+                                <button
+                                  type="button"
+                                  className="block max-w-full truncate text-left text-sm font-semibold transition-colors hover:text-primary hover:underline"
+                                  title={p.name}
+                                  onClick={(event) => filterByPartyName(event, p.name)}
+                                >
+                                  {p.name}
+                                </button>
+                              ) : (
+                                <div className="truncate font-medium">{t.misc.unknown}</div>
+                              )}
+                              {p.remark ? (
+                                <div className="mt-0.5 truncate text-xs text-muted-foreground" title={p.remark}>
+                                  {p.remark}
+                                </div>
+                              ) : null}
                             </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <button type="button" onClick={(event) => filterByPartyType(event, p.partyType)}>
-                              <Badge
-                                variant={TYPE_VARIANT[p.partyType || ""] || "secondary"}
-                                className={`cursor-pointer hover:ring-2 hover:ring-primary/20 ${typeFilter === canonicalPartyType(p.partyType) ? "ring-2 ring-primary/30" : ""}`}
-                              >
-                                {typeLabel}
-                              </Badge>
-                            </button>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <div className="truncate text-sm" title={contactNamesText(contacts, t.misc.unknown)}>
-                              {contactNamesText(contacts, t.misc.unknown)}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <div className="flex flex-wrap justify-center gap-x-2 gap-y-1">
-                              {phones.length
-                                ? phones.slice(0, 3).map((phone, index) => (
-                                    <span key={`${phone}-${index}`} className="text-sm">
-                                      {renderPhoneLink(phone, true)}
-                                    </span>
-                                  ))
-                                : <span className="text-sm text-muted-foreground">{t.misc.unknown}</span>}
-                            </div>
-                          </TableCell>
-                          <TableCell className="min-w-0">
-                            {p.officialWebsite ? (
-                              <a
-                                className="block truncate text-sm text-primary hover:underline"
-                                href={officialWebsiteHref(p.officialWebsite)}
-                                target="_blank"
-                                rel="noreferrer"
-                                title={p.officialWebsite}
-                                onClick={(event) => event.stopPropagation()}
-                              >
-                                {p.officialWebsite}
-                              </a>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">{t.misc.unknown}</span>
-                            )}
-                          </TableCell>
-                          {canManageParties ? (
-                            <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
-                              <div className="inline-flex gap-2">
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <button
+                            type="button"
+                            className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium transition-colors ${typeFilter === canonical ? "bg-primary/10 text-primary ring-1 ring-primary/30" : "text-muted-foreground hover:bg-accent"}`}
+                            title={`${t.list.type}：${typeLabel}`}
+                            onClick={(event) => filterByPartyType(event, p.partyType)}
+                          >
+                            <TypeIcon className={`h-3.5 w-3.5 ${typeConf.color}`} />
+                            {typeLabel}
+                          </button>
+                        </TableCell>
+                        <TableCell className="min-w-0">
+                          <span className="block truncate text-sm" title={contactNamesText(contacts, t.misc.unknown)}>
+                            {contactNamesText(contacts, t.misc.unknown)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="min-w-0">
+                          <div className="flex flex-wrap gap-x-2 gap-y-1">
+                            {phones.length
+                              ? phones.slice(0, 3).map((phone, index) => (
+                                  <span key={`${phone}-${index}`} className="text-sm">
+                                    {renderPhoneLink(phone, true)}
+                                  </span>
+                                ))
+                              : <span className="text-sm text-muted-foreground">{t.misc.unknown}</span>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="min-w-0">
+                          {p.officialWebsite ? (
+                            <a
+                              className="block truncate text-sm text-primary hover:underline"
+                              href={officialWebsiteHref(p.officialWebsite)}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={p.officialWebsite}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {p.officialWebsite}
+                            </a>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">{t.misc.unknown}</span>
+                          )}
+                        </TableCell>
+                        {canManageParties ? (
+                          <TableCell onClick={(event) => event.stopPropagation()}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                  title={t.list.actionsMenu}
+                                  aria-label={t.list.actionsMenu}
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
                                 {canEditParties ? (
-                                  <Button variant="ghost" size="sm" className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEdit(p)}>
-                                    <Pencil className="w-4 h-4 mr-1" />
+                                  <DropdownMenuItem onSelect={() => openEdit(p)}>
+                                    <Pencil className="h-4 w-4" />
                                     {t.actions.edit}
-                                  </Button>
+                                  </DropdownMenuItem>
                                 ) : null}
+                                {canEditParties && canDeleteParties ? <DropdownMenuSeparator /> : null}
                                 {canDeleteParties ? (
-                                  <Button variant="ghost" size="sm" className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700" onClick={() => deleteParty(p)} disabled={saving}>
-                                    <Trash2 className="w-4 h-4 mr-1" />
+                                  <DropdownMenuItem variant="destructive" onSelect={() => deleteParty(p)} disabled={saving}>
+                                    <Trash2 className="h-4 w-4" />
                                     {t.actions.delete}
-                                  </Button>
+                                  </DropdownMenuItem>
                                 ) : null}
-                              </div>
-                            </TableCell>
-                          ) : null}
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </table>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        ) : null}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </table>
+            </ResponsiveList>
+          )}
+        </div>
+      </div>
 
       <Dialog open={Boolean(detailTarget)} onOpenChange={(open) => { if (!open) closePartyDetail(); }}>
         <DialogContent className="max-h-[92vh] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-[680px]">
@@ -899,7 +1042,10 @@ export function MaintenanceParties() {
                           {isOriginalManufacturer(detailTarget.partyType) ? t.filters.vendor : t.filters.partner}
                         </div>
                       </div>
-                      <Badge variant={TYPE_VARIANT[detailTarget.partyType || ""] || "secondary"}>{typeLabel}</Badge>
+                      {(() => {
+                        const conf = TYPE_INDICATOR[canonicalPartyType(detailTarget.partyType)] || TYPE_INDICATOR.our_maintenance;
+                        return indicatorSpan(conf.icon, conf.color, typeLabel);
+                      })()}
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">

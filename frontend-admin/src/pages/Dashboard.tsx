@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, BarChart3, Sparkles, TrendingDown, TrendingUp, Users, Wrench, MapPin, Search,  } from "lucide-react";
+import { ArrowRight, BarChart3, Sparkles, TrendingDown, TrendingUp, Users, Wrench, MapPin, Search, Send, Clock3, Hourglass, PenLine, Upload, CircleCheck, CircleSlash, CircleCheckBig, CircleX, Archive, Pencil, Radio, Building2, HardDrive, ClipboardCheck, BookOpen, MoreHorizontal, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -13,7 +12,6 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
-import { serviceItemsBadgeColor } from "@/lib/service-items";
 import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
 import { Skeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
@@ -313,6 +311,7 @@ const I18N = {
       monthCustomers: "本月客户数量",
       monthEngineerVisits: "本月工程师拜访数",
       realtime: "实时统计",
+      noToday: "今日暂无工单",
       trend14: "近 14 天工单量",
       vsAvg: "较 14 日均值",
     },
@@ -322,7 +321,6 @@ const I18N = {
     },
     recent: {
       title: "最近工单",
-      description: "最新工单",
       viewAll: "查看全部",
       loading: "正在加载",
       empty: "暂无工单",
@@ -461,6 +459,7 @@ const I18N = {
       monthCustomers: "本月客戶數量",
       monthEngineerVisits: "本月工程師拜訪數",
       realtime: "即時統計",
+      noToday: "今日暫無工單",
       trend14: "近 14 天工單量",
       vsAvg: "較 14 日均值",
     },
@@ -470,7 +469,6 @@ const I18N = {
     },
     recent: {
       title: "最近工單",
-      description: "最新的服務記錄",
       viewAll: "查看全部",
       loading: "正在載入",
       empty: "暫無工單",
@@ -570,51 +568,50 @@ const I18N = {
   },
 } as const;
 
-const STATUS_BADGE_VARIANT: Record<string, "draft" | "warning" | "secondary" | "success" | "destructive" | "purple" | "info"> = {
-  draft: "draft",
-  assigned: "warning",
-  in_progress: "purple",
-  submitted: "success",
-  pending_confirmation: "warning",
-  awaiting_customer_signature: "warning",
-  approved: "success",
-  archived: "secondary",
-  cancelled: "destructive",
-  completed: "success",
+// —— 状态/类型 Badge → 图标+文字指示器（与全站列表页一致）——
+function indicatorSpan(icon: LucideIcon, color: string, label: string) {
+  const Icon = icon;
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+      <Icon className={`h-3.5 w-3.5 ${color}`} />
+      {label}
+    </span>
+  );
+}
+
+const STATUS_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  draft: { icon: Pencil, color: "text-slate-400" },
+  assigned: { icon: Send, color: "text-sky-600" },
+  in_progress: { icon: Clock3, color: "text-indigo-600" },
+  pending_confirmation: { icon: Hourglass, color: "text-amber-600" },
+  awaiting_customer_signature: { icon: PenLine, color: "text-amber-600" },
+  submitted: { icon: Upload, color: "text-emerald-600" },
+  approved: { icon: CircleCheck, color: "text-emerald-600" },
+  archived: { icon: Archive, color: "text-slate-400" },
+  cancelled: { icon: CircleSlash, color: "text-rose-500" },
+  completed: { icon: CircleCheckBig, color: "text-emerald-600" },
+  rejected: { icon: CircleX, color: "text-rose-500" },
 };
 
-const TYPE_BADGE_VARIANT: Record<string, "cyan" | "orange" | "info" | "purple" | "warning" | "secondary"> = {
-  install: "cyan",
-  repair: "orange",
-  maintain: "info",
-  inspect: "purple",
-  training: "warning",
-  remote: "info",
-  other: "secondary",
+const TYPE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
+  install: { icon: HardDrive, color: "text-sky-600" },
+  repair: { icon: Wrench, color: "text-amber-600" },
+  maintain: { icon: Clock3, color: "text-teal-600" },
+  inspect: { icon: ClipboardCheck, color: "text-indigo-600" },
+  training: { icon: BookOpen, color: "text-purple-600" },
+  remote: { icon: Radio, color: "text-purple-600" },
+  other: { icon: MoreHorizontal, color: "text-slate-400" },
 };
 
-const MODE_BADGE_VARIANT: Record<string, "teal" | "info" | "purple" | "secondary"> = {
-  onsite: "teal",
-  remote: "info",
-  office: "purple",
-};
+function statusIndicatorOf(status: string, label: string) {
+  const conf = STATUS_INDICATOR[status] || { icon: Clock3, color: "text-slate-400" };
+  return indicatorSpan(conf.icon, conf.color, label);
+}
 
-const SERVICE_ITEM_BADGE_VARIANT: Record<string, "cyan" | "orange" | "info" | "purple" | "warning" | "teal" | "secondary"> = {
-  cyan: "cyan",
-  orange: "orange",
-  info: "info",
-  purple: "purple",
-  warning: "warning",
-  teal: "teal",
-  secondary: "secondary",
-};
-
-const PRIORITY_BADGE_VARIANT: Record<string, "secondary" | "indigo" | "warning" | "destructive"> = {
-  low: "secondary",
-  normal: "indigo",
-  high: "warning",
-  urgent: "destructive",
-};
+function typeIndicatorOf(serviceType: string | undefined, label: string) {
+  const conf = TYPE_INDICATOR[serviceType || ""] || TYPE_INDICATOR.other;
+  return indicatorSpan(conf.icon, conf.color, label);
+}
 
 function normalizeStatus(s: string, labels: Record<string, string>) {
   return labels[s] || s;
@@ -859,10 +856,10 @@ export function Dashboard() {
     ? (todayTrendCount - avgPreviousTrend) / avgPreviousTrend
     : null;
   const stats = [
-    { title: t.stats.todayTotal, value: summary.todayTotal ?? 0, icon: Wrench, color: "text-purple-600", bg: "bg-purple-50", delta: todayDelta, spark: null as number[] | null },
-    { title: t.stats.monthTotal, value: summary.monthTotal ?? 0, icon: BarChart3, color: "text-blue-600", bg: "bg-blue-50", delta: null as number | null, spark: orderTrend.length ? orderTrend : null },
-    { title: t.stats.monthCustomers, value: summary.monthCustomers ?? 0, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50", delta: null as number | null, spark: null as number[] | null },
-    { title: t.stats.monthEngineerVisits, value: summary.monthEngineerVisits ?? 0, icon: TrendingUp, color: "text-orange-600", bg: "bg-orange-50", delta: null as number | null, spark: null as number[] | null },
+    { key: "today", title: t.stats.todayTotal, value: summary.todayTotal ?? 0, icon: Wrench, color: "text-purple-600", bg: "bg-purple-50", delta: todayDelta, spark: null as number[] | null },
+    { key: "month", title: t.stats.monthTotal, value: summary.monthTotal ?? 0, icon: BarChart3, color: "text-blue-600", bg: "bg-blue-50", delta: null as number | null, spark: orderTrend.length ? orderTrend : null },
+    { key: "customers", title: t.stats.monthCustomers, value: summary.monthCustomers ?? 0, icon: Users, color: "text-emerald-600", bg: "bg-emerald-50", delta: null as number | null, spark: null as number[] | null },
+    { key: "visits", title: t.stats.monthEngineerVisits, value: summary.monthEngineerVisits ?? 0, icon: TrendingUp, color: "text-orange-600", bg: "bg-orange-50", delta: null as number | null, spark: null as number[] | null },
   ];
   const displayWorkSummary = normalizeWorkSummaryForDisplay(workSummary?.summary);
 
@@ -1014,15 +1011,15 @@ export function Dashboard() {
           const Icon = stat.icon;
           return (
             <Card key={stat.title} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-              <CardHeader className="flex flex-row items-center justify-between px-3 pb-2 pt-3 sm:px-6 sm:pt-6">
+              <CardHeader className="flex flex-row items-center justify-between px-3 pb-2 pt-3 sm:px-4 sm:pt-4">
                 <CardTitle className="text-xs font-medium text-muted-foreground sm:text-sm">
                   {stat.title}
                 </CardTitle>
-                <div className={`rounded-lg p-1.5 sm:p-2 ${stat.bg}`}>
+                <div className={`rounded-lg p-1.5 ${stat.bg}`}>
                   <Icon className={`w-4 h-4 ${stat.color}`} />
                 </div>
               </CardHeader>
-              <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
+              <CardContent className="px-3 pb-3 sm:px-4 sm:pb-4">
                 <div className="flex items-baseline gap-2">
                   <div className="text-2xl font-bold sm:text-3xl tabular-nums">
                     {loading ? (
@@ -1037,28 +1034,29 @@ export function Dashboard() {
                     )}
                   </div>
                 </div>
-                {loading ? (
-                  <p className="text-xs text-muted-foreground mt-2">{t.stats.realtime}</p>
-                ) : stat.spark ? (
+                {loading ? null : stat.spark ? (
                   <div className="mt-2">
                     <Sparkline data={stat.spark} className={`h-8 w-full ${stat.color}`} />
                     <p className="mt-1 text-xs text-muted-foreground">{t.stats.trend14}</p>
                   </div>
-                ) : stat.delta !== null && stat.delta !== undefined ? (
-                  <p className="mt-2 flex items-center gap-1 text-xs">
-                    {stat.delta >= 0 ? (
-                      <TrendingUp className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
-                    ) : (
-                      <TrendingDown className="h-3.5 w-3.5 text-red-500" aria-hidden="true" />
-                    )}
-                    <span className={stat.delta >= 0 ? "font-medium text-emerald-600" : "font-medium text-red-500"}>
-                      {stat.delta >= 0 ? "+" : ""}{Math.round(stat.delta * 100)}%
-                    </span>
-                    <span className="text-muted-foreground">{t.stats.vsAvg}</span>
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground mt-2">{t.stats.realtime}</p>
-                )}
+                ) : stat.key === "today" ? (
+                  // 今日为 0 时不显示 -100% 红箭头（刺眼且无信息量），改中性文案
+                  todayTrendCount === 0 ? (
+                    <p className="mt-2 text-xs text-muted-foreground">{t.stats.noToday}</p>
+                  ) : stat.delta !== null && stat.delta !== undefined ? (
+                    <p className="mt-2 flex items-center gap-1 text-xs">
+                      {stat.delta >= 0 ? (
+                        <TrendingUp className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+                      ) : (
+                        <TrendingDown className="h-3.5 w-3.5 text-red-500" aria-hidden="true" />
+                      )}
+                      <span className={stat.delta >= 0 ? "font-medium text-emerald-600" : "font-medium text-red-500"}>
+                        {stat.delta >= 0 ? "+" : ""}{Math.round(stat.delta * 100)}%
+                      </span>
+                      <span className="text-muted-foreground">{t.stats.vsAvg}</span>
+                    </p>
+                  ) : null
+                ) : null}
               </CardContent>
             </Card>
           );
@@ -1193,7 +1191,6 @@ export function Dashboard() {
         <section className="lg:col-span-3">
           <div className="mb-3 px-1 sm:mb-4">
             <h2 className="text-lg font-semibold sm:text-xl">{t.map.title}</h2>
-            <p className="text-sm text-muted-foreground">{t.map.description}</p>
           </div>
           <Amap
             center={{ lng: 120.71518, lat: 31.31962, name: "苏州办事处" }}
@@ -1212,11 +1209,16 @@ export function Dashboard() {
         </section>
 
         <section className="lg:col-span-2">
-          <div className="mb-3 px-1 sm:mb-4">
-            <div className="min-w-0">
-              <h2 className="text-lg font-semibold sm:text-xl">{t.recent.title}</h2>
-              <p className="text-sm text-muted-foreground">{t.recent.description}</p>
-            </div>
+          <div className="mb-3 flex items-center justify-between gap-2 px-1 sm:mb-4">
+            <h2 className="text-lg font-semibold sm:text-xl">{t.recent.title}</h2>
+            <button
+              type="button"
+              className="inline-flex shrink-0 items-center gap-1 text-sm text-primary transition-colors hover:underline"
+              onClick={() => navigate(useOwnScope ? "/service-report" : "/service-orders")}
+            >
+              {t.recent.viewAll}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
           </div>
           <Card className="h-[300px] lg:h-[440px]">
             <CardContent className="min-h-0 flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-6">
@@ -1246,25 +1248,14 @@ export function Dashboard() {
                         order.status === "in_progress" ? "bg-primary" : "bg-muted-foreground/30"
                       }`} />
                       <div className="min-w-0 flex-1">
-                        <div className="flex min-w-0 items-center justify-between gap-2 sm:hidden lg:flex xl:hidden">
+                        <div className="flex min-w-0 items-center justify-between gap-2">
                           <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
-                          <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-xs font-normal">
-                            {order.statusLabel}
-                          </Badge>
+                          <span className="shrink-0">{statusIndicatorOf(order.status, order.statusLabel)}</span>
                         </div>
-                        <span className="mt-1 block min-w-0 truncate text-sm text-muted-foreground sm:hidden lg:block xl:hidden" title={order.title}>{order.title}</span>
-                        <div className="mt-1 flex min-w-0 items-center gap-3 text-xs text-muted-foreground sm:hidden lg:flex xl:hidden">
+                        <span className="mt-0.5 block min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
+                        <div className="mt-0.5 flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
                           <span className="shrink-0 whitespace-nowrap">{order.date}</span>
                           <span className="min-w-0 truncate font-medium text-foreground" title={order.engineer}>{order.engineer}</span>
-                        </div>
-                        <div className="hidden min-w-0 grid-cols-[minmax(0,8rem)_minmax(0,12rem)_5.5rem_2.5rem_4rem] items-center gap-3 sm:grid lg:hidden xl:grid xl:grid-cols-[minmax(0,9rem)_minmax(0,14rem)_5.5rem_2.5rem_4rem]">
-                          <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
-                          <span className="min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
-                          <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{order.date}</span>
-                          <span className="shrink-0 whitespace-nowrap text-xs font-medium">{order.engineer}</span>
-                          <Badge variant={STATUS_BADGE_VARIANT[order.status] || "secondary"} className="h-5 w-16 shrink-0 justify-center whitespace-nowrap px-2 py-0 text-xs font-normal">
-                            {order.statusLabel}
-                          </Badge>
                         </div>
                       </div>
                     </div>
@@ -1322,9 +1313,9 @@ export function Dashboard() {
               const fileText = filesSummary(previewOrder, t.detail);
               return (
                 <div className="space-y-5 py-2">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant={STATUS_BADGE_VARIANT[status] || "secondary"}>{statusLabel}</Badge>
-                    <Badge variant={SERVICE_ITEM_BADGE_VARIANT[serviceItemsBadgeColor(previewOrder)] || "secondary"}>{typeLabel}</Badge>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    {statusIndicatorOf(status, statusLabel)}
+                    {typeIndicatorOf(previewOrder.serviceType, typeLabel)}
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-3">

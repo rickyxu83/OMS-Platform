@@ -539,7 +539,7 @@ export function Amap({
   }
 
   return (
-    <div ref={shellRef} className={`ops-map-shell relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 ${className}`} style={{ height }}>
+    <div ref={shellRef} className={`ops-map-shell relative rounded-xl overflow-hidden border bg-card shadow-sm ${className}`} style={{ height }}>
       {state === "loading" && (
         <div className={`absolute inset-0 z-10 flex items-center justify-center text-sm ${dark ? "bg-slate-900/80 text-slate-300" : "bg-white/70 text-muted-foreground"}`}>
           <span className="btn-loader mr-2" aria-hidden="true" /> 地图正在加载…
