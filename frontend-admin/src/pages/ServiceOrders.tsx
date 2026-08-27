@@ -1832,9 +1832,11 @@ export function ServiceOrders() {
           {
             label: t.list.fieldServiceItems,
             value: (
-              <span className="flex flex-wrap gap-x-2 gap-y-0.5">
-                {(() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; return mc ? indicatorSpan(mc.icon, mc.color, modeLabel) : <span className="text-xs text-muted-foreground">{modeLabel}</span>; })()}
-                {(() => { const tc = TYPE_INDICATOR[order.serviceType || ""]; return tc ? indicatorSpan(tc.icon, tc.color, itemsLabel) : <span className="text-xs text-muted-foreground">{itemsLabel}</span>; })()}
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
+                {(() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; const Icon = mc ? mc.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${mc.color}`} /> : null; })()}
+                <span className="font-medium text-foreground/80">{modeLabel}</span>
+                <span className="text-muted-foreground/50">·</span>
+                {(() => { const tc = TYPE_INDICATOR[order.serviceType || ""]; return tc ? indicatorSpan(tc.icon, tc.color, itemsLabel) : <span>{itemsLabel}</span>; })()}
               </span>
             ),
           },
@@ -1854,7 +1856,7 @@ export function ServiceOrders() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                className="text-muted-foreground hover:text-emerald-600 hover:bg-transparent"
                 onClick={(event) => {
                   event.stopPropagation();
                   confirmInspection(order);
@@ -1869,7 +1871,7 @@ export function ServiceOrders() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                className="text-muted-foreground hover:text-sky-600 hover:bg-transparent"
                 onClick={(event) => {
                   event.stopPropagation();
                   openAssign(order);
@@ -1886,7 +1888,7 @@ export function ServiceOrders() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                    className="text-muted-foreground hover:text-slate-900 hover:bg-transparent"
                     onClick={(event) => event.stopPropagation()}
                     disabled={exporting}
                   >
@@ -2262,8 +2264,12 @@ export function ServiceOrders() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-wrap gap-1.5">
-                            {(() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; return mc ? indicatorSpan(mc.icon, mc.color, modeLabel) : null; })()}
-                            {(() => { const tc = TYPE_INDICATOR[order.serviceType || ""]; return tc ? indicatorSpan(tc.icon, tc.color, itemsLabel) : null; })()}
+                            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
+                              {(() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; const Icon = mc ? mc.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${mc.color}`} /> : null; })()}
+                              <span className="font-medium text-foreground/80">{modeLabel}</span>
+                              <span className="text-muted-foreground/50">·</span>
+                              {(() => { const tc = TYPE_INDICATOR[order.serviceType || ""]; return tc ? indicatorSpan(tc.icon, tc.color, itemsLabel) : <span>{itemsLabel}</span>; })()}
+                            </span>
                           </div>
                         </TableCell>
                         <TableCell className="min-w-0">
@@ -2304,7 +2310,7 @@ export function ServiceOrders() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                                className="text-muted-foreground hover:text-emerald-600 hover:bg-transparent"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   confirmInspection(order);
@@ -2319,7 +2325,7 @@ export function ServiceOrders() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                                className="text-muted-foreground hover:text-emerald-600 hover:bg-transparent"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   openAssign(order);
@@ -2336,7 +2342,7 @@ export function ServiceOrders() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                                    className="text-muted-foreground hover:text-emerald-600 hover:bg-transparent"
                                     onClick={(event) => event.stopPropagation()}
                                     disabled={exporting}
                                   >
