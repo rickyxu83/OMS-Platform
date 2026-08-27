@@ -2265,7 +2265,7 @@ export function ServiceOrders() {
                                 return ed && ed !== sd ? `${sd} ~ ${ed}` : sd;
                               })()}</div>
                               {(serviceTime.start || serviceTime.end) ? (
-                                <div className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden min-w-[180px] rounded-lg border bg-popover p-2.5 text-xs shadow-lg group-hover:block">
+                                <div className="pointer-events-none absolute left-0 top-full z-20 mt-1 hidden min-w-[180px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg group-hover:block dark:border-slate-700 dark:bg-slate-900">
                                   <div className="flex items-center gap-1.5 text-muted-foreground">
                                     <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><Play className="h-2.5 w-2.5" /></span>
                                     开始 <span className="font-medium text-foreground">{serviceTime.start || "-"}</span>
