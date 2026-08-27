@@ -2159,24 +2159,18 @@ export function ServiceOrders() {
             <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
                 <col className="w-10" />
-                <col className="w-[19%]" />
-                <col className="w-[10%]" />
-                <col className="w-[19%]" />
-                <col className="w-[9%]" />
-                <col className="w-[15%]" />
-                <col className="w-[10%]" />
-                <col className="w-[18%]" />
+                <col className="w-[24%]" />
+                <col className="w-[32%]" />
+                <col className="w-[22%]" />
+                <col className="w-[22%]" />
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
                 <TableRow>
                   <TableHead className="w-11 text-center" />
                   <TableHead>{t.list.colCaseCustomer}</TableHead>
-                  <TableHead>{t.list.colServiceItems}</TableHead>
-                  <TableHead>{t.list.colMainContent}</TableHead>
-                  <TableHead>{t.list.colEngineer}</TableHead>
-                  <TableHead>{t.list.colServiceTime}</TableHead>
-                  <TableHead>{t.list.colStatus}</TableHead>
-                  <TableHead className="pr-5 text-right">{t.list.colActions}</TableHead>
+                  <TableHead>{t.list.colMainContent} / {t.list.colServiceItems}</TableHead>
+                  <TableHead>{t.list.colEngineer} / {t.list.colServiceTime}</TableHead>
+                  <TableHead className="pr-5 text-right">{t.list.colStatus} / {t.list.colActions}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -2186,6 +2180,7 @@ export function ServiceOrders() {
                     const itemsLabel = serviceItemsLabel(order);
                     const workflowStatus = getWorkflowStatus(order);
                     const serviceTime = serviceTimeRange(order);
+                    const engineerName = engineerText(order, t.detail.unnamedEngineer);
                     const canConfirmInspection = canAssignOrders && workflowStatus === "pending_confirmation" && order.serviceType === "inspect";
                     const canAssign = canAssignOrders && !["cancelled", "submitted", "awaiting_customer_signature"].includes(workflowStatus);
                     const canExport = ["submitted", "approved", "archived", "completed"].includes(workflowStatus);
@@ -2214,10 +2209,20 @@ export function ServiceOrders() {
                         </TableCell>
                         <TableCell className="min-w-0">
                           <div className="min-w-0">
-                            <div className="truncate font-semibold" title={displayId(order)}>{displayId(order)}</div>
                             <button
                               type="button"
-                              className="block max-w-full truncate text-left text-sm text-muted-foreground transition-colors hover:text-primary hover:underline"
+                              className="block max-w-full truncate text-left font-mono text-[13px] font-semibold transition-colors hover:text-primary"
+                              title={displayId(order)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openDetailOrder(order);
+                              }}
+                            >
+                              {displayId(order)}
+                            </button>
+                            <button
+                              type="button"
+                              className="block max-w-full truncate text-left text-xs text-muted-foreground transition-colors hover:text-primary hover:underline"
                               title={`${t.list.filterByCustomer}：${textValue(order.customerName)}`}
                               onClick={(event) => {
                                 event.stopPropagation();
@@ -2228,75 +2233,65 @@ export function ServiceOrders() {
                             </button>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1.5">
-                            {(() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; return mc ? indicatorSpan(mc.icon, mc.color, modeLabel) : <span className="text-xs text-muted-foreground">{modeLabel}</span>; })()}
-                          </div>
-                        </TableCell>
                         <TableCell className="min-w-0">
-                          <span className="block truncate font-medium" title={orderMainContent(order)}>{orderMainContent(order)}</span>
-                        </TableCell>
-                        <TableCell className="min-w-0">
-                          <button
-                            type="button"
-                            className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline disabled:cursor-default disabled:text-current disabled:no-underline"
-                            title={`${t.list.filterByEngineer}：${engineerText(order, t.detail.unnamedEngineer)}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              applyNameFilter(engineerText(order, ""));
-                            }}
-                            disabled={!engineerText(order, "")}
-                          >
-                            {engineerText(order, t.detail.unnamedEngineer)}
-                          </button>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-0.5 text-xs">
-                            <div>
-                              <span className="text-muted-foreground">{t.list.startShort}：</span>
-                              <span>{serviceTime.start}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">{t.list.endShort}：</span>
-                              <span>{serviceTime.end}</span>
+                          <div className="min-w-0">
+                            <div className="truncate font-medium" title={orderMainContent(order)}>{orderMainContent(order) || "-"}</div>
+                            <div className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                              {(() => { const mc = MODE_INDICATOR[order.serviceMode || ""]; const Icon = mc ? mc.icon : null; return Icon ? <Icon className={`h-3 w-3 ${mc.color}`} /> : null; })()}
+                              {modeLabel}
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          {(() => { const conf = STATUS_INDICATOR[getWorkflowStatus(order)] || STATIC_FALLBACK; return indicatorSpan(conf.icon, conf.color, statusLabel); })()}
+                        <TableCell className="min-w-0">
+                          <div className="min-w-0 text-xs">
+                            <button
+                              type="button"
+                              className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline disabled:cursor-default disabled:text-current disabled:no-underline"
+                              title={`${t.list.filterByEngineer}：${engineerText(order, "")}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                applyNameFilter(engineerText(order, ""));
+                              }}
+                              disabled={!engineerText(order, "")}
+                            >
+                              {engineerName}
+                            </button>
+                            <div className="truncate text-muted-foreground">{serviceTime.start}{serviceTime.end ? ` ~ ${serviceTime.end}` : ""}</div>
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            {canConfirmInspection && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-muted-foreground hover:text-emerald-600 hover:bg-transparent"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  confirmInspection(order);
-                                }}
-                                disabled={saving}
-                              >
-                                <CheckCircle className="mr-1 h-4 w-4" />
-                                {t.actions.confirmInspection}
-                              </Button>
-                            )}
-                            {canAssign && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-muted-foreground hover:text-emerald-600 hover:bg-transparent"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  openAssign(order);
-                                }}
-                                disabled={saving}
-                              >
-                                <Send className="mr-1 h-4 w-4" />
-                                {t.actions.assign}
-                              </Button>
-                            )}
+                          <div className="flex flex-col items-end gap-1">
+                            {(() => { const conf = STATUS_INDICATOR[getWorkflowStatus(order)] || STATIC_FALLBACK; return indicatorSpan(conf.icon, conf.color, statusLabel); })()}
+                            {(canConfirmInspection || canAssign) ? (
+                              <div className="flex items-center gap-2">
+                                {canConfirmInspection && (
+                                  <button
+                                    type="button"
+                                    className="text-xs text-muted-foreground hover:text-emerald-600"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      confirmInspection(order);
+                                    }}
+                                    disabled={saving}
+                                  >
+                                    {t.actions.confirmInspection}
+                                  </button>
+                                )}
+                                {canAssign && (
+                                  <button
+                                    type="button"
+                                    className="text-xs text-muted-foreground hover:text-sky-600"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      openAssign(order);
+                                    }}
+                                    disabled={saving}
+                                  >
+                                    {t.actions.assign}
+                                  </button>
+                                )}
+                              </div>
+                            ) : null}
                           </div>
                         </TableCell>
                       </TableRow>
