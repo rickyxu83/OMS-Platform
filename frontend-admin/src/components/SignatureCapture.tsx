@@ -17,6 +17,9 @@ function SignatureCanvas({ value, onChange, wrapperClassName, canvasClassName, p
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  // 画布当前像素对应的 value：笔迹结束回传的 value 与本画布内容一致，重绘时跳过
+  // （否则会把我迹裁剪图拉伸铺满画布——“第一笔变很大”的根因）
+  const drawnValueRef = useRef("");
   // 异步图片回画令牌：value 变化（尤其是清空）后，旧图片的 onload 不得再回画，避免"清除后残影复活"
   const drawTokenRef = useRef(0);
   // 旋转/尺寸变化防抖定时器：等 iOS 旋转动画结束后再重设画布，避免读到中间尺寸
@@ -28,8 +31,12 @@ function SignatureCanvas({ value, onChange, wrapperClassName, canvasClassName, p
     const token = ++drawTokenRef.current;
     const rect = canvas.getBoundingClientRect();
     const ratio = window.devicePixelRatio || 1;
-    canvas.width = Math.max(1, Math.round(rect.width * ratio));
-    canvas.height = Math.max(1, Math.round(rect.height * ratio));
+    const targetW = Math.max(1, Math.round(rect.width * ratio));
+    const targetH = Math.max(1, Math.round(rect.height * ratio));
+    // 尺寸没变且当前显示正是这份 value（笔迹回传触发的重绘）：像素已正确，直接跳过
+    if (canvas.width === targetW && canvas.height === targetH && drawnValueRef.current === value) return;
+    canvas.width = targetW;
+    canvas.height = targetH;
     const context = canvas.getContext("2d");
     if (!context) return;
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -39,13 +46,17 @@ function SignatureCanvas({ value, onChange, wrapperClassName, canvasClassName, p
     context.lineJoin = "round";
     context.lineWidth = 3;
     context.strokeStyle = "#111827";
+    drawnValueRef.current = value;
     if (value) {
       const image = new Image();
       image.onload = () => {
         if (drawTokenRef.current !== token) return;
-        const scale = Math.min(rect.width / image.width, rect.height / image.height);
-        const drawWidth = image.width * scale;
-        const drawHeight = image.height * scale;
+        // 裁剪图是设备像素：换回 CSS 尺寸（÷ratio）后只缩不放，绝不上采样——恢复/重绘不再放大笔迹
+        const naturalW = image.width / ratio;
+        const naturalH = image.height / ratio;
+        const scale = Math.min(1, rect.width / naturalW, rect.height / naturalH);
+        const drawWidth = naturalW * scale;
+        const drawHeight = naturalH * scale;
         context.drawImage(image, (rect.width - drawWidth) / 2, (rect.height - drawHeight) / 2, drawWidth, drawHeight);
       };
       image.src = value;
@@ -117,7 +128,9 @@ function SignatureCanvas({ value, onChange, wrapperClassName, canvasClassName, p
     lastPointRef.current = null;
     event.currentTarget.releasePointerCapture(event.pointerId);
     const canvas = canvasRef.current;
-    onChange(canvas ? cropSignatureDataUrl(canvas) : "");
+    const next = canvas ? cropSignatureDataUrl(canvas) : "";
+    drawnValueRef.current = next; // 标记本画布已显示此 value，阻止紧随其后的重绘把它拉伸放大
+    onChange(next);
   }
 
   return (
