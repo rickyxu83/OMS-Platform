@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   CalendarClock, CheckCircle2, CircleCheck, CircleCheckBig, CircleDot, CircleMinus, CircleSlash, CircleX,
   Clock3, FileSignature, FileText, Forward, Hourglass, ListTodo, Loader2, Package,
@@ -112,7 +113,9 @@ function TaskStatusHover({ task }: { task: ApprovalTask }) {
       onMouseLeave={() => setHover(false)}
     >
       {statusIndicator(task)}
-      {hover && pos ? (
+      {/* createPortal 到 body：行入场动画 list-row-enter 的 transform 会让行成为 fixed 包含块，
+          直接渲染在行内会整体错位（踩过的坑） */}
+      {hover && pos ? createPortal(
         <div className="pointer-events-none fixed z-[100] min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ top: pos.top, left: pos.left }}>
           {segs.map((seg) => (
             <div key={seg.label} className="flex items-center gap-1.5 text-muted-foreground">
@@ -141,7 +144,8 @@ function TaskStatusHover({ task }: { task: ApprovalTask }) {
               })()}
             </div>
           ) : null}
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </span>
   )
