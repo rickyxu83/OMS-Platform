@@ -1270,17 +1270,22 @@ function normalizeRequestInput(body) {
   }
 
   let hours = positiveNumber(body?.hours, '申请小时数')
-  assertWholeHour(hours, '申请小时数')
+  if (requestType === 'comp_time') {
+    // 调休按小时申请，最小单位 0.5 小时（产品裁决 2026-08-28）
+    if (Math.abs(Number(hours) * 2 - Math.round(Number(hours) * 2)) > 0.0001) throw badRequest('调休时长必须以 0.5 小时为单位')
+  } else {
+    assertWholeHour(hours, '申请小时数')
+  }
   let startAt = text(body?.startAt).replace('T', ' ')
   let endAt = text(body?.endAt).replace('T', ' ')
   if (!startAt || !endAt) throw badRequest('开始和结束时间不能为空')
-  if (requestType === 'leave' || requestType === 'comp_time') {
+  if (requestType === 'leave') {
     startAt = leaveSlot(startAt, 'start').value
     endAt = leaveSlot(endAt, 'end').value
   }
   assertTimeRange(startAt, endAt)
   const durationHours = (Date.parse(endAt.replace(' ', 'T')) - Date.parse(startAt.replace(' ', 'T'))) / 3600000
-  if (!['leave', 'comp_time'].includes(requestType) && Math.abs(durationHours - hours) > 0.0001) {
+  if (requestType !== 'leave' && Math.abs(durationHours - hours) > 0.0001) {
     throw badRequest('申请小时数必须与开始、结束时间一致')
   }
 
@@ -1335,15 +1340,15 @@ async function createRequest(req, res) {
     const delegate = await enabledEmployeeById(delegateEmployeeId)
     if (!delegate) throw badRequest('代理人不存在或未启用考勤')
 
-    if (input.requestType === 'leave' || input.requestType === 'comp_time') {
+    if (input.requestType === 'leave') {
       try {
         const range = calculateWorkingLeaveRange({
           startAt: input.startAt,
           endAt: input.endAt,
           holidays: new Set(legalHolidayCache.keys()),
           makeupWorkdays: new Set(makeupWorkdayCache),
-          // 病假/事假/特休不含六日与法定假；调休与婚丧假含六日（自然日口径）
-          includeNonWorkingDays: input.requestType === 'comp_time' || ['marriage', 'bereavement'].includes(input.leaveType),
+          // 病假/事假/特休不含六日与法定假；婚丧假含六日（自然日口径）
+          includeNonWorkingDays: ['marriage', 'bereavement'].includes(input.leaveType),
         })
         input.startAt = range.startAt
         input.endAt = range.endAt
@@ -1352,6 +1357,9 @@ async function createRequest(req, res) {
       } catch (error) {
         throw badRequest(error.message)
       }
+    } else {
+      // 调休按小时申请（0.5h 步进）：天数按 8h/天折算，不再走半天槽与六日掐算
+      workingDays = Number((Number(input.hours) / 8).toFixed(2))
     }
 
     // 代理期间禁止休假（产品裁决 2026-08-28）：申请人若在所选时段已被他人指定为代理人，禁止提交
@@ -1418,7 +1426,7 @@ function toDate(value) {
 }
 
 // 有效加班分钟数（佬 2026-08-25 定稿）：法定节假日/休息日全天计；
-// 工作日只计 09:00 上班前 + 18:00 下班后（工作时间内的部分不算加班）。跨天时边界取起始日（与历史行为一致）。
+// 工作日只计 18:00 下班后（上午 9 点前不计；工作时间内的部分不算加班）。跨天时边界取起始日（与历史行为一致）。
 
 function ceilToHour(date) {
   const rounded = new Date(date)
@@ -1436,43 +1444,49 @@ function floorToHour(date) {
   return rounded
 }
 
-// 加班时长核算：有效部分（工作日 9 点前 + 18 点后，节假日全天）按 0.5h 粒度四舍五入。
+// 加班时长核算：工作日计 09:00 前 + 18:00 后两段（2026-08-28 产品裁决：早到加班也要算），
+// 节假日/休息日全天；每段开始向上取整点、结束向下取整点，不足整点但确有发生时按 0.5h 保底。
 // 前端 attendance-shared.ts 的 previewOvertimeHours 镜像这套口径做即时预览，改动规则时需同步那里。
-// 加班时长核算：掐平日 18:00、开始向上取整点、结束向下取整点。
-// 前端 Attendance.tsx 的 previewOvertimeHours 镜像了这套口径做即时预览，
-// 改动本函数的 18:00/取整规则时需同步那里。参见 docs/adr/0002。
+// 跨天时边界取起始日（与历史行为一致）。参见 docs/adr/0002。
 function overtimeWindow(startAt, endAt) {
   const start = toDate(startAt)
   const end = toDate(endAt)
   if (!start || !end || end <= start) return null
   const dayType = overtimeDayType(start)
   const fullDayOvertime = dayType === 'legal_holiday' || dayType === 'rest_day'
-  const endHour = end.getHours() + end.getMinutes() / 60
-  if (!fullDayOvertime && endHour <= 18) return null
-  const overtimeStart = fullDayOvertime
-    ? start
-    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0)
-  const effectiveStart = ceilToHour(start > overtimeStart ? start : overtimeStart)
-  const effectiveEnd = floorToHour(end)
-  if (effectiveEnd <= effectiveStart) {
-    // 掐整后归零但实际存在加班时段（如法定节假日去程 11:10–11:35 仅 25 分钟）：按 0.5 小时
-    // 保底计，时段显示原始起止。平日 18:00 前无加班事实的窗口已在上方拦截，不受保底影响。
-    // 产品裁决 2026-08-27；前端 previewOvertimeHours 同步镜像。参见 docs/adr/0002。
-    const rawStart = start > overtimeStart ? start : overtimeStart
-    if (end <= rawStart) return null
-    return {
-      startAt: formatMysqlDateTime(rawStart),
-      endAt: formatMysqlDateTime(end),
-      hours: 0.5,
-      dayType,
-    }
+  // 拆有效时段：节假日/休息日为整段；工作日为 09:00 前 + 18:00 后两段
+  const parts = []
+  if (fullDayOvertime) {
+    parts.push([start, end])
+  } else {
+    const day = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+    const nine = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 9, 0, 0)
+    const eighteen = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 18, 0, 0)
+    if (start < nine) parts.push([start, end < nine ? end : nine])
+    if (end > eighteen) parts.push([start > eighteen ? start : eighteen, end])
   }
-  const hours = Math.round((effectiveEnd.getTime() - effectiveStart.getTime()) / 3600000)
-  if (hours <= 0) return null
+  if (!parts.length) return null
+  // 每段各自取整（开始上取整、结束下取整）；不足整点但确有发生 → 0.5h 保底（不足 15 分钟也计，产品裁决 2026-08-28）
+  let totalHours = 0
+  let minStartTs = null
+  let maxEndTs = null
+  for (const [pStart, pEnd] of parts) {
+    if (pEnd <= pStart) continue
+    const effStart = ceilToHour(pStart)
+    const effEnd = floorToHour(pEnd)
+    const hourDelta = Math.round((effEnd.getTime() - effStart.getTime()) / 3600000)
+    const partHours = hourDelta > 0 ? hourDelta : 0.5
+    totalHours += partHours
+    const displayStart = hourDelta > 0 ? effStart : pStart
+    const displayEnd = hourDelta > 0 ? effEnd : pEnd
+    if (minStartTs === null || displayStart.getTime() < minStartTs) minStartTs = displayStart.getTime()
+    if (maxEndTs === null || displayEnd.getTime() > maxEndTs) maxEndTs = displayEnd.getTime()
+  }
+  if (totalHours <= 0 || minStartTs === null || maxEndTs === null) return null
   return {
-    startAt: formatMysqlDateTime(effectiveStart),
-    endAt: formatMysqlDateTime(effectiveEnd),
-    hours,
+    startAt: formatMysqlDateTime(new Date(minStartTs)),
+    endAt: formatMysqlDateTime(new Date(maxEndTs)),
+    hours: totalHours,
     dayType,
   }
 }
