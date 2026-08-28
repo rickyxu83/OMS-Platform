@@ -88,7 +88,7 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
                 data-date-picker-panel
                 onMouseDown={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
-                className="fixed z-[100] flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                className="pointer-events-auto fixed z-[100] flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
                 style={panelPos ? { top: panelPos.top, left: panelPos.left } : undefined}>
           {/* 侧栏：年份纵列 */}
           <div className="max-h-[320px] w-[72px] overflow-y-auto border-r bg-slate-50 py-2 text-center text-sm dark:bg-slate-800/50">
