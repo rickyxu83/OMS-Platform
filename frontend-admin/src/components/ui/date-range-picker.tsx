@@ -123,11 +123,17 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
               month={viewMonth}
               onMonthChange={setViewMonth}
               selected={{ from: startDate, to: endDate }}
-              onSelect={(range) => {
-                const s = range?.from ? format(range.from, "yyyy-MM-dd") : "";
-                const e = range?.to ? format(range.to, "yyyy-MM-dd") : "";
-                onChange(s, e);
-                if (range?.from && range?.to) setOpen(false);
+              onSelect={(_range, day) => {
+                if (!day) return;
+                // 选择语义（覆盖 v8 原生“修边界”行为）：无起点或已有完整范围 → 点击=新开始日期；
+                // 有开始无结束 → 本次点击闭合范围（自动按早晚排序，允许先点晚再点早）
+                if (!startDate || endDate) {
+                  onChange(format(day, "yyyy-MM-dd"), "");
+                  return;
+                }
+                const [s, e] = day >= startDate ? [startDate, day] : [day, startDate];
+                onChange(format(s, "yyyy-MM-dd"), format(e, "yyyy-MM-dd"));
+                setOpen(false);
               }}
               className="rdp-custom"
             />

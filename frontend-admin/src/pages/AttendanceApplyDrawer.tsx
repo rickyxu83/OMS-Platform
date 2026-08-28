@@ -599,9 +599,8 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                 ) : null}
 
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(0, "morning")}>今天上午</Button>
-                  <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(0, "afternoon")}>今天下午</Button>
-                  <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(0, "day")}>今天全天</Button>
+                  <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(1, "morning")}>明天上午</Button>
+                  <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(1, "afternoon")}>明天下午</Button>
                   <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(1, "day")}>明天全天</Button>
                 </div>
 
