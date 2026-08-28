@@ -1322,6 +1322,9 @@ async function createRequest(req, res) {
   const employee = await currentEmployee(req.user.id)
   if (!employee) throw forbidden('当前账号没有启用的员工档案')
   const input = normalizeRequestInput(req.body)
+  // 类型门禁（产品裁决 2026-08-28）：调休仅工程师；加班仅工程师与司机；主管及其他角色无这两种申请
+  if (input.requestType === 'comp_time' && req.user.role !== 'engineer') throw forbidden('仅工程师可以申请调休')
+  if (input.requestType === 'overtime' && !['engineer', 'driver'].includes(req.user.role)) throw forbidden('仅工程师与司机可以申请加班')
 
   let delegateEmployeeId = null
   let workingDays = null
@@ -1339,7 +1342,8 @@ async function createRequest(req, res) {
           endAt: input.endAt,
           holidays: new Set(legalHolidayCache.keys()),
           makeupWorkdays: new Set(makeupWorkdayCache),
-          includeNonWorkingDays: input.requestType === 'leave' && ['marriage', 'bereavement'].includes(input.leaveType),
+          // 病假/事假/特休不含六日与法定假；调休与婚丧假含六日（自然日口径）
+          includeNonWorkingDays: input.requestType === 'comp_time' || ['marriage', 'bereavement'].includes(input.leaveType),
         })
         input.startAt = range.startAt
         input.endAt = range.endAt
@@ -1349,6 +1353,17 @@ async function createRequest(req, res) {
         throw badRequest(error.message)
       }
     }
+
+    // 代理期间禁止休假（产品裁决 2026-08-28）：申请人若在所选时段已被他人指定为代理人，禁止提交
+    const agencyConflict = await query(
+      `SELECT r.id FROM attendance_requests r
+       WHERE r.delegate_employee_id = :employeeId
+         AND r.status IN ('pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin', 'approved')
+         AND NOT (r.end_at < :startAt OR r.start_at > :endAt)
+       LIMIT 1`,
+      { employeeId: employee.id, startAt: input.startAt, endAt: input.endAt },
+    )
+    if (agencyConflict.length) throw badRequest('您在所选时段已被指定为代理人，代理期间不能申请休假')
 
     if (input.requestType === 'leave') {
       const conflict = await findConflictingLeave(
@@ -2332,7 +2347,7 @@ async function listApprovalTaskItems(user, view = 'pending') {
 async function requestForUpdate(connection, id) {
   const [rows] = await connection.execute(
     `SELECT r.*, p.employee_name, p.user_id, u.email AS applicant_email,
-            u.role AS applicant_role, p.supervisor_employee_id
+            u.role AS applicant_role, p.supervisor_employee_id, p.nationality AS applicant_nationality
      FROM attendance_requests r
      JOIN attendance_employee_profiles p ON p.id = r.employee_id
      LEFT JOIN users u ON u.id = p.user_id
@@ -2342,6 +2357,51 @@ async function requestForUpdate(connection, id) {
     { id },
   )
   return rows[0] || null
+}
+
+// 相连工作日累计（产品裁决 2026-08-28）：当前请假/调休与本人其他有效申请
+// （待审或已批准的请假/调休，跨假别也算）日期相连时合并累计，
+// 相连总工作日 ≥ 3 天同样触发运营负责人终审。
+function datesConnect(prevEnd, nextStart) {
+  const prevDate = String(prevEnd || '').slice(0, 10)
+  const nextDate = String(nextStart || '').slice(0, 10)
+  if (!prevDate || !nextDate) return false
+  if (nextDate <= prevDate) return true
+  const start = new Date(`${prevDate}T00:00:00Z`).getTime()
+  const end = new Date(`${nextDate}T00:00:00Z`).getTime()
+  for (let t = start + 86400000; t < end; t += 86400000) {
+    const cursor = new Date(t)
+    const key = cursor.toISOString().slice(0, 10)
+    const day = cursor.getUTCDay()
+    const isWorkingDay = !(day === 0 || day === 6 || legalHolidayCache.has(key)) || makeupWorkdayCache.has(key)
+    if (isWorkingDay) return false
+  }
+  return true
+}
+
+async function connectedLeaveWorkingDays(connection, request) {
+  if (!['leave', 'comp_time'].includes(request.request_type)) return 0
+  const [rows] = await connection.execute(
+    `SELECT id, start_at, end_at, working_days FROM attendance_requests
+     WHERE employee_id = :employeeId AND id <> :id
+       AND request_type IN ('leave', 'comp_time')
+       AND status IN ('pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin', 'approved')
+     ORDER BY start_at`,
+    { employeeId: request.employee_id, id: request.id },
+  )
+  const all = [...rows, { id: Number(request.id), start_at: request.start_at, end_at: request.end_at, working_days: request.working_days }]
+    .sort((a, b) => String(a.start_at).localeCompare(String(b.start_at)))
+  const chains = []
+  for (const item of all) {
+    const last = chains[chains.length - 1]
+    if (last && datesConnect(last[last.length - 1].end_at, item.start_at)) {
+      last.push(item)
+    } else {
+      chains.push([item])
+    }
+  }
+  const ownChain = chains.find((chain) => chain.some((item) => Number(item.id) === Number(request.id))) || []
+  return ownChain.reduce((sum, item) => sum + Number(item.working_days || 0), 0)
 }
 
 // 组联动加载：带 batch_id 的申请（同工单加班的路+工作，specs/003）在审批/驳回/撤回/作废上视为一体，
@@ -2400,6 +2460,18 @@ async function submitRequest(req, res) {
     }
 
     if (request.request_type !== 'overtime' && !request.delegate_employee_id) throw badRequest('请选择代理人')
+    if (['leave', 'comp_time'].includes(request.request_type)) {
+      // 代理期间禁止休假：提交草稿时复核（草稿可能创建于规则生效前）
+      const [agencyRows] = await connection.execute(
+        `SELECT r.id FROM attendance_requests r
+         WHERE r.delegate_employee_id = :employeeId AND r.id <> :id
+           AND r.status IN ('pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin', 'approved')
+           AND NOT (r.end_at < :startAt OR r.start_at > :endAt)
+         LIMIT 1`,
+        { employeeId: request.employee_id, id: request.id, startAt: request.start_at, endAt: request.end_at },
+      )
+      if (agencyRows.length) throw badRequest('您在所选时段已被指定为代理人，代理期间不能申请休假')
+    }
     if (request.request_type === 'leave') {
       const conflict = await findConflictingLeave(
         async (sql, params) => {
@@ -2430,12 +2502,16 @@ async function submitRequest(req, res) {
     if (workflowVersion >= 4) {
       // v4：提交时按当前直属主管映射实时推导审批链（配置变更对未提交草稿即时生效）
       const supervisorRole = await supervisorRoleForApplicantRoleConnection(connection, request.applicant_role)
+      const connectedDays = await connectedLeaveWorkingDays(connection, request)
       steps = buildApprovalSteps({
         applicantRole: request.applicant_role,
         requestType: request.request_type,
         workingDays: Number(request.working_days || 0),
         supervisorRole,
         workflowVersion,
+        delegateEmployeeId: request.delegate_employee_id,
+        applicantNationality: request.applicant_nationality,
+        connectedLongLeave: connectedDays >= 3,
       })
       await assertApprovalRolesAvailable(connection, approvalRolesFromSteps(steps), request.submitted_by)
     } else if (workflowVersion >= 3) {
@@ -2682,7 +2758,8 @@ async function approveWorkflowStep(req, res, expectedStepType, workflowVersions 
 }
 
 async function approveDelegate(req, res) {
-  return approveWorkflowStep(req, res, 'delegate', [2, 3])
+  // v4 恢复代理人确认环节（2026-08-28）：delegate 步骤与 v2/v3 同入口
+  return approveWorkflowStep(req, res, 'delegate', [2, 3, 4])
 }
 
 async function approveHr(req, res) {

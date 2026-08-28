@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   LEAVE_TYPE_LABELS,
   OVERTIME_DAY_TYPE_LABELS,
@@ -51,10 +52,11 @@ interface AttendanceApplyDrawerProps {
   holidayDates: Set<string>;
 }
 
-const REQUEST_TYPE_CARDS: Array<{ value: RequestType; label: string; description: string; icon: typeof CalendarClock }> = [
-  { value: "leave", label: "请假", description: "特休与常规假别", icon: CalendarClock },
-  { value: "overtime", label: "加班", description: "从工单带入时段", icon: Send },
-  { value: "comp_time", label: "调休", description: "使用已有调休余额", icon: RotateCcw },
+const REQUEST_TYPE_CARDS: Array<{ value: RequestType; label: string; description: string; icon: typeof CalendarClock; roles: string[] | null }> = [
+  { value: "leave", label: "请假", description: "特休与常规假别", icon: CalendarClock, roles: null },
+  // 类型门禁（产品裁决 2026-08-28）：加班仅工程师与司机；调休仅工程师
+  { value: "overtime", label: "加班", description: "从工单带入时段", icon: Send, roles: ["engineer", "driver"] },
+  { value: "comp_time", label: "调休", description: "使用已有调休余额", icon: RotateCcw, roles: ["engineer"] },
 ];
 
 /** 时段腿展示的紧凑时间：'2026-10-01 11:10' → '10-01 11:10' */
@@ -64,6 +66,9 @@ function shortDateTime(value?: string) {
 
 /** 新建申请三步向导：选类型 → 填表单 → 确认提交。表单状态与提交逻辑自原考勤页内嵌表单迁入。 */
 export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfile, holidayDates }: AttendanceApplyDrawerProps) {
+  const { user } = useAuth();
+  const userRole = String(user?.role || "");
+  const visibleTypeCards = REQUEST_TYPE_CARDS.filter((item) => !item.roles || item.roles.includes(userRole));
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<ApplyForm>(createBlankForm);
   const [submitting, setSubmitting] = useState(false);
@@ -200,7 +205,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     return "";
   }, [travelSegment, selectedOvertimeOrder, travelDepartureAt, travelReturnAt]);
 
-  const naturalDayLeave = form.requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
+  const naturalDayLeave = form.requestType === "comp_time" || (form.requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType));
   const annualPreview = ["leave", "comp_time"].includes(form.requestType)
     ? workingLeaveSummary(form, holidayDates, naturalDayLeave)
     : null;
@@ -298,7 +303,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
         if (requestType === "leave" && ["sick", "marriage"].includes(form.leaveType) && proofFiles.length === 0) {
           throw new Error(form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明");
         }
-        const includeNonWorkingDays = requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
+        const includeNonWorkingDays = requestType === "comp_time" || (requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType));
         const leaveRange = workingLeaveSummary(form, holidayDates, includeNonWorkingDays);
         if (!leaveRange.workingDays) throw new Error(includeNonWorkingDays ? "申请范围内没有有效日期" : "申请范围内没有工作日");
         // 草稿功能已下线：一律新建申请（create + 传附件 + submit 连续完成）
@@ -309,7 +314,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
             startAt: leaveRange.startAt,
             endAt: leaveRange.endAt,
             hours: leaveRange.hours,
-            reason: requestType === "leave" && form.leaveType === "personal" ? String(form.reason || "").trim() || undefined : undefined,
+            reason: requestType === "leave" && ["personal", "annual"].includes(form.leaveType) ? String(form.reason || "").trim() || undefined : undefined,
           });
         const draftId: number | string = draft.id;
         // 附件阶段独立捕获：失败自动撤回刚建的申请，提示重填重提（不留草稿续传）
@@ -378,7 +383,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
         <div className="min-h-0 flex-1 overflow-y-auto py-5">
           {step === 1 ? (
             <div className="grid gap-3">
-              {REQUEST_TYPE_CARDS.map((item) => {
+              {visibleTypeCards.map((item) => {
                 const Icon = item.icon;
                 const active = form.requestType === item.value;
                 return (
@@ -673,6 +678,28 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       className="resize-none"
                       value={form.reason || ""}
                       placeholder="请填写事假事由，审批人可见"
+                      onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
+                    />
+                  </div>
+                ) : null}
+
+                {form.requestType === "leave" && form.leaveType === "annual" ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>理由（选填）</Label>
+                      <button
+                        type="button"
+                        className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors ${(form.reason || "").includes("返台") ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent"}`}
+                        onClick={() => setForm((current) => ({ ...current, reason: "返台" }))}
+                      >
+                        返台
+                      </button>
+                    </div>
+                    <Textarea
+                      rows={2}
+                      className="resize-none"
+                      value={form.reason || ""}
+                      placeholder="选填；返台请点右上角“返台”或自行注明"
                       onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
                     />
                   </div>

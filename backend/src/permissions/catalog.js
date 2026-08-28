@@ -10,12 +10,14 @@ const ROLE_LABELS = Object.freeze({
   sales: '业务',
   engineer: '工程师',
   purchaser: '采购',
+  driver: '司机',
 })
 
 const ALL_ROLES = Object.keys(ROLE_LABELS)
 // 考勤权限模型（2026-08-20 收窄）：
 // - 管理员、行政主管、助理主管：全部考勤权限（含提交申请与考勤设置）
 // - 工程主管：值班津贴管理 + 提交申请
+// - 司机：提交申请（仅加班）
 // - 其他角色：仅提交申请
 const ATTENDANCE_NON_APPLICANT_ROLES = Object.freeze([])
 const attendanceNonApplicantRoleSet = new Set(ATTENDANCE_NON_APPLICANT_ROLES)
@@ -24,7 +26,7 @@ const ATTENDANCE_APPLICANT_ROLES = Object.freeze(
 )
 
 const RAW_PERMISSION_ENTRIES = Object.freeze([
-  ['workspace.admin', '管理工作台', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales', 'engineer', 'purchaser']],
+  ['workspace.admin', '管理工作台', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales', 'engineer', 'purchaser', 'driver']],
   ['workspace.engineer', '工程师工作台', []],
   ['permission.manage', '配置角色权限', ['admin']],
   ['order.view', '查看工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor']],

@@ -261,6 +261,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       'sales',
       'engineer',
       'purchaser',
+      'driver',
     ])
     assert.ok(res.body.roles.some((item) => item.role === 'admin'))
     assert.ok(res.body.roles.some((item) => item.role === 'operations_director'))
@@ -379,6 +380,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
             submitted_by: 42,
           }], []]
         }
+        if (/SELECT r\.id[\s\S]*FROM attendance_requests r[\s\S]*r\.delegate_employee_id = :employeeId AND r\.id <>/.test(sql)) return [[], []]
         if (/SELECT r\.id[\s\S]*FROM attendance_requests r/.test(sql)) return [[{ id: 901 }], []]
         return [{ affectedRows: 1 }, []]
       },
