@@ -46,8 +46,8 @@ const { hasPermission } = require('../src/permissions/store')
     assert.equal(await hasPermission(role, 'attendance.apply'), true, `${role} apply via store`)
   }
 
-  // 查看/导出/维护类权限仅管理员与行政主管（attendance.approve 例外：给审批链主管角色）
-  const fullAccessRoles = ['admin', 'administrative_supervisor']
+  // 查看/导出/维护类权限仅管理员、行政主管与助理主管（2026-08-28 助理主管对齐行政主管，开放考勤设置；attendance.approve 例外：给审批链主管角色）
+  const fullAccessRoles = ['admin', 'administrative_supervisor', 'assistant_supervisor']
   const restrictedKeys = ['attendance.view', 'attendance.report.export', 'attendance.manage', 'attendance.admin.approve', 'attendance.hr.approve', 'attendance.vp.approve']
   for (const role of ALL_ROLES) {
     for (const key of restrictedKeys) {
@@ -57,8 +57,8 @@ const { hasPermission } = require('../src/permissions/store')
   }
 
   // 考勤审批：审批链 v4 会把直属主管/运营负责人推为审批环节，需授予处理考勤审批权限
-  // （工程主管/业务主管/运营负责人仅处理指派给自己的审批环节，不开放考勤数据查看 attendance.view）
-  const approveRoles = ['admin', 'administrative_supervisor', 'engineering_supervisor', 'sales_supervisor', 'operations_director']
+  // （助理主管对齐行政主管开放全量考勤权限；工程主管/业务主管/运营负责人仅处理指派给自己的审批环节，不开放考勤数据查看 attendance.view）
+  const approveRoles = ['admin', 'administrative_supervisor', 'assistant_supervisor', 'engineering_supervisor', 'sales_supervisor', 'operations_director']
   for (const role of ALL_ROLES) {
     assert.equal(defaults[role]['attendance.approve'], approveRoles.includes(role), `${role} attendance.approve`)
     assert.equal(await hasPermission(role, 'attendance.approve'), approveRoles.includes(role), `${role} approve via store`)
