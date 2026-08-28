@@ -928,6 +928,51 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.equal(Object.hasOwn(snapshot, 'reportedReturnAt'), false)
   }
 
+  // 工作日 9:00 前早段加班（产品裁决 2026-08-28）：去程 08:00->09:00 计 1h，生成 travel_out
+  {
+    const executeCalls = []
+    const orderRow = {
+      id: 88, order_no: 'SO-1', status: 'completed', customer_name: 'C', engineer_count: 1,
+      service_at: '2026-07-14 09:00:00', departure_at: '2026-07-14 08:00:00',
+      actual_start_at: '2026-07-14 09:00:00', actual_end_at: '2026-07-14 15:00:00', return_at: '2026-07-14 15:30:00',
+    }
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/SELECT p\.\*, u\.role/.test(sql)) {
+          return [[{ id: 5, user_id: 42, employee_name: '申请人', role: 'engineer', attendance_enabled: 1 }], []]
+        }
+        if (/FROM service_orders so/.test(sql)) return [[orderRow], []]
+        if (/SELECT id\s+FROM attendance_requests/.test(sql)) return [[], []]
+        if (/FROM attendance_approval_role_rule_steps/.test(sql)) {
+          return [[{ approver_role: 'engineering_supervisor' }], []]
+        }
+        if (/SELECT role, COUNT\(\*\) AS user_count/.test(sql)) {
+          return [[{ role: 'engineering_supervisor', user_count: 1 }, { role: 'administrative_supervisor', user_count: 1 }], []]
+        }
+        if (/FROM attendance_supervisor_role_rules/.test(sql)) {
+          return [[{ supervisor_role: 'engineering_supervisor' }], []]
+        }
+        if (/INSERT INTO attendance_requests/.test(sql)) return [{ insertId: 904 }, []]
+        return [{ affectedRows: 1 }, []]
+      },
+    })
+    const req = {
+      user: { id: 42, role: 'engineer' },
+      params: { id: '88' },
+      body: { overtimeResult: 'comp_time' },
+    }
+    const res = createResponse()
+    await controller.createServiceOrderOvertimeRequest(req, res)
+    assert.equal(res.statusCode, 201)
+    const insert = executeCalls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
+    assert.ok(insert)
+    // 早段 08:00->09:00 计 1 小时；中部 09:00-15:00 不计；回程 15:00-15:30 无晚段
+    assert.equal(insert.params.overtimeKind, 'travel')
+    assert.equal(insert.params.sourceDetail, 'travel_out')
+    assert.equal(insert.params.hours, 1)
+  }
+
   // 路上时间防倒挂：去程出发晚于工单到达 -> 400
   {
     const orderRow = {
@@ -1270,8 +1315,9 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const executeCalls = []
     const orderRow = {
       id: 88, order_no: 'SO-NONE', status: 'completed', customer_name: 'C',
-      service_at: '2026-07-14 09:00:00', departure_at: '2026-07-14 08:00:00',
-      actual_start_at: '2026-07-14 09:00:00', actual_end_at: '2026-07-14 16:00:00', return_at: '2026-07-14 17:00:00',
+      service_at: '2026-07-14 09:30:00', departure_at: '2026-07-14 09:00:00',
+      // 全程落在平日 9:00–18:00 正常时段内（早段 9:00 前/晚段 18:00 后均无），无任何可计加班时段
+      actual_start_at: '2026-07-14 09:00:00', actual_end_at: '2026-07-14 17:00:00', return_at: '2026-07-14 17:00:00',
     }
     const { controller } = await loadController({
       connectionExecute: async (sql) => {
