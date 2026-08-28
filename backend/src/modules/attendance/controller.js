@@ -1322,8 +1322,8 @@ async function createRequest(req, res) {
   const employee = await currentEmployee(req.user.id)
   if (!employee) throw forbidden('当前账号没有启用的员工档案')
   const input = normalizeRequestInput(req.body)
-  // 类型门禁（产品裁决 2026-08-28）：调休仅工程师；加班仅工程师与司机；主管及其他角色无这两种申请
-  if (input.requestType === 'comp_time' && req.user.role !== 'engineer') throw forbidden('仅工程师可以申请调休')
+  // 类型门禁（产品裁决 2026-08-28）：调休与加班均为仅工程师与司机；主管及其他角色无这两种申请
+  if (input.requestType === 'comp_time' && !['engineer', 'driver'].includes(req.user.role)) throw forbidden('仅工程师与司机可以申请调休')
   if (input.requestType === 'overtime' && !['engineer', 'driver'].includes(req.user.role)) throw forbidden('仅工程师与司机可以申请加班')
 
   let delegateEmployeeId = null

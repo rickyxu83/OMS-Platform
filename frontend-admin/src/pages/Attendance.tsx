@@ -209,7 +209,9 @@ function deriveApprovalChainPreview(applicantRole: string, supervisorRole?: stri
 
 
 export function Attendance() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
+  // 调休资格（产品裁决 2026-08-28）：仅工程师与司机；无资格者不展示调休余额
+  const canCompTime = ["engineer", "driver"].includes(String(user?.role || ""));
   const canApply = hasPermission("attendance.apply");
   const canApprove = hasPermission("attendance.approve");
   const canViewAll = hasPermission("attendance.view", "attendance.admin.approve", "attendance.hr.approve", "attendance.vp.approve", "attendance.manage");
@@ -830,7 +832,7 @@ export function Attendance() {
   const statTiles = [
     ...(canApply ? [
       { label: "可用特休", value: `${days(annualBalanceDays(myProfile))} 天`, warn: annualBalanceDays(myProfile) <= 1 },
-      { label: "可用调休", value: `${hours(myProfile?.compTimeBalanceHours)} 小时`, warn: false },
+      ...(canCompTime ? [{ label: "可用调休", value: `${hours(myProfile?.compTimeBalanceHours)} 小时`, warn: false }] : []),
       { label: "我的进行中", value: String(pendingMine), warn: false },
     ] : []),
     ...(isApprover ? [{ label: "待我审批", value: String(approvalTodos.length), warn: false }] : []),

@@ -54,9 +54,9 @@ interface AttendanceApplyDrawerProps {
 
 const REQUEST_TYPE_CARDS: Array<{ value: RequestType; label: string; description: string; icon: typeof CalendarClock; roles: string[] | null }> = [
   { value: "leave", label: "请假", description: "特休与常规假别", icon: CalendarClock, roles: null },
-  // 类型门禁（产品裁决 2026-08-28）：加班仅工程师与司机；调休仅工程师
+  // 类型门禁（产品裁决 2026-08-28）：调休与加班均为仅工程师与司机
   { value: "overtime", label: "加班", description: "从工单带入时段", icon: Send, roles: ["engineer", "driver"] },
-  { value: "comp_time", label: "调休", description: "使用已有调休余额", icon: RotateCcw, roles: ["engineer"] },
+  { value: "comp_time", label: "调休", description: "使用已有调休余额", icon: RotateCcw, roles: ["engineer", "driver"] },
 ];
 
 /** 时段腿展示的紧凑时间：'2026-10-01 11:10' → '10-01 11:10' */
@@ -68,6 +68,7 @@ function shortDateTime(value?: string) {
 export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfile, holidayDates }: AttendanceApplyDrawerProps) {
   const { user } = useAuth();
   const userRole = String(user?.role || "");
+  const canCompTime = ["engineer", "driver"].includes(userRole);
   const visibleTypeCards = REQUEST_TYPE_CARDS.filter((item) => !item.roles || item.roles.includes(userRole));
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<ApplyForm>(createBlankForm);
@@ -412,7 +413,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
               })}
               <div className="flex gap-2 pt-1 text-xs text-muted-foreground">
                 <Badge variant="secondary">特休 {days(annualBalanceDays(myProfile))} 天</Badge>
-                <Badge variant="secondary">调休 {hours(myProfile?.compTimeBalanceHours)} 小时</Badge>
+                {canCompTime ? <Badge variant="secondary">调休 {hours(myProfile?.compTimeBalanceHours)} 小时</Badge> : null}
               </div>
             </div>
           ) : null}
