@@ -50,6 +50,11 @@ export function SignaturePad({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  // 画布当前像素对应的 value：笔迹结束回传的 value 与本画布内容一致，重绘时跳过
+  // （否则会把裁剪图（仅笔迹包围盒，远小于画布）拉伸铺满画布——“第一笔变很大”的根因）
+  const drawnValueRef = useRef("");
+  // 异步图片回画令牌：value 变化（尤其是清空）后，旧图片的 onload 不得再回画，避免“清除后残影复活”
+  const drawTokenRef = useRef(0);
 
   function canvasCssSize(canvas: HTMLCanvasElement) {
     const rect = canvas.getBoundingClientRect();
@@ -121,11 +126,16 @@ export function SignaturePad({
   const setupCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const token = ++drawTokenRef.current;
     const { width, height } = canvasCssSize(canvas);
     const ratio = window.devicePixelRatio || 1;
     const snapshot = value;
-    canvas.width = Math.max(1, Math.round(width * ratio));
-    canvas.height = Math.max(1, Math.round(height * ratio));
+    const targetW = Math.max(1, Math.round(width * ratio));
+    const targetH = Math.max(1, Math.round(height * ratio));
+    // 尺寸没变且当前显示正是这份 value（笔迹回传触发的重绘）：像素已正确，直接跳过
+    if (canvas.width === targetW && canvas.height === targetH && drawnValueRef.current === value) return;
+    canvas.width = targetW;
+    canvas.height = targetH;
     const context = canvas.getContext("2d");
     if (!context) return;
     const styles = window.getComputedStyle(document.documentElement);
@@ -138,14 +148,19 @@ export function SignaturePad({
     context.lineJoin = "round";
     context.lineWidth = 2;
     context.strokeStyle = foregroundColor;
+    drawnValueRef.current = snapshot;
     if (snapshot) {
       const image = new Image();
       image.onload = () => {
+        if (drawTokenRef.current !== token) return;
+        // 裁剪图是设备像素：换回 CSS 尺寸（÷ratio）后只缩不放，绝不上采样——恢复/重绘不再放大笔迹
+        const naturalW = image.width / ratio;
+        const naturalH = image.height / ratio;
         if (isQuarterRotated(canvas)) {
           // 画布被旋转 90° 展示：把图片反向转进画布，用户看到的才是正的
-          const scale = Math.min(height / image.width, width / image.height);
-          const drawWidth = image.width * scale;
-          const drawHeight = image.height * scale;
+          const scale = Math.min(1, height / naturalW, width / naturalH);
+          const drawWidth = naturalW * scale;
+          const drawHeight = naturalH * scale;
           context.save();
           context.translate(width / 2, height / 2);
           context.rotate(-Math.PI / 2);
@@ -153,9 +168,9 @@ export function SignaturePad({
           context.restore();
           return;
         }
-        const scale = Math.min(width / image.width, height / image.height);
-        const drawWidth = image.width * scale;
-        const drawHeight = image.height * scale;
+        const scale = Math.min(1, width / naturalW, height / naturalH);
+        const drawWidth = naturalW * scale;
+        const drawHeight = naturalH * scale;
         context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
       };
       image.src = snapshot;
@@ -233,6 +248,7 @@ export function SignaturePad({
       dataUrl = cropSignatureDataUrl(source);
       if (!dataUrl) dataUrl = source.toDataURL("image/png");
     }
+    drawnValueRef.current = dataUrl; // 标记本画布已显示此 value，阻止紧随其后的重绘把它拉伸放大
     onChange(dataUrl);
   }
 
