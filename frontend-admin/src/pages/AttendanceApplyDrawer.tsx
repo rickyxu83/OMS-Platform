@@ -17,7 +17,7 @@ import {
   OVERTIME_DAY_TYPE_LABELS,
   SERVICE_MODE_LABELS,
   SERVICE_TYPE_LABELS,
-  addHoursValue,
+  addHoursValue, compTimeEndAtValue,
   annualBalanceDays,
   applyAnnualLeaveRange,
   createBlankForm,
@@ -220,7 +220,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     && Math.abs(compHoursNum * 2 - Math.round(compHoursNum * 2)) <= 0.0001,
   );
   const compPreview = compTimeValid
-    ? { startAt: `${compDate} ${compStartTime}`, endAt: addHoursValue(`${compDate} ${compStartTime}`, compHoursNum), hours: compHoursNum }
+    ? { startAt: `${compDate} ${compStartTime}`, endAt: compTimeEndAtValue(`${compDate} ${compStartTime}`, compHoursNum), hours: compHoursNum }
     : null;
   const annualSingleDay = form.annualStartDate === form.annualEndDate;
   const selectedDelegateName = delegates.find((item) => String(item.id) === form.delegateEmployeeId)?.employeeName || "";
@@ -288,6 +288,8 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     if (!form.delegateEmployeeId) return "请选择代理人";
     if (form.requestType === "comp_time") {
       if (!compDate) return "请选择调休日期";
+      const startMinutes = Number(compStartTime.slice(0, 2)) * 60 + Number(compStartTime.slice(3, 5) || 0);
+      if (startMinutes >= 12 * 60 && startMinutes < 13 * 60) return "调休开始时间不能在 12:00-13:00 午休时段内";
       if (!compTimeValid) return "调休时长必须以 0.5 小时为单位（最小 0.5 小时）";
     }
     if (form.requestType === "leave" && form.leaveType === "personal" && !String(form.reason || "").trim()) return "请填写事假事由";
@@ -721,8 +723,8 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                     </div>
                     <div className="text-xs text-muted-foreground sm:col-span-3">
                       {compPreview
-                        ? `结束于 ${compPreview.endAt} · 时长 ${compPreview.hours} 小时（可用余额 ${hours(compBalance)} 小时）`
-                        : "选择日期、开始时间并填写 0.5 小时步进的时长"}
+                        ? `结束于 ${compPreview.endAt} · 时长 ${compPreview.hours} 小时（已扣除 12:00-13:00 午休，可用余额 ${hours(compBalance)} 小时）`
+                        : "选择日期、开始时间并填写 0.5 小时步进的时长（12:00-13:00 午休不计入）"}
                     </div>
                   </div>
                 ) : null}

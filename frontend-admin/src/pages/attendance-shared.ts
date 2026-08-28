@@ -111,6 +111,37 @@ export function addHoursValue(value: string, amount: number) {
   return `${local.toISOString().slice(0, 13)}:00`;
 }
 
+// 调休午休窗口（产品裁决 2026-08-28）：12:00-13:00 不计入调休时长，8 小时 = 一天
+function lunchWindowsCrossed(start: Date, end: Date) {
+  let count = 0;
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+  const lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+  for (let day = startDay; day <= lastDay; day += 86400000) {
+    const d = new Date(day);
+    const lunchStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0);
+    const lunchEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 13, 0, 0);
+    if (end > lunchStart && start < lunchEnd) count += 1;
+  }
+  return count;
+}
+
+/** 调休结束时间推算（扣除 12:00-13:00 午休，镜像后端 compTimeEndAt）；开始时间落在午休内返回空串 */
+export function compTimeEndAtValue(startAt: string, hours: number) {
+  const start = new Date(String(startAt).replace("T", " "));
+  if (!Number.isFinite(start.getTime())) return "";
+  const startMinutes = start.getHours() * 60 + start.getMinutes();
+  if (startMinutes >= 12 * 60 && startMinutes < 13 * 60) return "";
+  let end = new Date(start.getTime() + hours * 3600000);
+  for (let i = 0; i < 3; i += 1) {
+    const extra = lunchWindowsCrossed(start, end);
+    const next = new Date(start.getTime() + (hours + extra) * 3600000);
+    if (next.getTime() === end.getTime()) break;
+    end = next;
+  }
+  const local = new Date(end.getTime() - end.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16).replace("T", " ");
+}
+
 export function dateValue(value?: string) {
   return String(value || nowLocalValue()).slice(0, 10);
 }

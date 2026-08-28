@@ -131,6 +131,43 @@ function assertWholeHour(value, label) {
   if (Math.abs(Number(value) - Math.round(Number(value))) > 0.0001) throw badRequest(`${label}必须以整小时为单位`)
 }
 
+// 调休午休窗口（产品裁决 2026-08-28）：12:00-13:00 不计入调休时长，8 小时 = 一天
+const COMP_LUNCH_START_MINUTES = 12 * 60
+const COMP_LUNCH_END_MINUTES = 13 * 60
+
+function lunchWindowsCrossed(start, end) {
+  // [start, end) 覆盖的 12:00-13:00 午休窗口数量（每个自然日最多一个）
+  let count = 0
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
+  const lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime()
+  for (let day = startDay; day <= lastDay; day += 86400000) {
+    const d = new Date(day)
+    const lunchStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0)
+    const lunchEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 13, 0, 0)
+    if (end > lunchStart && start < lunchEnd) count += 1
+  }
+  return count
+}
+
+// 调休结束时间推算：起止跨度自动补偿被覆盖的午休窗口（每窗 +1h，跨天多窗迭代收敛）
+function compTimeEndAt(startAt, hours) {
+  const start = new Date(String(startAt).replace(' ', 'T'))
+  if (!Number.isFinite(start.getTime())) throw badRequest('调休开始时间格式不正确')
+  const startMinutes = start.getHours() * 60 + start.getMinutes()
+  if (startMinutes >= COMP_LUNCH_START_MINUTES && startMinutes < COMP_LUNCH_END_MINUTES) {
+    throw badRequest('调休开始时间不能在 12:00-13:00 午休时段内')
+  }
+  let end = new Date(start.getTime() + Number(hours) * 3600000)
+  for (let i = 0; i < 3; i += 1) {
+    const extra = lunchWindowsCrossed(start, end)
+    const next = new Date(start.getTime() + (Number(hours) + extra) * 3600000)
+    if (next.getTime() === end.getTime()) break
+    end = next
+  }
+  const local = new Date(end.getTime() - end.getTimezoneOffset() * 60000)
+  return `${local.toISOString().slice(0, 16).replace('T', ' ')}:00`
+}
+
 function assertTimeRange(startAt, endAt) {
   const startTime = Date.parse(startAt.replace(' ', 'T'))
   const endTime = Date.parse(endAt.replace(' ', 'T'))
@@ -1285,7 +1322,7 @@ function normalizeRequestInput(body) {
   }
   assertTimeRange(startAt, endAt)
   const durationHours = (Date.parse(endAt.replace(' ', 'T')) - Date.parse(startAt.replace(' ', 'T'))) / 3600000
-  if (requestType !== 'leave' && Math.abs(durationHours - hours) > 0.0001) {
+  if (!['leave', 'comp_time'].includes(requestType) && Math.abs(durationHours - hours) > 0.0001) {
     throw badRequest('申请小时数必须与开始、结束时间一致')
   }
 
@@ -1300,6 +1337,11 @@ function normalizeRequestInput(body) {
     endAt,
     hours,
     reason: nullableText(body?.reason),
+  }
+
+  if (requestType === 'comp_time') {
+    // 调休结束时间由后端按「扣除 12:00-13:00 午休」口径权威重算（不采信传入的 endAt）
+    payload.endAt = compTimeEndAt(startAt, hours)
   }
 
   if (requestType === 'leave') {
