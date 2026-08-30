@@ -318,7 +318,8 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   useEffect(() => {
     if (formLoading || isFormRoute === false) return;
     const sections = Array.from(document.querySelectorAll<HTMLElement>("[id^='report-section-'], #report-submit-actions")).filter((el) => {
-      const key = el.id.replace(/^report-section-/, "");
+      // 提交栏 id 为 report-submit-actions（非 report-section- 前缀）,需归一为 'submit' 才能命中白名单
+      const key = el.id === "report-submit-actions" ? "submit" : String(el.id.replace(/^report-section-/, ""));
       return ["customer", "module", "work", "attachment", "submit"].includes(key);
     });
     if (!sections.length) return;
