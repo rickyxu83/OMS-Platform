@@ -3413,12 +3413,14 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 type="button"
                 title={item.label}
                 aria-label={`跳到${item.label}分区`}
-                className="group flex h-9 w-9 items-center justify-center rounded-full transition-colors active:bg-primary/10"
+                className={`-m-1.5 rounded-full p-1.5 transition-colors ${
+                  active ? "text-primary" : "text-border hover:text-primary/60 active:text-primary/70"
+                }`}
                 onClick={() => document.getElementById(item.key === "submit" ? "report-submit-actions" : `report-section-${item.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
-              >
+>
                 <span
-                  className={`rounded-full transition-all duration-200 ${
-                    active ? "h-2.5 w-6 bg-primary" : "h-2 w-2 bg-border group-hover:bg-primary/50 group-active:scale-125 group-active:bg-primary/60"
+                  className={`block rounded-full transition-all duration-200 ${
+                    active ? "h-2.5 w-6 bg-primary" : "h-2 w-2 bg-current"
                   }`}
                 />
               </button>
