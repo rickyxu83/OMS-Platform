@@ -319,16 +319,16 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     if (formLoading || isFormRoute === false) return;
     // 滚动位置计算（捕获监听容器滚动）：取'上边距 ≤ 视口40% 线'的最后一项为当前分区。
     // IntersectionObserver 在嵌套滚动容器 + 视口中部窄带的几何判定不可靠（滚到底不带触发），改位置判断更稳。
-    const KEYS = ["customer", "module", "work", "attachment"] as const;
+    // 末尾元素（提交栏）滚动到底时仍停在视口下部,永远滚不过 40% 线——必须把签名区
+    // 纳入计算:滚到底时最后一个'顶边滚过 60% 线'的是签名区,它将映射到'保存提交'点亮
+    const KEYS = ["customer", "module", "work", "attachment", "signoff", "submit"] as const;
     const compute = () => {
-      const probe = window.innerHeight * 0.4;
+      const probe = window.innerHeight * 0.6;
       let current: string = KEYS[0];
       for (const key of KEYS) {
-        const el = document.getElementById(`report-section-${key}`);
+        const el = key === "submit" ? document.getElementById("report-submit-actions") : document.getElementById(`report-section-${key}`);
         if (el && el.getBoundingClientRect().top <= probe) current = key;
       }
-      const submitEl = document.getElementById("report-submit-actions");
-      if (submitEl && submitEl.getBoundingClientRect().top <= probe) current = "submit";
       setActiveFormSection(current);
     };
     compute();
@@ -3407,7 +3407,10 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             { key: "attachment", label: "附件" },
             { key: "submit", label: "保存提交" },
           ].map((item) => {
-            const active = activeFormSection === item.key;
+            // 签名区与保存提交同属'最后一步',任一可见都点亮提交点
+            const active = item.key === "submit"
+              ? activeFormSection === "submit" || activeFormSection === "signoff"
+              : activeFormSection === item.key;
             return (
               <button
                 key={item.key}
