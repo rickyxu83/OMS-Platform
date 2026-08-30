@@ -110,6 +110,14 @@ function buildBusinessOrderVisibilityScope(user, serviceOrderAlias = 'so', custo
   }
 }
 
+// 签名链接过期判断：MySQL DATETIME 无时区标记（会话 +08），必须按 +08 解析而不是容器
+// 本地时区（UTC），否则过期时间被误读成 8 小时后（见登录锁定时区事故 2026-08-30，PR #74）
+function signatureLinkExpired(expiresAt) {
+  if (!expiresAt) return false
+  const normalized = /[+-]\d{2}:\d{2}$|Z$/i.test(expiresAt) ? expiresAt : `${expiresAt}+08:00`
+  return new Date(normalized).getTime() < Date.now()
+}
+
 async function hasInspectionDocument(orderId) {
   await ensureFilePurposeColumn()
   const rows = await query(
@@ -3261,7 +3269,7 @@ async function publicCustomerSignatureRequest(req, res) {
   if (row.status === 'revoked') {
     throw badRequest('签署链接已作废，请联系工程师重新发送')
   }
-  if (row.status === 'expired') {
+  if (row.status === 'expired' || (!['signed'].includes(row.status) && signatureLinkExpired(row.expires_at))) {
     throw badRequest('签署链接已过期，请联系工程师重新发送')
   }
   const orderWithEngineers = (await attachEngineers([{ id: row.service_order_id }]))[0]
@@ -3279,7 +3287,16 @@ async function submitCustomerSignatureRequest(req, res) {
   const signed = await transaction(async (connection) => {
     const row = await customerSignatureRequestByToken(req.params.token, { connection, forUpdate: true })
     if (row.status === 'revoked') throw badRequest('签署链接已作废，请联系工程师重新发送')
-    if (row.status === 'expired') throw badRequest('签署链接已过期，请联系工程师重新发送')
+    if (row.status === 'expired' || (!['signed'].includes(row.status) && signatureLinkExpired(row.expires_at))) {
+      // issue #78：时间兜底 + 惰性回收——超期链接置 expired,后续不再依赖工程师重发来失效
+      await connection.execute(
+        `UPDATE service_order_customer_signature_requests
+         SET status = 'expired'
+         WHERE id = :id AND status IN ('created', 'sent')`,
+        { id: row.id },
+      )
+      throw badRequest('签署链接已过期，请联系工程师重新发送')
+    }
     if (row.status === 'signed' || row.customer_signature_file_id) {
       throw badRequest('该服务记录已完成客户签署')
     }
