@@ -2334,6 +2334,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   }
 
   /** 移动端工单卡片（ResponsiveList renderCard 用），字段/操作与桌面行一致 */
+  /** 手机专属卡片（<md）：层析清晰——编号+状态 / 客户+模式 / 内容两行 / 工程师+时间 / 操作 */
   function renderReportOrderCard(order: ServiceOrder) {
     const mode = normalizeMode(order.serviceMode);
     const modeLabel = MODE_OPTIONS.find((item) => item.value === mode)?.label || mode;
@@ -2347,77 +2348,98 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     const isDeletingRecord = deletingOrderId === order.id;
     const destructiveActionLabel = canDeleteRecord ? "删除" : "作废";
     const serviceTime = reportOrderServiceTime(order);
+    // 同天展示"09:00 ~ 17:00"紧凑区间,空数据用 — 
+    const timeShort = (value: string) => (value.length >= 16 ? value.slice(11, 16) : value);
+    const timeRange = serviceTime.start && serviceTime.end
+      ? `${timeShort(serviceTime.start)} ~ ${timeShort(serviceTime.end)}`
+      : serviceTime.start || serviceTime.end || "—";
+    const actionsGroup = (
+      <>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 px-2.5 text-muted-foreground hover:bg-transparent hover:text-sky-600"
+          disabled={!canExportRecord || Boolean(exportingOrderId)}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (!canExportRecord || exportingOrderId) return;
+            downloadServiceRecordPdf(order);
+          }}
+        >
+          {isExportingRecord ? <span className="btn-loader" aria-hidden="true" /> : <Download className="mr-1 h-4 w-4" />}
+          导出 PDF
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 px-2.5 text-muted-foreground hover:bg-transparent hover:text-sky-600"
+          disabled={!canExportRecord || Boolean(exportingOrderId)}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (!canExportRecord || exportingOrderId) return;
+            shareServiceRecordPdf(order);
+          }}
+        >
+          <Share2 className="mr-1 h-4 w-4" />
+          分享
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 px-2.5 text-muted-foreground hover:bg-transparent hover:text-rose-600"
+          disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (!canRemoveOrCancelRecord || deletingOrderId) return;
+            if (canDeleteRecord) {
+              deleteServiceOrder(order);
+              return;
+            }
+            cancelServiceOrder(order);
+          }}
+        >
+          {isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : canDeleteRecord ? <Trash2 className="mr-1 h-4 w-4" /> : <X className="mr-1 h-4 w-4" />}
+          {destructiveActionLabel}
+        </Button>
+      </>
+    );
     return (
-      <ResponsiveCard
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => openPreviewOrder(order)}
-        title={reportOrderDisplayId(order)}
-        status={statusIndicator(workflowStatus, statusLabel)}
-        subtitle={reportOrderMainContent(order)}
-        fields={[
-          { label: "客户", value: order.customerName || "未填写客户" },
-          { label: "工程师", value: reportOrderEngineerText(order) },
-          { label: "模式", value: modeIndicator(mode, modeLabel) },
-          {
-            label: "服务时间",
-            value: (
-              <span className="block space-y-0.5 text-xs">
-                <span className="block"><span className="text-muted-foreground">开始：</span>{serviceTime.start}</span>
-                <span className="block"><span className="text-muted-foreground">结束：</span>{serviceTime.end}</span>
-              </span>
-            ),
-          },
-        ]}
-        actions={
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:bg-transparent hover:text-sky-600"
-              disabled={!canExportRecord || Boolean(exportingOrderId)}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (!canExportRecord || exportingOrderId) return;
-                downloadServiceRecordPdf(order);
-              }}
-            >
-              {isExportingRecord ? <span className="btn-loader" aria-hidden="true" /> : <Download className="mr-1 h-4 w-4" />}
-              导出 PDF
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:bg-transparent hover:text-sky-600"
-              disabled={!canExportRecord || Boolean(exportingOrderId)}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (!canExportRecord || exportingOrderId) return;
-                shareServiceRecordPdf(order);
-              }}
-            >
-              <Share2 className="mr-1 h-4 w-4" />
-              分享
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:bg-transparent hover:text-rose-600"
-              disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (!canRemoveOrCancelRecord || deletingOrderId) return;
-                if (canDeleteRecord) {
-                  deleteServiceOrder(order);
-                  return;
-                }
-                cancelServiceOrder(order);
-              }}
-            >
-              {isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : canDeleteRecord ? <Trash2 className="mr-1 h-4 w-4" /> : <X className="mr-1 h-4 w-4" />}
-              {destructiveActionLabel}
-            </Button>
-          </>
-        }
-      />
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openPreviewOrder(order);
+          }
+        }}
+        className="group cursor-pointer space-y-2"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-[13.5px] font-semibold">{reportOrderDisplayId(order)}</span>
+          <span className="shrink-0">{statusIndicator(workflowStatus, statusLabel)}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="min-w-0 truncate text-[15px] font-medium">{order.customerName || "未填写客户"}</span>
+          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{modeLabel}</span>
+        </div>
+        <div className="line-clamp-2 break-all text-[13px] leading-5 text-muted-foreground">{reportOrderMainContent(order)}</div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+          <div className="min-w-0">
+            <div className="text-[11px] text-muted-foreground">工程师</div>
+            <div className="truncate text-[13px]">{reportOrderEngineerText(order)}</div>
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] text-muted-foreground">服务时间</div>
+            <div className="truncate text-[13px]">{timeRange}</div>
+          </div>
+        </div>
+        {canExportRecord || canRemoveOrCancelRecord ? (
+          <div className="flex flex-wrap items-center justify-end gap-1 border-t pt-2">{actionsGroup}</div>
+        ) : null}
+      </div>
     );
   }
 
@@ -2432,14 +2454,14 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             正在加载工单…
           </div>
         ) : orderList.length ? (
-          <ResponsiveList items={orderList} keyExtractor={(order) => order.id} renderCard={renderReportOrderCard}>
+          <ResponsiveList items={orderList} keyExtractor={(order) => order.id} renderCard={renderReportOrderCard} breakpoint="md" cardClassName="px-3.5 py-3">
             <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
-                <col className="w-[26%]" />
-                <col className="w-[30%]" />
-                <col className="w-[20%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
+                <col className="w-[24%]" />
+                <col className="w-[28%]" />
+                <col className="w-[18%]" />
+                <col className="w-[15%]" />
+                <col className="w-[15%]" />
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
@@ -2678,11 +2700,11 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
           <ResponsiveList items={filteredCreateDrafts} keyExtractor={(item) => item.draftKey} renderCard={renderDraftCard}>
             <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
-                <col className="w-[26%]" />
-                <col className="w-[30%]" />
-                <col className="w-[20%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
+                <col className="w-[24%]" />
+                <col className="w-[28%]" />
+                <col className="w-[18%]" />
+                <col className="w-[15%]" />
+                <col className="w-[15%]" />
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
