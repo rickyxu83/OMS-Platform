@@ -21,8 +21,14 @@ const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000
 // 账号不存在/被锁定时用它做一次等时 bcrypt 比对,消除"是否注册"的时间侧信道
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('__timing_guard__', 10)
 
+// MySQL 会话时区固定 +08:00（服务器 global time_zone），DATETIME 列写的是本地墙钟时间，
+// 字符串无时区标记。后端容器时区为 UTC，直接 new Date() 会把 "2026-08-30 22:17:04" 误读成
+// UTC，导致 15 分钟锁定被放大成 8 小时+。这里给无时区标记的字符串手动附加 +08:00 偏移；
+// 带时区标记的字符串（如测试用的 ISO）原样解析。
 function isLockActive(lockedUntil) {
-  return Boolean(lockedUntil) && new Date(lockedUntil).getTime() > Date.now()
+  if (!lockedUntil) return false
+  const normalized = /[+-]\d{2}:\d{2}$|Z$/i.test(lockedUntil) ? lockedUntil : `${lockedUntil}+08:00`
+  return new Date(normalized).getTime() > Date.now()
 }
 
 function invalidLoginResult(user = null) {
