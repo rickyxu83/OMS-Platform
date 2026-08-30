@@ -312,6 +312,25 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   const [editDraftLoaded, setEditDraftLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [formLoading, setFormLoading] = useState(false);
+  // 右侧目录指示点：当前分区高亮（IntersectionObserver 跟踪,表单渲染完成后激活）
+  const [activeFormSection, setActiveFormSection] = useState("customer");
+
+  useEffect(() => {
+    if (formLoading || isFormRoute === false) return;
+    const sections = Array.from(document.querySelectorAll<HTMLElement>("[id^='report-section-']")).filter((el) =>
+      ["customer", "module", "work", "attachment", "signoff"].includes(String(el.id.replace(/^report-section-/, "")))
+    );
+    if (!sections.length) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          setActiveFormSection(String(entry.target.id.replace(/^report-section-/, "")));
+        }
+      });
+    }, { rootMargin: "-40% 0px -55% 0px", threshold: 0 });
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, [formLoading, isFormRoute]);
   // 列表页筛选：草稿默认折叠 + 全文搜索 + 服务日期范围（与工单处理页一致的筛选行）
   // 当前列表 tab（草稿/派单待处理/已填写）,持久化到 localStorage 刷新保持（默认派单待处理）
   const [reportTab, setReportTab] = useState<"records" | "dispatch">(() => {
@@ -3370,25 +3389,36 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
         </div>
       </div>
 
-      {/* 移动/平板：分区快速跳转（文档流内,不悬浮不遮挡,随内容滚动） */}
-      <div className="-mx-3 flex gap-1.5 overflow-x-auto px-3 sm:mx-0 sm:px-1 lg:hidden">
-        {[
-          { key: "customer", label: "客户" },
-          { key: "module", label: "服务" },
-          { key: "work", label: "记录" },
-          { key: "attachment", label: "附件" },
-          { key: "signoff", label: "签名" },
-        ].map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary active:scale-95"
-            onClick={() => document.getElementById(`report-section-${item.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      {/* 移动/平板：右侧目录指示点（D 方案）——常驻右缘,当前分区拉长紫条,点击跳分区 */}
+      {createPortal(
+        <div className="fixed right-1.5 top-1/2 z-30 -translate-y-1/2 flex flex-col items-center gap-2.5 lg:hidden"
+          role="tablist"
+          aria-label="表单分区跳转"
+        >
+          {[
+            { key: "customer", label: "客户" },
+            { key: "module", label: "服务" },
+            { key: "work", label: "记录" },
+            { key: "attachment", label: "附件" },
+            { key: "signoff", label: "签名" },
+          ].map((item) => {
+            const active = activeFormSection === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                title={item.label}
+                aria-label={`跳到${item.label}分区`}
+                className={`rounded-full transition-all duration-200 ${
+                  active ? "h-2 w-5 bg-primary" : "h-2 w-2 bg-border hover:bg-primary/50"
+                }`}
+                onClick={() => document.getElementById(`report-section-${item.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              />
+            );
+          })}
+        </div>,
+        document.body,
+      )}
 
       <ErrorToast message={error} />
       <InlineError message={error} />
