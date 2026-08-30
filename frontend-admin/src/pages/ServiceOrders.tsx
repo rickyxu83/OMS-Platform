@@ -452,7 +452,7 @@ const I18N = {
     },
     type: {
       install: "安装",
-      repair: "排障",
+      repair: "技术处理",
       maintain: "调优",
       inspect: "巡检",
       training: "培训",
@@ -712,7 +712,7 @@ const I18N = {
     },
     type: {
       install: "安裝",
-      repair: "排障",
+      repair: "技術處理",
       maintain: "調優",
       inspect: "巡檢",
       training: "培訓",
