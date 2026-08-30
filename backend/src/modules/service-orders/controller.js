@@ -401,9 +401,27 @@ async function ensureServiceOrderInspectionColumns(connection = null) {
          'uk_service_orders_inspection_occurrence', 'idx_service_orders_target_engineer', 'idx_service_orders_inspection_schedule'
        )`,
   )
+  // 唯一索引口径与格式/巡检侧保持一致：3 列版含 target_engineer_id（见 schema.sql 与
+  // inspection-schedules/controller.js 自愈逻辑）。若库中残留早期 2 列版，先删后重建，
+  // 避免同表两端迁移各建各的导致 schema 漂移（issue #10）。
   const indexes = new Set(indexRows.map((row) => row.indexName || row.index_name))
+  if (indexes.has('uk_service_orders_inspection_occurrence')) {
+    const [indexColumns] = await execute(
+      `SELECT column_name AS columnName
+       FROM information_schema.statistics
+       WHERE table_schema = DATABASE()
+         AND table_name = 'service_orders'
+         AND index_name = 'uk_service_orders_inspection_occurrence'
+       ORDER BY seq_in_index`,
+    )
+    const columns = indexColumns.map((row) => row.columnName || row.column_name)
+    if (!columns.includes('target_engineer_id')) {
+      await execute('ALTER TABLE service_orders DROP KEY uk_service_orders_inspection_occurrence')
+      indexes.delete('uk_service_orders_inspection_occurrence')
+    }
+  }
   if (!indexes.has('uk_service_orders_inspection_occurrence')) {
-    await execute('ALTER TABLE service_orders ADD UNIQUE KEY uk_service_orders_inspection_occurrence (inspection_schedule_id, inspection_occurrence_date)')
+    await execute('ALTER TABLE service_orders ADD UNIQUE KEY uk_service_orders_inspection_occurrence (inspection_schedule_id, inspection_occurrence_date, target_engineer_id)')
   }
   if (!indexes.has('idx_service_orders_target_engineer')) {
     await execute('ALTER TABLE service_orders ADD KEY idx_service_orders_target_engineer (target_engineer_id)')
