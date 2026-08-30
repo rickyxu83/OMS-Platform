@@ -312,6 +312,10 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   // 列表页筛选：草稿默认折叠 + 全文搜索 + 服务日期范围（与工单处理页一致的筛选行）
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [dispatchOpen, setDispatchOpen] = useState(true); // 派单待处理默认展开（主工作区）,可折叠
+  // 无限下拉：分页游标（ref 避免滚动闭包读到过期值）
+  const ordersPageRef = useRef(1);
+  const ordersTotalRef = useRef(0);
+  const loadingMoreRef = useRef(false);
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || "");
   const [startDate, setStartDate] = useState(searchParams.get("startDate") || "");
   const [endDate, setEndDate] = useState(searchParams.get("endDate") || "");
@@ -505,6 +509,35 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       ].some((value) => matchesSearchText(value, routeKeyword));
     })
   ), [createDrafts, routeKeyword, dateRange, engineers]);
+  // 无限下拉：滚动接近页面底部时加载下一页,直到拉完 total
+  const loadMoreOrders = useCallback(async () => {
+    if (loadingMoreRef.current) return;
+    if (ordersPageRef.current * 100 >= ordersTotalRef.current) return;
+    loadingMoreRef.current = true;
+    try {
+      const nextPage = ordersPageRef.current + 1;
+      const data = await api.get(`/service-orders?mine=1&page=${nextPage}&pageSize=100&sortBy=createdAt&sortDir=desc`);
+      const items = (data?.items || []) as ServiceOrder[];
+      setOrders((prev) => [...prev, ...items]);
+      ordersPageRef.current = nextPage;
+      ordersTotalRef.current = Number(data?.total || ordersTotalRef.current);
+    } catch {
+      // 静默失败,滚动再次触底时重试
+    } finally {
+      loadingMoreRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    const onScroll = () => {
+      if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 400) {
+        void loadMoreOrders();
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [loadMoreOrders]);
+
   const dispatchOrders = useMemo(() => (
     matchingReportOrders.filter(isDispatchOrder)
   ), [matchingReportOrders]);
@@ -646,7 +679,10 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
         api.get("/service-orders?mine=1&pageSize=100&sortBy=createdAt&sortDir=desc"),
         api.get("/service-orders/draft/self-report?all=1").catch(() => ({ items: [], item: null })),
       ]);
-      setOrders((orderData?.items || []) as ServiceOrder[]);
+      const initialItems = (orderData?.items || []) as ServiceOrder[];
+      setOrders(initialItems);
+      ordersPageRef.current = 1;
+      ordersTotalRef.current = Number(orderData?.total || initialItems.length);
       const draftItems = Array.isArray(draftData?.items)
         ? draftData.items
         : draftData?.item
