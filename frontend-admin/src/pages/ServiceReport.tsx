@@ -317,14 +317,18 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 
   useEffect(() => {
     if (formLoading || isFormRoute === false) return;
-    const sections = Array.from(document.querySelectorAll<HTMLElement>("[id^='report-section-']")).filter((el) =>
-      ["customer", "module", "work", "attachment", "signoff"].includes(String(el.id.replace(/^report-section-/, "")))
-    );
+    const sections = Array.from(document.querySelectorAll<HTMLElement>("[id^='report-section-'], #report-submit-actions")).filter((el) => {
+      const key = el.id.replace(/^report-section-/, "");
+      return ["customer", "module", "work", "attachment", "submit"].includes(key);
+    });
     if (!sections.length) return;
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
-          setActiveFormSection(String(entry.target.id.replace(/^report-section-/, "")));
+          const key = String(entry.target.id.replace(/^report-section-/, ""));
+          if (["customer", "module", "work", "attachment", "submit"].includes(key)) {
+            setActiveFormSection(key);
+          }
         }
       });
     }, { rootMargin: "-40% 0px -55% 0px", threshold: 0 });
@@ -3400,7 +3404,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             { key: "module", label: "服务" },
             { key: "work", label: "记录" },
             { key: "attachment", label: "附件" },
-            { key: "signoff", label: "签名" },
+            { key: "submit", label: "保存提交" },
           ].map((item) => {
             const active = activeFormSection === item.key;
             return (
@@ -3410,7 +3414,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 title={item.label}
                 aria-label={`跳到${item.label}分区`}
                 className="group flex h-9 w-9 items-center justify-center rounded-full transition-colors active:bg-primary/10"
-                onClick={() => document.getElementById(`report-section-${item.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                onClick={() => document.getElementById(item.key === "submit" ? "report-submit-actions" : `report-section-${item.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
               >
                 <span
                   className={`rounded-full transition-all duration-200 ${
@@ -4406,7 +4410,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
               </ReportSection>
             ) : null}
             {/* 保存/提交栏：文档流底部（不悬浮,避免遮挡与定位问题） */}
-            <div className="-mx-3 border-t bg-background/95 sm:mx-0 sm:rounded-lg sm:border">
+            <div id="report-submit-actions" className="-mx-3 border-t bg-background/95 sm:mx-0 sm:rounded-lg sm:border">
               <div className="flex gap-2 px-3 py-3 lg:justify-end">
                 <Button className="h-10 flex-1 lg:flex-none" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
                   <Save className="h-4 w-4" />
