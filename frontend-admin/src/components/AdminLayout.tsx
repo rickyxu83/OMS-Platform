@@ -760,7 +760,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         {/* Page Content：key 随 pathname 变化触发进入动画，PUSH 右滑入、POP（返回）左滑入 */}
         <main
           ref={contentRef}
-          className={`mobile-admin-content relative z-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-transparent lg:pb-0 ${hideMobileChrome ? "pb-0" : "pb-[calc(5rem+env(safe-area-inset-bottom))]"}`}
+          className={`mobile-admin-content relative z-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-transparent lg:pb-0 ${hideMobileChrome ? "pb-0" : "pb-[calc(5rem_+_env(safe-area-inset-bottom))]"}`}
         >
           <div key={location.pathname} className={navigationType === "POP" ? "route-enter-pop" : "route-enter-push"}>
             {children}
@@ -769,7 +769,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
         {!hideMobileChrome && mobileNavItems.length > 0 && (
           <nav
-            className={`mobile-bottom-nav fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 px-3 pb-[calc(0.35rem+env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur-md transition-transform duration-200 lg:hidden ${
+            className={`mobile-bottom-nav fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 px-3 pb-[calc(0.35rem_+_env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur-md transition-transform duration-200 lg:hidden ${
               mobileNavVisible ? "translate-y-0" : "translate-y-[calc(100%-0.35rem)]"
             }`}
             onFocusCapture={() => setMobileNavVisible(true)}
@@ -804,7 +804,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         {!hideMobileChrome && mobileNavItems.length > 0 && !mobileNavVisible && (
           <button
             type="button"
-            className="fixed bottom-[calc(0.45rem+env(safe-area-inset-bottom))] left-1/2 z-30 flex h-8 w-14 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-card/95 text-muted-foreground shadow-lg backdrop-blur-md lg:hidden"
+            className="fixed bottom-[calc(0.45rem_+_env(safe-area-inset-bottom))] left-1/2 z-30 flex h-8 w-14 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-card/95 text-muted-foreground shadow-lg backdrop-blur-md lg:hidden"
             onClick={() => setMobileNavVisible(true)}
             aria-label="显示底部导航"
           >

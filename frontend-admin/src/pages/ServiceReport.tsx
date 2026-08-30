@@ -3354,16 +3354,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
               ) : null}
             </div>
           ) : null}
-          <div className="flex items-center gap-2 sm:hidden">
-            <Button className="h-9 flex-1" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
-              {saving ? <span className="btn-loader" aria-hidden="true" /> : <Save className="h-4 w-4" />}
-              保存
-            </Button>
-            <Button className="h-9 flex-1" onClick={submit} disabled={saving || formLoading || uploadingFiles}>
-              {saving || uploadingFiles ? <span className="btn-loader" aria-hidden="true" /> : <Send className="h-4 w-4" />}
-              提交
-            </Button>
-          </div>
           <div className="hidden items-center gap-2 sm:flex">
             <Button className="h-10" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
               {saving ? <span className="btn-loader" aria-hidden="true" /> : <Save className="h-4 w-4" />}
@@ -3375,24 +3365,31 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             </Button>
           </div>
         </div>
-        <div className="mt-1 flex w-full items-center gap-1.5 overflow-x-auto lg:hidden">
-          {[
-            { key: "customer", label: "客户" },
-            { key: "module", label: "服务" },
-            { key: "work", label: "处理记录" },
-            { key: "attachment", label: "附件" },
-            { key: "signoff", label: "签名" },
-          ].map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary active:scale-95"
-              onClick={() => document.getElementById(`report-section-${item.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+      </div>
+
+      {/* 移动/平板固定分区快跳（右侧竖排,不随滚动,随时点按切分区） */}
+      <div className="fixed right-1.5 top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-1.5 lg:hidden"
+        style={{ transform: "translateY(-50%)", maxHeight: "60dvh", overflowY: "auto" }}
+        role="tablist"
+        aria-label="表单分区跳转"
+      >
+        {[
+          { key: "customer", label: "客户" },
+          { key: "module", label: "服务" },
+          { key: "work", label: "记录" },
+          { key: "attachment", label: "附件" },
+          { key: "signoff", label: "签名" },
+        ].map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className="flex h-9 w-14 items-center justify-center rounded-full border border-border/80 bg-background/95 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur transition-colors hover:border-primary/50 hover:text-primary active:scale-95"
+            onClick={() => document.getElementById(`report-section-${item.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            aria-label={`跳到${item.label}分区`}
+          >
+            {item.label}
+          </button>
+        ))}
       </div>
 
       <ErrorToast message={error} />
@@ -4376,7 +4373,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 </div>
               </ReportSection>
             ) : null}
-            <div className="fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-30 border-t bg-background/95 shadow-[0_-12px_30px_rgba(15,23,42,0.10)] backdrop-blur lg:bottom-0 lg:sticky lg:inset-x-auto lg:bottom-0">
+            <div className="fixed inset-x-0 bottom-[calc(3.75rem_+_env(safe-area-inset-bottom))] z-30 border-t bg-background/95 shadow-[0_-12px_30px_rgba(15,23,42,0.10)] backdrop-blur lg:bottom-0 lg:sticky lg:inset-x-auto lg:bottom-0">
               <div className="flex gap-2 px-3 py-3 lg:justify-end">
               <Button className="h-10 flex-1 lg:flex-none" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
                 <Save className="h-4 w-4" />
