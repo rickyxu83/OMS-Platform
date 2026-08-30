@@ -311,10 +311,10 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   const [formLoading, setFormLoading] = useState(false);
   // 列表页筛选：草稿默认折叠 + 全文搜索 + 服务日期范围（与工单处理页一致的筛选行）
   // 当前列表 tab（草稿/派单待处理/已填写）,持久化到 localStorage 刷新保持（默认派单待处理）
-  const [reportTab, setReportTab] = useState<"draft" | "dispatch" | "filled">(() => {
+  const [reportTab, setReportTab] = useState<"records" | "dispatch">(() => {
     const saved = localStorage.getItem("sr:reportTab");
-    // 派单功能尚未启用：默认/高频为'已填写服务记录'（干完活直接落这里）,其次草稿,最后派单
-    return saved === "draft" || saved === "dispatch" ? saved : "filled";
+    // 草稿已并入'服务记录'（草稿=未提交的服务记录,置顶红标）;默认服务记录
+    return saved === "dispatch" ? "dispatch" : "records";
   });
   // 无限下拉：分页游标（ref 避免滚动闭包读到过期值）
   const ordersPageRef = useRef(1);
@@ -2334,6 +2334,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   }
 
   /** 移动端工单卡片（ResponsiveList renderCard 用），字段/操作与桌面行一致 */
+  /** 手机专属卡片（<md）：层析清晰——编号+状态 / 客户+模式 / 内容两行 / 工程师+时间 / 操作 */
   function renderReportOrderCard(order: ServiceOrder) {
     const mode = normalizeMode(order.serviceMode);
     const modeLabel = MODE_OPTIONS.find((item) => item.value === mode)?.label || mode;
@@ -2347,81 +2348,114 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     const isDeletingRecord = deletingOrderId === order.id;
     const destructiveActionLabel = canDeleteRecord ? "删除" : "作废";
     const serviceTime = reportOrderServiceTime(order);
+    // 同天展示"09:00 ~ 17:00"紧凑区间,空数据用 — 
+    const timeShort = (value: string) => (value.length >= 16 ? value.slice(11, 16) : value);
+    const timeRange = serviceTime.start && serviceTime.end
+      ? `${timeShort(serviceTime.start)} ~ ${timeShort(serviceTime.end)}`
+      : serviceTime.start || serviceTime.end || "—";
     return (
-      <ResponsiveCard
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => openPreviewOrder(order)}
-        title={reportOrderDisplayId(order)}
-        status={statusIndicator(workflowStatus, statusLabel)}
-        subtitle={reportOrderMainContent(order)}
-        fields={[
-          { label: "客户", value: order.customerName || "未填写客户" },
-          { label: "工程师", value: reportOrderEngineerText(order) },
-          { label: "模式", value: modeIndicator(mode, modeLabel) },
-          {
-            label: "服务时间",
-            value: (
-              <span className="block space-y-0.5 text-xs">
-                <span className="block"><span className="text-muted-foreground">开始：</span>{serviceTime.start}</span>
-                <span className="block"><span className="text-muted-foreground">结束：</span>{serviceTime.end}</span>
-              </span>
-            ),
-          },
-        ]}
-        actions={
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:bg-transparent hover:text-sky-600"
-              disabled={!canExportRecord || Boolean(exportingOrderId)}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (!canExportRecord || exportingOrderId) return;
-                downloadServiceRecordPdf(order);
-              }}
-            >
-              {isExportingRecord ? <span className="btn-loader" aria-hidden="true" /> : <Download className="mr-1 h-4 w-4" />}
-              导出 PDF
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:bg-transparent hover:text-sky-600"
-              disabled={!canExportRecord || Boolean(exportingOrderId)}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (!canExportRecord || exportingOrderId) return;
-                shareServiceRecordPdf(order);
-              }}
-            >
-              <Share2 className="mr-1 h-4 w-4" />
-              分享
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:bg-transparent hover:text-rose-600"
-              disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (!canRemoveOrCancelRecord || deletingOrderId) return;
-                if (canDeleteRecord) {
-                  deleteServiceOrder(order);
-                  return;
-                }
-                cancelServiceOrder(order);
-              }}
-            >
-              {isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : canDeleteRecord ? <Trash2 className="mr-1 h-4 w-4" /> : <X className="mr-1 h-4 w-4" />}
-              {destructiveActionLabel}
-            </Button>
-          </>
-        }
-      />
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openPreviewOrder(order);
+          }
+        }}
+        className="group cursor-pointer space-y-2 select-none active:bg-muted/40"
+      >
+        {/* 首行：客户名（大字,信息主角）+ 状态 */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-[15px] font-semibold">{order.customerName || "未填写客户"}</span>
+          <span className="shrink-0">{statusIndicator(workflowStatus, statusLabel)}</span>
+        </div>
+        {/* 次行：模式胶囊 + 服务内容两行 */}
+        <div className="flex items-start gap-2">
+          <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{modeLabel}</span>
+          <span className="min-w-0 flex-1 line-clamp-2 break-all text-[13px] leading-5 text-muted-foreground">{reportOrderMainContent(order)}</span>
+        </div>
+        {/* 末行：工程师 / 服务时间 + 操作菜单 */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-3 text-[12.5px] text-muted-foreground">
+            <span className="min-w-0 truncate"><span className="mr-0.5">🧑‍🔧</span>{reportOrderEngineerText(order)}</span>
+            <span className="shrink-0 text-[12.5px]">{timeRange}</span>
+          </div>
+          {canExportRecord || canRemoveOrCancelRecord ? (
+            <span className="shrink-0" onClick={(event) => event.stopPropagation()}>{renderReportOrderActions(order)}</span>
+          ) : null}
+        </div>
+      </div>
     );
   }
 
-  /** C 款精简表格（复刻工单处理）：客户/编号 · 内容/模式 · 工程师/时间(hover 四段悬浮卡) · 状态 · 操作 */
+  /** 工单操作菜单（桌面表格与手机卡片共用）：导出 PDF / 分享 PDF / 删除或作废 */
+  function renderReportOrderActions(order: ServiceOrder) {
+    const canExportRecord = canExportServiceRecord(order);
+    const isExportingRecord = exportingOrderId === order.id;
+    const canDeleteRecord = canDeleteServiceOrder(order);
+    const canCancelRecord = canCancelServiceOrder(order);
+    const canRemoveOrCancelRecord = canDeleteRecord || canCancelRecord;
+    const isDeletingRecord = deletingOrderId === order.id;
+    const destructiveActionLabel = canDeleteRecord ? "删除" : "作废";
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95 disabled:opacity-40"
+            title="工单操作"
+            aria-label="工单操作"
+            disabled={isExportingRecord || isDeletingRecord}
+          >
+            {isExportingRecord || isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" />}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onSelect={() => {
+              if (!canExportRecord || exportingOrderId) return;
+              downloadServiceRecordPdf(order);
+            }}
+            disabled={!canExportRecord || Boolean(exportingOrderId)}
+          >
+            <Download className="h-4 w-4" />
+            导出 PDF
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              if (!canExportRecord || exportingOrderId) return;
+              shareServiceRecordPdf(order);
+            }}
+            disabled={!canExportRecord || Boolean(exportingOrderId)}
+          >
+            <Share2 className="h-4 w-4" />
+            分享 PDF
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant="destructive"
+            onSelect={() => {
+              if (!canRemoveOrCancelRecord || deletingOrderId) return;
+              if (canDeleteRecord) {
+                deleteServiceOrder(order);
+                return;
+              }
+              cancelServiceOrder(order);
+            }}
+            disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
+          >
+            {canDeleteRecord ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
+            {destructiveActionLabel}工单
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
+  /** C 款精简表格（复刻工单处理）：客户 · 内容/模式 · 工程师/时间 · 状态 · 操作 */
   function renderReportOrderList(orderList: ServiceOrder[], emptyText: string) {
     const displayEmptyText = !loading && filtersActive ? "无匹配当前筛选的结果" : emptyText;
     return (
@@ -2432,18 +2466,18 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             正在加载工单…
           </div>
         ) : orderList.length ? (
-          <ResponsiveList items={orderList} keyExtractor={(order) => order.id} renderCard={renderReportOrderCard}>
+          <ResponsiveList items={orderList} keyExtractor={(order) => order.id} renderCard={renderReportOrderCard} breakpoint="md" cardClassName="px-3.5 py-3">
             <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
-                <col className="w-[26%]" />
-                <col className="w-[30%]" />
                 <col className="w-[20%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
+                <col className="w-[30%]" />
+                <col className="w-[18%]" />
+                <col className="w-[14%]" />
+                <col className="w-[18%]" />
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
-                  <TableHead>客户 / 工单编号</TableHead>
+                  <TableHead>客户</TableHead>
                   <TableHead>服务内容 / 模式</TableHead>
                   <TableHead>工程师 / 服务时间</TableHead>
                   <TableHead>状态</TableHead>
@@ -2495,17 +2529,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                           >
                             {order.customerName || "未填写客户"}
                           </button>
-                          <button
-                            type="button"
-                            className="block max-w-full truncate text-left font-mono text-xs text-muted-foreground transition-colors hover:text-primary"
-                            title={reportOrderDisplayId(order)}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              openPreviewOrder(order);
-                            }}
-                          >
-                            {reportOrderDisplayId(order)}
-                          </button>
                         </div>
                       </TableCell>
                       <TableCell className="min-w-0">
@@ -2545,57 +2568,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                       </TableCell>
                       <TableCell>{statusIndicator(workflowStatus, statusLabel)}</TableCell>
                       <TableCell onClick={(event) => event.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
-                              title="工单操作"
-                              aria-label="工单操作"
-                              disabled={isExportingRecord || isDeletingRecord}
-                            >
-                              {isExportingRecord || isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" />}
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                if (!canExportRecord || exportingOrderId) return;
-                                downloadServiceRecordPdf(order);
-                              }}
-                              disabled={!canExportRecord || Boolean(exportingOrderId)}
-                            >
-                              <Download className="h-4 w-4" />
-                              导出 PDF
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                if (!canExportRecord || exportingOrderId) return;
-                                shareServiceRecordPdf(order);
-                              }}
-                              disabled={!canExportRecord || Boolean(exportingOrderId)}
-                            >
-                              <Share2 className="h-4 w-4" />
-                              分享 PDF
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onSelect={() => {
-                                if (!canRemoveOrCancelRecord || deletingOrderId) return;
-                                if (canDeleteRecord) {
-                                  deleteServiceOrder(order);
-                                  return;
-                                }
-                                cancelServiceOrder(order);
-                              }}
-                              disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
-                            >
-                              {canDeleteRecord ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
-                              {destructiveActionLabel}工单
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {renderReportOrderActions(order)}
                       </TableCell>
                     </TableRow>
                   );
@@ -2611,6 +2584,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   }
 
   /** 移动端草稿卡片 */
+  /** 草稿卡片（并入'服务记录'tab,与已完成工单卡视觉统一）：客户名+灰'草稿'徽标 / 模式+内容 / 工程师+更新时间 / ⋯菜单 */
   function renderDraftCard(draftItem: CreateDraftItem) {
     const createDraft = draftItem.payload;
     const draftMode = normalizeMode(createDraft.serviceMode);
@@ -2625,48 +2599,67 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     const draftEngineerText = draftEngineerNames.length
       ? draftEngineerNames.join("、")
       : user?.realName || user?.username || user?.name || "本人草稿";
+    const updatedText = formatDateTime(draftItem.updatedAt || draftItem.createdAt || "");
+    const timeShort = (value: string) => (value.length >= 16 ? value.slice(11, 16) : value);
     return (
-      <ResponsiveCard
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => navigate(draftRoute)}
-        title={createDraft.customerName || "未填写客户"}
-        status={indicatorSpan(Pencil, "text-slate-400", "草稿")}
-        subtitle={compactDraftLabel(createDraft)}
-        fields={[
-          { label: "模式", value: modeIndicator(draftMode, draftModeLabel) },
-          { label: "工程师", value: draftEngineerText },
-          { label: "开始", value: formatDateTime(createDraft.actualStartAt || createDraft.departureAt) },
-          { label: "更新于", value: formatDateTime(draftItem.updatedAt || draftItem.createdAt) },
-        ]}
-        actions={
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:bg-transparent hover:text-sky-600"
-              onClick={(event) => {
-                event.stopPropagation();
-                navigate(draftRoute);
-              }}
-            >
-              <PenLine className="mr-1 h-4 w-4" />
-              继续编辑
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:bg-transparent hover:text-rose-600"
-              disabled={deletingDraft}
-              onClick={(event) => {
-                event.stopPropagation();
-                deleteCreateDraft(draftItem.draftKey);
-              }}
-            >
-              {deletingDraft ? <span className="btn-loader" aria-hidden="true" /> : <Trash2 className="mr-1 h-4 w-4" />}
-              删除草稿
-            </Button>
-          </>
-        }
-      />
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            navigate(draftRoute);
+          }
+        }}
+        className="group cursor-pointer space-y-2 select-none active:bg-muted/40"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-[15px] font-semibold">{createDraft.customerName || "未填写客户"}</span>
+          <span className="shrink-0">{indicatorSpan(Pencil, "text-slate-400", "草稿")}</span>
+        </div>
+        <div className="flex items-start gap-2">
+          <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{draftModeLabel}</span>
+          <span className="min-w-0 flex-1 line-clamp-2 break-all text-[13px] leading-5 text-muted-foreground">{compactDraftLabel(createDraft)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-3 text-[12.5px] text-muted-foreground">
+            <span className="min-w-0 truncate"><span className="mr-0.5">🧑‍🔧</span>{draftEngineerText}</span>
+            <span className="shrink-0 text-[12.5px]">更新于 {timeShort(updatedText)}</span>
+          </div>
+          <span className="shrink-0" onClick={(event) => event.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95 disabled:opacity-40"
+                  title="草稿操作"
+                  aria-label="草稿操作"
+                  disabled={deletingDraft}
+                >
+                  {deletingDraft ? <span className="btn-loader" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" />}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => navigate(draftRoute)}>
+                  <PenLine className="h-4 w-4" />
+                  继续编辑
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => deleteCreateDraft(draftItem.draftKey)}
+                  disabled={deletingDraft}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  删除草稿
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </span>
+        </div>
+      </div>
     );
   }
 
@@ -2678,11 +2671,11 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
           <ResponsiveList items={filteredCreateDrafts} keyExtractor={(item) => item.draftKey} renderCard={renderDraftCard}>
             <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
-                <col className="w-[26%]" />
-                <col className="w-[30%]" />
                 <col className="w-[20%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
+                <col className="w-[30%]" />
+                <col className="w-[18%]" />
+                <col className="w-[14%]" />
+                <col className="w-[18%]" />
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
@@ -2898,12 +2891,11 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             </CardContent>
           </Card>
 
-          {/* 桌面（≥lg）：顶部下划线 Tab */}
-          <div className="hidden items-end gap-1 border-b border-border px-1 lg:flex" role="tablist" aria-label="工单分类">
+          {/* 顶部下划线 Tab：桌面与手机共用（手机端不用自建底部栏,避免与全局移动底栏重叠） */}
+          <div className="-mx-2 flex items-end gap-1 overflow-x-auto border-b border-border px-2 sm:mx-0 sm:px-1" role="tablist" aria-label="工单分类">
             {(
               [
-                { key: "filled", label: "已填写服务记录", count: filledOrders.length, Icon: ClipboardCheck },
-                { key: "draft", label: "草稿", count: createDrafts.length, Icon: Save },
+                { key: "records", label: "服务记录", count: createDrafts.length + filledOrders.length, Icon: ClipboardCheck },
                 { key: "dispatch", label: "派单待处理", count: dispatchOrders.length, Icon: ClipboardPenLine },
               ] as const
             ).map(({ key, label, count, Icon }) => {
@@ -2914,14 +2906,14 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                   type="button"
                   role="tab"
                   aria-selected={active}
-                  className={`-mb-px flex items-center gap-2 border-b-2 px-4 pb-2.5 pt-3 text-sm font-medium transition-colors ${
+                  className={`-mb-px flex items-center gap-1.5 border-b-2 px-2.5 pb-2 pt-2.5 text-[13px] font-medium transition-colors sm:gap-2 sm:px-4 sm:pb-2.5 sm:pt-3 sm:text-sm ${
                     active
                       ? "border-primary text-primary"
                       : "border-transparent text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                   }`}
                   onClick={() => setReportTab(key)}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="hidden h-4 w-4 sm:block" />
                   <span className="whitespace-nowrap">{label}</span>
                   <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
                     active ? "bg-primary-soft text-primary" : "bg-muted text-muted-foreground"
@@ -2938,60 +2930,36 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 <span className="btn-loader" aria-hidden="true" />
                 正在加载工单…
               </div>
-            ) : reportTab === "draft" ? (
-              renderDraftsList()
             ) : reportTab === "dispatch" ? (
               renderReportOrderList(dispatchOrders, "暂无派单待处理工单")
             ) : (
-              renderReportOrderList(filledOrders, "暂无已填写服务记录")
+              <div className="space-y-4">
+                {filteredCreateDrafts.length ? (
+                  <section>
+                    <h3 className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 text-xs font-semibold text-rose-600">
+                      <Pencil className="h-3.5 w-3.5" />
+                      草稿 · 未提交 ({filteredCreateDrafts.length})
+                    </h3>
+                    {renderDraftsList()}
+                  </section>
+                ) : null}
+                {filledOrders.length ? (
+                  <section>
+                    <h3 className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 text-xs font-semibold text-muted-foreground">
+                      <ClipboardCheck className="h-3.5 w-3.5" />
+                      已完成 ({filledOrders.length})
+                    </h3>
+                    {renderReportOrderList(filledOrders, "")}
+                  </section>
+                ) : null}
+                {!filteredCreateDrafts.length && !filledOrders.length ? (
+                  <div className="flex min-h-[160px] items-center justify-center text-sm text-muted-foreground">
+                    {filtersActive ? "无匹配当前筛选的结果" : "暂无服务记录"}
+                  </div>
+                ) : null}
+              </div>
             )}
           </div>
-
-          {/* 手机（<lg）：底部 App 栏,列表全屏最大化一屏内容；fixed 底部拇指操作 */}
-          <div
-            className="fixed inset-x-0 bottom-0 z-40 border-t bg-background lg:hidden"
-            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-            role="tablist"
-            aria-label="工单分类"
-          >
-            <div className="flex">
-              {(
-                [
-                  { key: "filled", label: "已填写", count: filledOrders.length, Icon: ClipboardCheck },
-                  { key: "draft", label: "草稿", count: createDrafts.length, Icon: Save },
-                  { key: "dispatch", label: "派单", count: dispatchOrders.length, Icon: ClipboardPenLine },
-                ] as const
-              ).map(({ key, label, count, Icon }) => {
-                const active = reportTab === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    className={`relative flex flex-1 flex-col items-center gap-1 pb-2 pt-2.5 text-[11px] font-medium ${
-                      active ? "text-primary" : "text-muted-foreground"
-                    }`}
-                    onClick={() => setReportTab(key)}
-                  >
-                    <Icon className="h-6 w-6" strokeWidth={active ? 2.2 : 1.8} />
-                    {label}
-                    {count > 0 ? (
-                      <span
-                        className={`pointer-events-none absolute right-1/2 top-0.5 flex h-[15px] min-w-[15px] translate-x-[22px] items-center justify-center rounded-full px-1 text-[9px] font-bold text-white ${
-                          key === "dispatch" ? "bg-amber-500" : "bg-rose-500"
-                        }`}
-                      >
-                        {count > 99 ? "99+" : count}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {/* 手机底部栏遮挡补偿 */}
-          <div className="h-16 lg:hidden" aria-hidden="true" />
 
         </div>
 
