@@ -313,6 +313,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   // 折叠状态持久化到 localStorage,刷新后保持用户上次的选择
   const [draftsOpen, setDraftsOpen] = useState(() => localStorage.getItem("sr:draftsOpen") !== "0");
   const [dispatchOpen, setDispatchOpen] = useState(() => localStorage.getItem("sr:dispatchOpen") !== "0"); // 派单待处理默认展开
+  const [filledOpen, setFilledOpen] = useState(() => localStorage.getItem("sr:filledOpen") !== "0"); // 已填写服务记录默认展开
   // 无限下拉：分页游标（ref 避免滚动闭包读到过期值）
   const ordersPageRef = useRef(1);
   const ordersTotalRef = useRef(0);
@@ -542,7 +543,8 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   useEffect(() => {
     localStorage.setItem("sr:draftsOpen", draftsOpen ? "1" : "0");
     localStorage.setItem("sr:dispatchOpen", dispatchOpen ? "1" : "0");
-  }, [draftsOpen, dispatchOpen]);
+    localStorage.setItem("sr:filledOpen", filledOpen ? "1" : "0");
+  }, [draftsOpen, dispatchOpen, filledOpen]);
 
   const dispatchOrders = useMemo(() => (
     matchingReportOrders.filter(isDispatchOrder)
@@ -2956,9 +2958,32 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             </Card>
 
             <Card className="overflow-hidden">
-              <CardContent className="p-0">
-                {renderReportOrderList(filledOrders, "暂无已填写服务记录")}
-              </CardContent>
+              <CardHeader className={`${filledOpen ? "border-b" : ""} bg-muted/30 px-3 ${filledOpen ? "py-2.5 sm:py-3" : "py-1.5 sm:py-2"} sm:px-4`}>
+                <CardTitle
+                  className="flex w-full cursor-pointer select-none items-center justify-between gap-3 text-sm sm:text-base"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={filledOpen}
+                  onClick={() => setFilledOpen((open) => !open)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setFilledOpen((open) => !open);
+                    }
+                  }}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <ClipboardCheck className="h-4 w-4 shrink-0" />
+                    <span className="truncate">已填写服务记录 ({filledOrders.length})</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${filledOpen ? "rotate-180" : ""}`} />
+                </CardTitle>
+              </CardHeader>
+              {filledOpen ? (
+                <CardContent className="p-0">
+                  {renderReportOrderList(filledOrders, "暂无已填写服务记录")}
+                </CardContent>
+              ) : null}
             </Card>
           </div>
         </div>
