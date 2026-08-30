@@ -2498,7 +2498,9 @@ async function create(req, res) {
     const [countRows] = await connection.execute(
       `SELECT COUNT(*) AS total
        FROM service_orders
-       WHERE order_no LIKE :prefix`,
+       WHERE order_no LIKE :prefix
+       FOR UPDATE`,
+      // issue #8：锁定读串行化并发单号生成,避免 COUNT+1 撞唯一键 409（FOR UPDATE 为当前读,能看到最新已提交行）
       { prefix: `${prefix}%` },
     )
     const orderNo = buildOrderNo(Number(countRows[0].total) + 1, now)
@@ -2780,7 +2782,9 @@ async function createSelfReport(req, res) {
     const [countRows] = await connection.execute(
       `SELECT COUNT(*) AS total
        FROM service_orders
-       WHERE order_no LIKE :prefix`,
+       WHERE order_no LIKE :prefix
+       FOR UPDATE`,
+      // issue #8：锁定读串行化并发单号生成,避免 COUNT+1 撞唯一键 409（FOR UPDATE 为当前读,能看到最新已提交行）
       { prefix: `${prefix}%` },
     )
     const orderNo = buildOrderNo(Number(countRows[0].total) + 1, now)
@@ -4241,6 +4245,15 @@ async function transition(req, res) {
       WHERE id = :id`,
       { id: req.params.id, status, actorId: req.user.id, reason },
     )
+    if (status === 'cancelled') {
+      // issue #6：作废时撤销未完成的客户签署请求,避免客户经旧链接提交'已作废工单'的签名
+      await connection.execute(
+              `UPDATE service_order_customer_signature_requests
+       SET status = 'revoked'
+       WHERE service_order_id = :id AND status IN ('created', 'sent')`,
+        { id: req.params.id },
+      )
+    }
     const installationDeviceCleanup = status === 'cancelled'
       ? await cleanupInstallationDevicesForOrderIds(connection, [req.params.id])
       : { deletedDeviceIds: [], skippedDeviceIds: [] }
@@ -4339,6 +4352,13 @@ async function cancelByEngineer(req, res) {
       `UPDATE service_orders
        SET status = 'cancelled'
        WHERE id = :id`,
+      { id: req.params.id },
+    )
+    // issue #6：作废时撤销未完成的客户签署请求,避免客户经旧链接提交'已作废工单'的签名
+    await connection.execute(
+            `UPDATE service_order_customer_signature_requests
+       SET status = 'revoked'
+       WHERE service_order_id = :id AND status IN ('created', 'sent')`,
       { id: req.params.id },
     )
     const installationDeviceCleanup = await cleanupInstallationDevicesForOrderIds(connection, [req.params.id])

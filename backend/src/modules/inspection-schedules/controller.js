@@ -301,7 +301,9 @@ async function nextOrderNo(connection, now = new Date()) {
   const [countRows] = await connection.execute(
     `SELECT COUNT(*) AS total
      FROM service_orders
-     WHERE order_no LIKE :prefix`,
+     WHERE order_no LIKE :prefix
+     FOR UPDATE`,
+    // issue #8：锁定读串行化并发单号生成（当前读,能看到最新已提交行）
     { prefix: `${prefix}%` },
   )
   return buildOrderNo(Number(countRows[0]?.total || 0) + 1, now)
@@ -859,6 +861,16 @@ async function generateDueOrders({ dueDate, limit = 50, updatedBy = null }) {
         results.push(await createInspectionOrder(connection, schedule, occurrenceDate, assignment))
       }
       const nextState = nextAnchorAfterOccurrence(schedule, occurrenceDate)
+      if (!assignments.length && nextState.active) {
+        // issue #12：计划 0 分工（如设备被强删后分工行被清空）时不能静默推进锚点——
+        // 不推进并告警,修复分工后下一轮可补齐期次,避免整段巡检期静默丢失
+        console.warn('[inspection] schedule has zero assignments, anchor NOT advanced to avoid silent gap', {
+          scheduleId: schedule.id,
+          nextRunAnchor: schedule.next_run_anchor,
+          dueDate,
+        })
+        continue
+      }
       await advanceSchedule(connection, schedule.id, nextState.nextRunAnchor, nextState.active, updatedBy)
       for (const result of results) {
         items.push({

@@ -578,7 +578,9 @@ async function nextCustomerCode(connection) {
   const [rows] = await connection.execute(
     `SELECT MAX(CAST(SUBSTRING(code, 9) AS UNSIGNED)) AS max_no
      FROM customers
-     WHERE code LIKE 'TS-CUST-%'`,
+     WHERE code LIKE 'TS-CUST-%'
+     FOR UPDATE`,
+    // issue #8：锁定读串行化并发客户编码生成（当前读,能看到最新已提交行）
   )
   const nextNo = Number(rows[0]?.max_no || 0) + 1
   return `TS-CUST-${String(nextNo).padStart(4, '0')}`
