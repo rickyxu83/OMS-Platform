@@ -2636,6 +2636,9 @@ async function createSelfReport(req, res) {
   if (!actualStartAt) missing.push(effectiveServiceMode === 'onsite' ? '到达时间' : '开始时间')
   if (!actualEndAt) missing.push(effectiveServiceMode === 'onsite' ? '完成时间' : '结束时间')
   if (effectiveServiceMode === 'onsite' && !useElectronicCustomerSignature && !customerSignature && !customerSignatureFileId) missing.push('客户手写签名')
+  // issue #7：巡检类自报单必须携带巡检文档（与 updateSelfReport 口径一致）——创建即提交时
+  // 文档尚未挂载到新工单,故校验放在 INSERT 拿到 insertId 之后的事务内再做（见下方）
+  const isInspectionSubmit = effectiveServiceMode === 'onsite' && serviceType === 'inspect'
 
   if (missing.length) {
     const filtered = effectiveServiceMode === 'office' ? missing.filter(m => m !== '处理进度' && m !== '服务结果') : missing
@@ -2821,6 +2824,12 @@ async function createSelfReport(req, res) {
         submittedAt: useElectronicCustomerSignature ? null : formatMysqlDateTime(new Date()),
       },
     )
+
+    // issue #7：巡检类自报单提交必须有巡检文档（事务内校验,失败即整体回滚）——
+    // 与 updateSelfReport 的 isInspectionSubmit + hasInspectionDocument 校验口径一致
+    if (isInspectionSubmit && !(await hasInspectionDocument(orderResult.insertId))) {
+      throw badRequest('请先补充必填项：巡检文档')
+    }
 
     if (shouldManageInstallDevice && installDeviceResolution.createdDeviceIds.length) {
       await markInstallDevicesSource(connection, installDeviceResolution.createdDeviceIds, orderResult.insertId)
@@ -4265,6 +4274,12 @@ async function transition(req, res) {
       skippedInstalledDeviceCount: installationDeviceCleanup.skippedDeviceIds.length,
     })
   })
+
+  // issue #14：ops 直接流转到 submitted/approved（结案链）时补销售通知——
+  // queueSalesServiceOrderNotificationSafely 内部已有 already_notified 幂等去重,重复流转不会重复发信
+  if (status === 'submitted' || status === 'approved') {
+    await queueSalesServiceOrderNotificationSafely(req.params.id)
+  }
 
   res.json({ item: orderPayload((await attachEngineers([await getOrder(req.params.id)]))[0]) })
 }

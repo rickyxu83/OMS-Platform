@@ -715,6 +715,28 @@ async function create(req, res) {
     for (const engineerId of engineerIds) await assertActiveEngineer(connection, engineerId)
     for (const item of normalizedAssignments) await assertDeviceBelongsToCustomer(connection, normalizedCustomerId, item.deviceId)
     const legacyTargetEngineerId = engineerIds[0]
+    // issue #11：同客户 + 同周期 + 启用中的计划不能再含同一工程师——否则 generateDue
+    // 会给该工程师重复生成工单（历史平行线遗留下的重复组合,建新时明确拦截并提示修旧）
+    if (engineerIds.length) {
+      const engParams = engineerIds.reduce((acc, id, i) => { acc[`e${i}`] = id; return acc }, {})
+      const engPlaceholders = engineerIds.map((_, i) => `:e${i}`).join(',')
+      const [dupRows] = await connection.execute(
+        `SELECT s.id
+         FROM inspection_schedules s
+         WHERE s.customer_id = :customerId
+           AND s.cadence = :cadence
+           AND s.active = 1
+           AND (s.target_engineer_id IN (${engPlaceholders}) OR EXISTS (
+             SELECT 1 FROM inspection_schedule_assignments a
+             WHERE a.schedule_id = s.id AND a.engineer_id IN (${engPlaceholders})
+           ))
+         LIMIT 1`,
+        { ...engParams, customerId: normalizedCustomerId, cadence: normalizedCadence },
+      )
+      if (dupRows[0]) {
+        throw badRequest('该客户已存在同周期且含相同工程师的启用巡检计划（计划 #' + dupRows[0].id + '），请复用或先停用旧计划')
+      }
+    }
     const [result] = await connection.execute(
       `INSERT INTO inspection_schedules (
         name, remark, customer_id, target_engineer_id, cadence, next_run_anchor,
