@@ -4058,8 +4058,16 @@ async function update(req, res) {
   const { customerId, deviceId, targetDeviceIds, serviceMode, serviceType, timesheetCategory, timesheetSalesperson, priority, issueDescription, internalNote } = body
   const normalizedServiceMode = ['remote', 'onsite', 'office'].includes(serviceMode) ? serviceMode : null
   const effectiveServiceMode = normalizedServiceMode || order.service_mode || 'onsite'
+  // 非 remote 工单原无条件置 null 并被无限写入（issue #9）：任何 ops 编辑都会清空类别。
+  // remote 必须保持分类（兜底'排障'）；非 remote 仅当请求显式传入 timesheetCategory 时才覆盖。
+  const hasTimesheetCategory = Object.prototype.hasOwnProperty.call(body, 'timesheetCategory')
+  const setTimesheetCategory = effectiveServiceMode === 'remote' || hasTimesheetCategory
   const effectiveTimesheetCategory =
-    effectiveServiceMode === 'remote' ? timesheetCategory || order.timesheet_category || '排障' : null
+    effectiveServiceMode === 'remote'
+      ? timesheetCategory || order.timesheet_category || '排障'
+      : hasTimesheetCategory
+        ? timesheetCategory || null
+        : order.timesheet_category
   // 请求体未携带的字段不应被清空:仅当显式传入 deviceId / internalNote 时才覆盖
   const hasDeviceId = Object.prototype.hasOwnProperty.call(body, 'deviceId')
   const hasTargetDeviceIds = Object.prototype.hasOwnProperty.call(body, 'targetDeviceIds')
@@ -4083,7 +4091,7 @@ async function update(req, res) {
        SET customer_id = COALESCE(:customerId, customer_id),
            service_mode = COALESCE(:serviceMode, service_mode),
            service_type = COALESCE(:serviceType, service_type),
-           timesheet_category = :timesheetCategory,
+           timesheet_category = CASE WHEN :setCategory = 1 THEN :timesheetCategory ELSE timesheet_category END,
            timesheet_salesperson = COALESCE(:timesheetSalesperson, timesheet_salesperson),
            priority = COALESCE(:priority, priority),
            issue_description = COALESCE(:issueDescription, issue_description),
@@ -4095,6 +4103,7 @@ async function update(req, res) {
         serviceMode: normalizedServiceMode,
         serviceType: serviceType || null,
         timesheetCategory: effectiveTimesheetCategory,
+        setCategory: setTimesheetCategory ? 1 : 0,
         timesheetSalesperson: timesheetSalesperson || null,
         priority: priority || null,
         issueDescription: issueDescription || null,
