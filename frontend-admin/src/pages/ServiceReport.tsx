@@ -311,6 +311,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   const [formLoading, setFormLoading] = useState(false);
   // 列表页筛选：草稿默认折叠 + 全文搜索 + 服务日期范围（与工单处理页一致的筛选行）
   const [draftsOpen, setDraftsOpen] = useState(false);
+  const [dispatchOpen, setDispatchOpen] = useState(true); // 派单待处理默认展开（主工作区）,可折叠
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || "");
   const [startDate, setStartDate] = useState(searchParams.get("startDate") || "");
   const [endDate, setEndDate] = useState(searchParams.get("endDate") || "");
@@ -2882,13 +2883,26 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             </Card>
 
             <Card className="overflow-hidden">
-              <CardHeader className={`${loading || dispatchOrders.length || filtersActive ? "border-b" : ""} bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3`}>
-                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
-                  <ClipboardPenLine className="h-4 w-4" />
-                  派单待处理 ({dispatchOrders.length})
+              <CardHeader className={`${loading || (dispatchOrders.length && dispatchOpen) || (filtersActive && dispatchOpen) ? "border-b" : ""} bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3`}>
+                <CardTitle className="flex w-full items-center justify-between gap-3 text-sm sm:text-base">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <ClipboardPenLine className="h-4 w-4 shrink-0" />
+                    <span className="truncate">派单待处理 ({dispatchOrders.length})</span>
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 shrink-0 px-2 text-xs"
+                    onClick={() => setDispatchOpen((open) => !open)}
+                    aria-expanded={dispatchOpen}
+                  >
+                    {dispatchOpen ? "收起" : "展开"}
+                    <ChevronDown className={`h-4 w-4 transition-transform ${dispatchOpen ? "rotate-180" : ""}`} />
+                  </Button>
                 </CardTitle>
               </CardHeader>
-              {loading || dispatchOrders.length || filtersActive ? (
+              {dispatchOpen && (loading || dispatchOrders.length || filtersActive) ? (
                 <CardContent className="p-0">
                   {renderReportOrderList(dispatchOrders, "暂无派单待处理工单")}
                 </CardContent>
