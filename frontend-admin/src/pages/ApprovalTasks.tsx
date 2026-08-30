@@ -385,14 +385,32 @@ export function ApprovalTasks() {
         </Button>
       </header>
 
-      <div className="flex flex-wrap gap-2 border-y bg-background py-3">
+      <div className="-mx-2 flex items-end gap-1 overflow-x-auto border-b border-border px-2 sm:mx-0 sm:px-1" role="tablist" aria-label="待办视图">
         {VIEWS.map((item) => {
           const Icon = item.icon
           const count = counts[item.key]
+          const active = view === item.key
           return (
-            <Button key={item.key} variant={view === item.key ? 'default' : 'ghost'} onClick={() => setView(item.key)}>
-              <Icon className="mr-2 size-4" />{item.label}{count ? ` (${count})` : ''}
-            </Button>
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              className={`-mb-px flex items-center gap-1.5 border-b-2 px-2.5 pb-2 pt-2.5 text-[13px] font-medium transition-colors sm:gap-2 sm:px-4 sm:pb-2.5 sm:pt-3 sm:text-sm ${
+                active
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+              }`}
+              onClick={() => setView(item.key)}
+            >
+              <Icon className="hidden h-4 w-4 sm:block" />
+              <span className="whitespace-nowrap">{item.label}</span>
+              {count ? (
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
+                  active ? "bg-primary-soft text-primary" : "bg-muted text-muted-foreground"
+                }`}>{count}</span>
+              ) : null}
+            </button>
           )
         })}
       </div>
