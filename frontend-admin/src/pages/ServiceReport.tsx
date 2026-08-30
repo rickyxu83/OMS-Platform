@@ -37,7 +37,9 @@ import {
   MonitorCog,
   MoreHorizontal,
   Package,
+  Paperclip,
   PenLine,
+  PenTool,
   Pencil,
   Plus,
   QrCode,
@@ -4351,33 +4353,35 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             ) : null}
             {createPortal(
               <div
-                className="fixed right-1.5 top-1/2 z-30 flex -translate-y-1/2 flex-col gap-1.5 lg:hidden"
+                className="fixed right-1 top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-1.5 lg:hidden"
                 style={{ maxHeight: "60dvh", overflowY: "auto" }}
                 role="tablist"
                 aria-label="表单分区跳转"
               >
                 {[
-                  { key: "customer", label: "客户" },
-                  { key: "module", label: "服务" },
-                  { key: "work", label: "记录" },
-                  { key: "attachment", label: "附件" },
-                  { key: "signoff", label: "签名" },
+                  { key: "customer", label: "客户", Icon: User },
+                  { key: "module", label: "服务", Icon: Wrench },
+                  { key: "work", label: "记录", Icon: FileText },
+                  { key: "attachment", label: "附件", Icon: Paperclip },
+                  { key: "signoff", label: "签名", Icon: PenTool },
                 ].map((item) => (
                   <button
                     key={item.key}
                     type="button"
-                    className="flex h-9 w-14 items-center justify-center rounded-full border border-border/80 bg-background/95 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur transition-colors hover:border-primary/50 hover:text-primary active:scale-95"
+                    title={item.label}
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:border-primary/50 hover:text-primary active:scale-95"
                     onClick={() => document.getElementById(`report-section-${item.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
                     aria-label={`跳到${item.label}分区`}
                   >
-                    {item.label}
+                    <item.Icon className="h-4 w-4" />
                   </button>
                 ))}
               </div>,
               document.body,
             )}
             {createPortal(
-              <div className="fixed inset-x-0 bottom-[calc(3.75rem_+_env(safe-area-inset-bottom))] z-30 border-t bg-background/95 shadow-[0_-12px_30px_rgba(15,23,42,0.10)] backdrop-blur lg:bottom-4 lg:inset-x-auto lg:right-6 lg:left-auto lg:rounded-xl lg:border">
+              <div className="fixed inset-x-0 bottom-16 z-30 border-t bg-background/95 shadow-[0_-12px_30px_rgba(15,23,42,0.10)] backdrop-blur lg:inset-x-auto lg:bottom-4 lg:right-6 lg:left-auto lg:rounded-xl lg:border"
+                style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
                 <div className="flex gap-2 px-3 py-3 lg:justify-end">
               <Button className="h-10 flex-1 lg:flex-none" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
                 <Save className="h-4 w-4" />
