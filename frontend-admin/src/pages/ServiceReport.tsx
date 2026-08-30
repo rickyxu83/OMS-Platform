@@ -311,10 +311,10 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   const [formLoading, setFormLoading] = useState(false);
   // 列表页筛选：草稿默认折叠 + 全文搜索 + 服务日期范围（与工单处理页一致的筛选行）
   // 当前列表 tab（草稿/派单待处理/已填写）,持久化到 localStorage 刷新保持（默认派单待处理）
-  const [reportTab, setReportTab] = useState<"draft" | "dispatch" | "filled">(() => {
+  const [reportTab, setReportTab] = useState<"records" | "dispatch">(() => {
     const saved = localStorage.getItem("sr:reportTab");
-    // 派单功能尚未启用：默认/高频为'已填写服务记录'（干完活直接落这里）,其次草稿,最后派单
-    return saved === "draft" || saved === "dispatch" ? saved : "filled";
+    // 草稿已并入'服务记录'（草稿=未提交的服务记录,置顶红标）;默认服务记录
+    return saved === "dispatch" ? "dispatch" : "records";
   });
   // 无限下拉：分页游标（ref 避免滚动闭包读到过期值）
   const ordersPageRef = useRef(1);
@@ -2584,6 +2584,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   }
 
   /** 移动端草稿卡片 */
+  /** 草稿卡片（并入'服务记录'tab,与已完成工单卡视觉统一）：客户名+灰'草稿'徽标 / 模式+内容 / 工程师+更新时间 / ⋯菜单 */
   function renderDraftCard(draftItem: CreateDraftItem) {
     const createDraft = draftItem.payload;
     const draftMode = normalizeMode(createDraft.serviceMode);
@@ -2598,48 +2599,67 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     const draftEngineerText = draftEngineerNames.length
       ? draftEngineerNames.join("、")
       : user?.realName || user?.username || user?.name || "本人草稿";
+    const updatedText = formatDateTime(draftItem.updatedAt || draftItem.createdAt || "");
+    const timeShort = (value: string) => (value.length >= 16 ? value.slice(11, 16) : value);
     return (
-      <ResponsiveCard
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => navigate(draftRoute)}
-        title={createDraft.customerName || "未填写客户"}
-        status={indicatorSpan(Pencil, "text-slate-400", "草稿")}
-        subtitle={compactDraftLabel(createDraft)}
-        fields={[
-          { label: "模式", value: modeIndicator(draftMode, draftModeLabel) },
-          { label: "工程师", value: draftEngineerText },
-          { label: "开始", value: formatDateTime(createDraft.actualStartAt || createDraft.departureAt) },
-          { label: "更新于", value: formatDateTime(draftItem.updatedAt || draftItem.createdAt) },
-        ]}
-        actions={
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:bg-transparent hover:text-sky-600"
-              onClick={(event) => {
-                event.stopPropagation();
-                navigate(draftRoute);
-              }}
-            >
-              <PenLine className="mr-1 h-4 w-4" />
-              继续编辑
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:bg-transparent hover:text-rose-600"
-              disabled={deletingDraft}
-              onClick={(event) => {
-                event.stopPropagation();
-                deleteCreateDraft(draftItem.draftKey);
-              }}
-            >
-              {deletingDraft ? <span className="btn-loader" aria-hidden="true" /> : <Trash2 className="mr-1 h-4 w-4" />}
-              删除草稿
-            </Button>
-          </>
-        }
-      />
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            navigate(draftRoute);
+          }
+        }}
+        className="group cursor-pointer space-y-2 select-none active:bg-muted/40"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-[15px] font-semibold">{createDraft.customerName || "未填写客户"}</span>
+          <span className="shrink-0">{indicatorSpan(Pencil, "text-slate-400", "草稿")}</span>
+        </div>
+        <div className="flex items-start gap-2">
+          <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{draftModeLabel}</span>
+          <span className="min-w-0 flex-1 line-clamp-2 break-all text-[13px] leading-5 text-muted-foreground">{compactDraftLabel(createDraft)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-3 text-[12.5px] text-muted-foreground">
+            <span className="min-w-0 truncate"><span className="mr-0.5">🧑‍🔧</span>{draftEngineerText}</span>
+            <span className="shrink-0 text-[12.5px]">更新于 {timeShort(updatedText)}</span>
+          </div>
+          <span className="shrink-0" onClick={(event) => event.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95 disabled:opacity-40"
+                  title="草稿操作"
+                  aria-label="草稿操作"
+                  disabled={deletingDraft}
+                >
+                  {deletingDraft ? <span className="btn-loader" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" />}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => navigate(draftRoute)}>
+                  <PenLine className="h-4 w-4" />
+                  继续编辑
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => deleteCreateDraft(draftItem.draftKey)}
+                  disabled={deletingDraft}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  删除草稿
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </span>
+        </div>
+      </div>
     );
   }
 
@@ -2875,8 +2895,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
           <div className="-mx-2 flex items-end gap-1 overflow-x-auto border-b border-border px-2 sm:mx-0 sm:px-1" role="tablist" aria-label="工单分类">
             {(
               [
-                { key: "filled", label: "已填写服务记录", count: filledOrders.length, Icon: ClipboardCheck },
-                { key: "draft", label: "草稿", count: createDrafts.length, Icon: Save },
+                { key: "records", label: "服务记录", count: createDrafts.length + filledOrders.length, Icon: ClipboardCheck },
                 { key: "dispatch", label: "派单待处理", count: dispatchOrders.length, Icon: ClipboardPenLine },
               ] as const
             ).map(({ key, label, count, Icon }) => {
@@ -2911,12 +2930,34 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 <span className="btn-loader" aria-hidden="true" />
                 正在加载工单…
               </div>
-            ) : reportTab === "draft" ? (
-              renderDraftsList()
             ) : reportTab === "dispatch" ? (
               renderReportOrderList(dispatchOrders, "暂无派单待处理工单")
             ) : (
-              renderReportOrderList(filledOrders, "暂无已填写服务记录")
+              <div className="space-y-4">
+                {filteredCreateDrafts.length ? (
+                  <section>
+                    <h3 className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 text-xs font-semibold text-rose-600">
+                      <Pencil className="h-3.5 w-3.5" />
+                      草稿 · 未提交 ({filteredCreateDrafts.length})
+                    </h3>
+                    {renderDraftsList()}
+                  </section>
+                ) : null}
+                {filledOrders.length ? (
+                  <section>
+                    <h3 className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 text-xs font-semibold text-muted-foreground">
+                      <ClipboardCheck className="h-3.5 w-3.5" />
+                      已完成 ({filledOrders.length})
+                    </h3>
+                    {renderReportOrderList(filledOrders, "")}
+                  </section>
+                ) : null}
+                {!filteredCreateDrafts.length && !filledOrders.length ? (
+                  <div className="flex min-h-[160px] items-center justify-center text-sm text-muted-foreground">
+                    {filtersActive ? "无匹配当前筛选的结果" : "暂无服务记录"}
+                  </div>
+                ) : null}
+              </div>
             )}
           </div>
 
