@@ -2898,8 +2898,8 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             </CardContent>
           </Card>
 
-          {/* 桌面（≥lg）：顶部下划线 Tab */}
-          <div className="hidden items-end gap-1 border-b border-border px-1 lg:flex" role="tablist" aria-label="工单分类">
+          {/* 顶部下划线 Tab：桌面与手机共用（手机端不用自建底部栏,避免与全局移动底栏重叠） */}
+          <div className="-mx-2 flex items-end gap-1 overflow-x-auto border-b border-border px-2 sm:mx-0 sm:px-1" role="tablist" aria-label="工单分类">
             {(
               [
                 { key: "filled", label: "已填写服务记录", count: filledOrders.length, Icon: ClipboardCheck },
@@ -2914,14 +2914,14 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                   type="button"
                   role="tab"
                   aria-selected={active}
-                  className={`-mb-px flex items-center gap-2 border-b-2 px-4 pb-2.5 pt-3 text-sm font-medium transition-colors ${
+                  className={`-mb-px flex items-center gap-1.5 border-b-2 px-2.5 pb-2 pt-2.5 text-[13px] font-medium transition-colors sm:gap-2 sm:px-4 sm:pb-2.5 sm:pt-3 sm:text-sm ${
                     active
                       ? "border-primary text-primary"
                       : "border-transparent text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                   }`}
                   onClick={() => setReportTab(key)}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="hidden h-4 w-4 sm:block" />
                   <span className="whitespace-nowrap">{label}</span>
                   <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
                     active ? "bg-primary-soft text-primary" : "bg-muted text-muted-foreground"
@@ -2946,52 +2946,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
               renderReportOrderList(filledOrders, "暂无已填写服务记录")
             )}
           </div>
-
-          {/* 手机（<lg）：底部 App 栏,列表全屏最大化一屏内容；fixed 底部拇指操作 */}
-          <div
-            className="fixed inset-x-0 bottom-0 z-40 border-t bg-background lg:hidden"
-            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-            role="tablist"
-            aria-label="工单分类"
-          >
-            <div className="flex">
-              {(
-                [
-                  { key: "filled", label: "已填写", count: filledOrders.length, Icon: ClipboardCheck },
-                  { key: "draft", label: "草稿", count: createDrafts.length, Icon: Save },
-                  { key: "dispatch", label: "派单", count: dispatchOrders.length, Icon: ClipboardPenLine },
-                ] as const
-              ).map(({ key, label, count, Icon }) => {
-                const active = reportTab === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    className={`relative flex flex-1 flex-col items-center gap-1 pb-2 pt-2.5 text-[11px] font-medium ${
-                      active ? "text-primary" : "text-muted-foreground"
-                    }`}
-                    onClick={() => setReportTab(key)}
-                  >
-                    <Icon className="h-6 w-6" strokeWidth={active ? 2.2 : 1.8} />
-                    {label}
-                    {count > 0 ? (
-                      <span
-                        className={`pointer-events-none absolute right-1/2 top-0.5 flex h-[15px] min-w-[15px] translate-x-[22px] items-center justify-center rounded-full px-1 text-[9px] font-bold text-white ${
-                          key === "dispatch" ? "bg-amber-500" : "bg-rose-500"
-                        }`}
-                      >
-                        {count > 99 ? "99+" : count}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {/* 手机底部栏遮挡补偿 */}
-          <div className="h-16 lg:hidden" aria-hidden="true" />
 
         </div>
 
