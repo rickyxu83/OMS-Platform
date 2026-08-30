@@ -389,7 +389,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   const [customerSearching, setCustomerSearching] = useState(false);
   const [geoCandidates, setGeoCandidates] = useState<GeoCandidate[]>([]);
   const [geoLoading, setGeoLoading] = useState(false);
-  const [geoHint, setGeoHint] = useState("");
   const [contactOptionsOpen, setContactOptionsOpen] = useState(false);
   const [engineerPanelOpen, setEngineerPanelOpen] = useState(false);
   const [loadingLatestSignature, setLoadingLatestSignature] = useState(false);
@@ -1006,14 +1005,13 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     });
     setCustomerOptionsOpen(false);
     setGeoCandidates([]);
-    setGeoHint(customer.latitude && customer.longitude ? `已载入客户定位：${coordinateLabel(String(customer.latitude), String(customer.longitude))}` : "");
     setContactOptionsOpen(false);
   }
 
   async function searchCustomerGeo() {
     const keyword = form.customerName.trim() || form.customerAddress.trim();
     if (!keyword) {
-      setGeoHint("请先输入客户公司名或详细地址");
+
       return;
     }
 
@@ -1023,15 +1021,12 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       params.set("longitude", form.customerLongitude);
     }
     setGeoLoading(true);
-    setGeoHint("正在搜索地图候选…");
     try {
       const data = await api.get(`/geo/companies?${params.toString()}`);
       const items = ((data?.items || []) as GeoCandidate[]).slice(0, 8);
       setGeoCandidates(items);
-      setGeoHint(items.length ? `找到 ${items.length} 条候选，请选择一条补全客户信息` : "未找到匹配位置，可继续手动填写客户信息");
     } catch (err) {
       setGeoCandidates([]);
-      setGeoHint(err instanceof Error ? err.message : "地图候选搜索失败");
     } finally {
       setGeoLoading(false);
     }
@@ -1053,7 +1048,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
         mapPoiName: candidate.mapPoiName,
         mapAddress: candidate.mapAddress,
       });
-      setGeoHint(`已关联系统客户：${candidate.name || candidate.customerId}`);
       return;
     }
 
@@ -1074,7 +1068,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       customerConfirmName: candidate.contactName || form.customerConfirmName,
     });
     setGeoCandidates([]);
-    setGeoHint(coordinates ? `已补全地图信息：${coordinateLabel(String(coordinates.latitude), String(coordinates.longitude))}` : "已补全地图信息");
   }
 
   function changeCustomerAddress(value: string) {
@@ -1088,7 +1081,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       customerMapAddress: value,
     });
     setGeoCandidates([]);
-    setGeoHint(value.trim() ? "地址已修改，提交前建议重新定位" : "");
   }
 
   function changeCustomerName(value: string) {
@@ -1097,11 +1089,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       customerName: value,
     });
     setGeoCandidates([]);
-    setGeoHint(value.trim()
-      ? coordinateLabel(form.customerLatitude, form.customerLongitude)
-        ? "客户名称已修改，地址与定位已保留"
-        : "未关联系统客户，可按新客户继续填写"
-      : "");
     setCustomerOptionsOpen(true);
     scheduleCustomerSearch(value);
   }
@@ -3367,6 +3354,16 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
               ) : null}
             </div>
           ) : null}
+          <div className="flex items-center gap-2 sm:hidden">
+            <Button className="h-9 flex-1" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
+              {saving ? <span className="btn-loader" aria-hidden="true" /> : <Save className="h-4 w-4" />}
+              保存
+            </Button>
+            <Button className="h-9 flex-1" onClick={submit} disabled={saving || formLoading || uploadingFiles}>
+              {saving || uploadingFiles ? <span className="btn-loader" aria-hidden="true" /> : <Send className="h-4 w-4" />}
+              提交
+            </Button>
+          </div>
           <div className="hidden items-center gap-2 sm:flex">
             <Button className="h-10" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
               {saving ? <span className="btn-loader" aria-hidden="true" /> : <Save className="h-4 w-4" />}
@@ -3377,6 +3374,24 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
               提交记录
             </Button>
           </div>
+        </div>
+        <div className="mt-1 flex w-full items-center gap-1.5 overflow-x-auto lg:hidden">
+          {[
+            { key: "customer", label: "客户" },
+            { key: "module", label: "服务" },
+            { key: "work", label: "处理记录" },
+            { key: "attachment", label: "附件" },
+            { key: "signoff", label: "签名" },
+          ].map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary active:scale-95"
+              onClick={() => document.getElementById(`report-section-${item.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -3554,20 +3569,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                   </div>
                 </div>
 
-                <div className="mt-3 grid gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground sm:flex sm:flex-wrap sm:items-center">
-                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                    <Badge className="justify-center sm:justify-start" variant={form.customerId ? "outline" : "secondary"}>
-                      {form.customerId ? "已关联系统" : form.customerName.trim() ? "待建档" : "未选择"}
-                    </Badge>
-                    {coordinateLabel(form.customerLatitude, form.customerLongitude) ? (
-                      <Badge className="justify-center sm:justify-start" variant="outline">
-                        <span className="sm:hidden">已定位</span>
-                        <span className="hidden sm:inline">已定位 {coordinateLabel(form.customerLatitude, form.customerLongitude)}</span>
-                      </Badge>
-                    ) : null}
-                  </div>
-                  {geoHint ? <span className="min-w-0 leading-5 sm:flex-1">{geoHint}</span> : null}
-                </div>
 
                 {isOnsite && geoCandidates.length ? (
                   <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -4375,7 +4376,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 </div>
               </ReportSection>
             ) : null}
-            <div className="sticky bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 -mx-3 border-t bg-background/95 shadow-[0_-12px_30px_rgba(15,23,42,0.10)] backdrop-blur sm:mx-0 sm:rounded-lg sm:border lg:bottom-0">
+            <div className="fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-30 border-t bg-background/95 shadow-[0_-12px_30px_rgba(15,23,42,0.10)] backdrop-blur lg:bottom-0 lg:sticky lg:inset-x-auto lg:bottom-0">
               <div className="flex gap-2 px-3 py-3 lg:justify-end">
               <Button className="h-10 flex-1 lg:flex-none" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
                 <Save className="h-4 w-4" />
@@ -4394,6 +4395,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
               </Button>
               </div>
             </div>
+            <div className="h-28 lg:h-20" aria-hidden="true" />
           </div>
         </>
       )}
