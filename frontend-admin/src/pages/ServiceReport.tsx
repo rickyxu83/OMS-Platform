@@ -313,7 +313,8 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   // 当前列表 tab（草稿/派单待处理/已填写）,持久化到 localStorage 刷新保持（默认派单待处理）
   const [reportTab, setReportTab] = useState<"draft" | "dispatch" | "filled">(() => {
     const saved = localStorage.getItem("sr:reportTab");
-    return saved === "draft" || saved === "filled" ? saved : "dispatch";
+    // 派单功能尚未启用：默认/高频为'已填写服务记录'（干完活直接落这里）,其次草稿,最后派单
+    return saved === "draft" || saved === "dispatch" ? saved : "filled";
   });
   // 无限下拉：分页游标（ref 避免滚动闭包读到过期值）
   const ordersPageRef = useRef(1);
@@ -2901,9 +2902,9 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
           <div className="hidden items-end gap-1 border-b border-border px-1 lg:flex" role="tablist" aria-label="工单分类">
             {(
               [
+                { key: "filled", label: "已填写服务记录", count: filledOrders.length, Icon: ClipboardCheck },
                 { key: "draft", label: "草稿", count: createDrafts.length, Icon: Save },
                 { key: "dispatch", label: "派单待处理", count: dispatchOrders.length, Icon: ClipboardPenLine },
-                { key: "filled", label: "已填写服务记录", count: filledOrders.length, Icon: ClipboardCheck },
               ] as const
             ).map(({ key, label, count, Icon }) => {
               const active = reportTab === key;
@@ -2956,9 +2957,9 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             <div className="flex">
               {(
                 [
+                  { key: "filled", label: "已填写", count: filledOrders.length, Icon: ClipboardCheck },
                   { key: "draft", label: "草稿", count: createDrafts.length, Icon: Save },
                   { key: "dispatch", label: "派单", count: dispatchOrders.length, Icon: ClipboardPenLine },
-                  { key: "filled", label: "已填写", count: filledOrders.length, Icon: ClipboardCheck },
                 ] as const
               ).map(({ key, label, count, Icon }) => {
                 const active = reportTab === key;
