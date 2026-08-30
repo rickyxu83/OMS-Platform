@@ -2353,56 +2353,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     const timeRange = serviceTime.start && serviceTime.end
       ? `${timeShort(serviceTime.start)} ~ ${timeShort(serviceTime.end)}`
       : serviceTime.start || serviceTime.end || "—";
-    const actionsGroup = (
-      <>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 px-2.5 text-muted-foreground hover:bg-transparent hover:text-sky-600"
-          disabled={!canExportRecord || Boolean(exportingOrderId)}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (!canExportRecord || exportingOrderId) return;
-            downloadServiceRecordPdf(order);
-          }}
-        >
-          {isExportingRecord ? <span className="btn-loader" aria-hidden="true" /> : <Download className="mr-1 h-4 w-4" />}
-          导出 PDF
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 px-2.5 text-muted-foreground hover:bg-transparent hover:text-sky-600"
-          disabled={!canExportRecord || Boolean(exportingOrderId)}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (!canExportRecord || exportingOrderId) return;
-            shareServiceRecordPdf(order);
-          }}
-        >
-          <Share2 className="mr-1 h-4 w-4" />
-          分享
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 px-2.5 text-muted-foreground hover:bg-transparent hover:text-rose-600"
-          disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (!canRemoveOrCancelRecord || deletingOrderId) return;
-            if (canDeleteRecord) {
-              deleteServiceOrder(order);
-              return;
-            }
-            cancelServiceOrder(order);
-          }}
-        >
-          {isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : canDeleteRecord ? <Trash2 className="mr-1 h-4 w-4" /> : <X className="mr-1 h-4 w-4" />}
-          {destructiveActionLabel}
-        </Button>
-      </>
-    );
     return (
       <div
         role="button"
@@ -2415,35 +2365,97 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             openPreviewOrder(order);
           }
         }}
-        className="group cursor-pointer space-y-2"
+        className="group cursor-pointer space-y-2 select-none active:bg-muted/40"
       >
+        {/* 首行：客户名（大字,信息主角）+ 状态 */}
         <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate text-[13.5px] font-semibold">{reportOrderDisplayId(order)}</span>
+          <span className="min-w-0 truncate text-[15px] font-semibold">{order.customerName || "未填写客户"}</span>
           <span className="shrink-0">{statusIndicator(workflowStatus, statusLabel)}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="min-w-0 truncate text-[15px] font-medium">{order.customerName || "未填写客户"}</span>
-          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{modeLabel}</span>
+        {/* 次行：模式胶囊 + 服务内容两行 */}
+        <div className="flex items-start gap-2">
+          <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{modeLabel}</span>
+          <span className="min-w-0 flex-1 line-clamp-2 break-all text-[13px] leading-5 text-muted-foreground">{reportOrderMainContent(order)}</span>
         </div>
-        <div className="line-clamp-2 break-all text-[13px] leading-5 text-muted-foreground">{reportOrderMainContent(order)}</div>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-          <div className="min-w-0">
-            <div className="text-[11px] text-muted-foreground">工程师</div>
-            <div className="truncate text-[13px]">{reportOrderEngineerText(order)}</div>
+        {/* 末行：工程师 / 服务时间 + 操作菜单 */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-3 text-[12.5px] text-muted-foreground">
+            <span className="min-w-0 truncate"><span className="mr-0.5">🧑‍🔧</span>{reportOrderEngineerText(order)}</span>
+            <span className="shrink-0 text-[12.5px]">{timeRange}</span>
           </div>
-          <div className="min-w-0">
-            <div className="text-[11px] text-muted-foreground">服务时间</div>
-            <div className="truncate text-[13px]">{timeRange}</div>
-          </div>
+          {canExportRecord || canRemoveOrCancelRecord ? (
+            <span className="shrink-0" onClick={(event) => event.stopPropagation()}>{renderReportOrderActions(order)}</span>
+          ) : null}
         </div>
-        {canExportRecord || canRemoveOrCancelRecord ? (
-          <div className="flex flex-wrap items-center justify-end gap-1 border-t pt-2">{actionsGroup}</div>
-        ) : null}
       </div>
     );
   }
 
-  /** C 款精简表格（复刻工单处理）：客户/编号 · 内容/模式 · 工程师/时间(hover 四段悬浮卡) · 状态 · 操作 */
+  /** 工单操作菜单（桌面表格与手机卡片共用）：导出 PDF / 分享 PDF / 删除或作废 */
+  function renderReportOrderActions(order: ServiceOrder) {
+    const canExportRecord = canExportServiceRecord(order);
+    const isExportingRecord = exportingOrderId === order.id;
+    const canDeleteRecord = canDeleteServiceOrder(order);
+    const canCancelRecord = canCancelServiceOrder(order);
+    const canRemoveOrCancelRecord = canDeleteRecord || canCancelRecord;
+    const isDeletingRecord = deletingOrderId === order.id;
+    const destructiveActionLabel = canDeleteRecord ? "删除" : "作废";
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-95 disabled:opacity-40"
+            title="工单操作"
+            aria-label="工单操作"
+            disabled={isExportingRecord || isDeletingRecord}
+          >
+            {isExportingRecord || isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" />}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onSelect={() => {
+              if (!canExportRecord || exportingOrderId) return;
+              downloadServiceRecordPdf(order);
+            }}
+            disabled={!canExportRecord || Boolean(exportingOrderId)}
+          >
+            <Download className="h-4 w-4" />
+            导出 PDF
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              if (!canExportRecord || exportingOrderId) return;
+              shareServiceRecordPdf(order);
+            }}
+            disabled={!canExportRecord || Boolean(exportingOrderId)}
+          >
+            <Share2 className="h-4 w-4" />
+            分享 PDF
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant="destructive"
+            onSelect={() => {
+              if (!canRemoveOrCancelRecord || deletingOrderId) return;
+              if (canDeleteRecord) {
+                deleteServiceOrder(order);
+                return;
+              }
+              cancelServiceOrder(order);
+            }}
+            disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
+          >
+            {canDeleteRecord ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
+            {destructiveActionLabel}工单
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
+  /** C 款精简表格（复刻工单处理）：客户 · 内容/模式 · 工程师/时间 · 状态 · 操作 */
   function renderReportOrderList(orderList: ServiceOrder[], emptyText: string) {
     const displayEmptyText = !loading && filtersActive ? "无匹配当前筛选的结果" : emptyText;
     return (
@@ -2457,15 +2469,15 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
           <ResponsiveList items={orderList} keyExtractor={(order) => order.id} renderCard={renderReportOrderCard} breakpoint="md" cardClassName="px-3.5 py-3">
             <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
-                <col className="w-[24%]" />
-                <col className="w-[28%]" />
+                <col className="w-[20%]" />
+                <col className="w-[30%]" />
                 <col className="w-[18%]" />
-                <col className="w-[15%]" />
-                <col className="w-[15%]" />
+                <col className="w-[14%]" />
+                <col className="w-[18%]" />
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
-                  <TableHead>客户 / 工单编号</TableHead>
+                  <TableHead>客户</TableHead>
                   <TableHead>服务内容 / 模式</TableHead>
                   <TableHead>工程师 / 服务时间</TableHead>
                   <TableHead>状态</TableHead>
@@ -2517,17 +2529,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                           >
                             {order.customerName || "未填写客户"}
                           </button>
-                          <button
-                            type="button"
-                            className="block max-w-full truncate text-left font-mono text-xs text-muted-foreground transition-colors hover:text-primary"
-                            title={reportOrderDisplayId(order)}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              openPreviewOrder(order);
-                            }}
-                          >
-                            {reportOrderDisplayId(order)}
-                          </button>
                         </div>
                       </TableCell>
                       <TableCell className="min-w-0">
@@ -2567,57 +2568,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                       </TableCell>
                       <TableCell>{statusIndicator(workflowStatus, statusLabel)}</TableCell>
                       <TableCell onClick={(event) => event.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
-                              title="工单操作"
-                              aria-label="工单操作"
-                              disabled={isExportingRecord || isDeletingRecord}
-                            >
-                              {isExportingRecord || isDeletingRecord ? <span className="btn-loader" aria-hidden="true" /> : <MoreHorizontal className="h-4 w-4" />}
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                if (!canExportRecord || exportingOrderId) return;
-                                downloadServiceRecordPdf(order);
-                              }}
-                              disabled={!canExportRecord || Boolean(exportingOrderId)}
-                            >
-                              <Download className="h-4 w-4" />
-                              导出 PDF
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                if (!canExportRecord || exportingOrderId) return;
-                                shareServiceRecordPdf(order);
-                              }}
-                              disabled={!canExportRecord || Boolean(exportingOrderId)}
-                            >
-                              <Share2 className="h-4 w-4" />
-                              分享 PDF
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onSelect={() => {
-                                if (!canRemoveOrCancelRecord || deletingOrderId) return;
-                                if (canDeleteRecord) {
-                                  deleteServiceOrder(order);
-                                  return;
-                                }
-                                cancelServiceOrder(order);
-                              }}
-                              disabled={!canRemoveOrCancelRecord || Boolean(deletingOrderId)}
-                            >
-                              {canDeleteRecord ? <Trash2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
-                              {destructiveActionLabel}工单
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {renderReportOrderActions(order)}
                       </TableCell>
                     </TableRow>
                   );
@@ -2700,11 +2651,11 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
           <ResponsiveList items={filteredCreateDrafts} keyExtractor={(item) => item.draftKey} renderCard={renderDraftCard}>
             <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
-                <col className="w-[24%]" />
-                <col className="w-[28%]" />
+                <col className="w-[20%]" />
+                <col className="w-[30%]" />
                 <col className="w-[18%]" />
-                <col className="w-[15%]" />
-                <col className="w-[15%]" />
+                <col className="w-[14%]" />
+                <col className="w-[18%]" />
               </colgroup>
               <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
