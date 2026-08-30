@@ -2380,7 +2380,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   function renderReportOrderList(orderList: ServiceOrder[], emptyText: string) {
     const displayEmptyText = !loading && filtersActive ? "无匹配当前筛选的结果" : emptyText;
     return (
-      <div className="min-h-[220px] overflow-auto sm:max-h-[44vh]">
+      <div className="min-h-[220px]">
         {loading ? (
           <div className="flex min-h-[220px] items-center justify-center gap-2 text-sm text-muted-foreground">
             <span className="btn-loader" aria-hidden="true" />
@@ -2396,7 +2396,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 <col className="w-[12%]" />
                 <col className="w-[12%]" />
               </colgroup>
-              <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+              <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
                   <TableHead>客户 / 工单编号</TableHead>
                   <TableHead>服务内容 / 模式</TableHead>
@@ -2628,7 +2628,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   /** 草稿列表：同款 C 款表格 */
   function renderDraftsList() {
     return (
-      <div className="overflow-auto sm:max-h-[44vh]">
+      <div>
         {filteredCreateDrafts.length ? (
           <ResponsiveList items={filteredCreateDrafts} keyExtractor={(item) => item.draftKey} renderCard={renderDraftCard}>
             <table className="w-full table-fixed caption-bottom text-sm">
@@ -2639,7 +2639,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 <col className="w-[12%]" />
                 <col className="w-[12%]" />
               </colgroup>
-              <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+              <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
                   <TableHead>客户 / 更新时间</TableHead>
                   <TableHead>服务内容 / 模式</TableHead>
