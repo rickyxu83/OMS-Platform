@@ -1002,7 +1002,6 @@ async function list(req, res) {
   )
 
   const visibleRows = shouldPostFilterKeyword ? rows.filter((row) => customerMatchesKeyword(row, rawKeyword)).slice(0, normalizedPageSize) : rows
-  await cleanupDuplicateContacts(visibleRows.map((row) => row.id))
   const contactsByCustomer = await loadContacts(visibleRows.map((row) => row.id), req.user.id)
   res.json({ items: visibleRows.map((row) => customerPayload(row, contactsByCustomer.get(row.id) || [], sortLocale, canAccessSalesDeliveryAddress(req.user))) })
 }
@@ -1159,7 +1158,6 @@ async function detail(req, res) {
   }
   assertSalesCanAccessSalesperson(rows[0].salesperson, req.user, forbidden)
 
-  await cleanupDuplicateContacts([rows[0].id])
   const contactsByCustomer = await loadContacts([rows[0].id], req.user.id)
   res.json({ item: customerPayload(rows[0], contactsByCustomer.get(rows[0].id) || [], 'zh-CN', canAccessSalesDeliveryAddress(req.user)) })
 }
@@ -1250,6 +1248,9 @@ async function update(req, res) {
   } catch (error) {
     throw duplicateCustomerError(error) || error
   }
+
+  // 联系人写维护后收敛历史重复（issue #15）：读路径不再做写库，避免 GET 副作用与并发死锁/惊群
+  await cleanupDuplicateContacts([req.params.id])
 
   res.status(204).end()
 }
@@ -1504,6 +1505,9 @@ async function createContact(req, res) {
     )
     return { id: result.insertId, name, phone, email }
   })
+
+  // 联系人写入口收敛历史重复（issue #15）：替代原读路径（list/get 内）的写库清扫
+  await cleanupDuplicateContacts([customerId])
   res.status(201).json({ id: contact.id, name: contact.name, phone: contact.phone || null, email: contact.email || null })
 }
 
