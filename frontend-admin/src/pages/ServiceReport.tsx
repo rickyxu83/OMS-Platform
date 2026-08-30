@@ -317,24 +317,24 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 
   useEffect(() => {
     if (formLoading || isFormRoute === false) return;
-    const sections = Array.from(document.querySelectorAll<HTMLElement>("[id^='report-section-'], #report-submit-actions")).filter((el) => {
-      // 提交栏 id 为 report-submit-actions（非 report-section- 前缀）,需归一为 'submit' 才能命中白名单
-      const key = el.id === "report-submit-actions" ? "submit" : String(el.id.replace(/^report-section-/, ""));
-      return ["customer", "module", "work", "attachment", "submit"].includes(key);
-    });
-    if (!sections.length) return;
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          const key = String(entry.target.id.replace(/^report-section-/, ""));
-          if (["customer", "module", "work", "attachment", "submit"].includes(key)) {
-            setActiveFormSection(key);
-          }
-        }
-      });
-    }, { rootMargin: "-40% 0px -55% 0px", threshold: 0 });
-    sections.forEach((section) => observer.observe(section));
-    return () => observer.disconnect();
+    // 滚动位置计算（捕获监听容器滚动）：取'上边距 ≤ 视口40% 线'的最后一项为当前分区。
+    // IntersectionObserver 在嵌套滚动容器 + 视口中部窄带的几何判定不可靠（滚到底不带触发），改位置判断更稳。
+    const KEYS = ["customer", "module", "work", "attachment"] as const;
+    const compute = () => {
+      const probe = window.innerHeight * 0.4;
+      let current: string = KEYS[0];
+      for (const key of KEYS) {
+        const el = document.getElementById(`report-section-${key}`);
+        if (el && el.getBoundingClientRect().top <= probe) current = key;
+      }
+      const submitEl = document.getElementById("report-submit-actions");
+      if (submitEl && submitEl.getBoundingClientRect().top <= probe) current = "submit";
+      setActiveFormSection(current);
+    };
+    compute();
+    // scroll 不冒泡：用捕获阶段监听以覆盖滚动容器（mobile-admin-content）内的滚动
+    window.addEventListener("scroll", compute, { passive: true, capture: true });
+    return () => window.removeEventListener("scroll", compute, { capture: true });
   }, [formLoading, isFormRoute]);
   // 列表页筛选：草稿默认折叠 + 全文搜索 + 服务日期范围（与工单处理页一致的筛选行）
   // 当前列表 tab（草稿/派单待处理/已填写）,持久化到 localStorage 刷新保持（默认派单待处理）
