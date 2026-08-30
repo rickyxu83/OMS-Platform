@@ -861,21 +861,27 @@ export function Attendance() {
       <ErrorToast message={error} />
 
       {tabs.length > 1 ? (
-        <div className="flex w-full gap-1 overflow-x-auto rounded-lg border bg-muted/40 p-1">
+        <div className="-mx-2 flex items-end gap-1 overflow-x-auto border-b border-border px-2 sm:mx-0 sm:px-1" role="tablist" aria-label="考勤视图">
           {tabs.map((tab) => {
             const active = tab.key === activeTab;
             return (
               <button
                 key={tab.key}
                 type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium transition ${
-                  active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                role="tab"
+                aria-selected={active}
+                className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 pb-2 pt-2.5 text-[13px] font-medium transition-colors sm:gap-2 sm:px-4 sm:pb-2.5 sm:pt-3 sm:text-sm ${
+                  active
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                 }`}
+                onClick={() => setActiveTab(tab.key)}
               >
-                {tab.label}
+                <span className="whitespace-nowrap">{tab.label}</span>
                 {typeof tab.count === "number" && tab.count > 0 ? (
-                  <Badge variant={active ? "default" : "secondary"} className="h-5 min-w-5 px-1.5">{tab.count}</Badge>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
+                    active ? "bg-primary-soft text-primary" : "bg-muted text-muted-foreground"
+                  }`}>{tab.count}</span>
                 ) : null}
               </button>
             );
