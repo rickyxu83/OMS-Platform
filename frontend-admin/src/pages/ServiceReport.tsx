@@ -3409,11 +3409,15 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 type="button"
                 title={item.label}
                 aria-label={`跳到${item.label}分区`}
-                className={`rounded-full transition-all duration-200 ${
-                  active ? "h-2 w-5 bg-primary" : "h-2 w-2 bg-border hover:bg-primary/50"
-                }`}
+                className="group flex h-9 w-9 items-center justify-center rounded-full transition-colors active:bg-primary/10"
                 onClick={() => document.getElementById(`report-section-${item.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
-              />
+              >
+                <span
+                  className={`rounded-full transition-all duration-200 ${
+                    active ? "h-2.5 w-6 bg-primary" : "h-2 w-2 bg-border group-hover:bg-primary/50 group-active:scale-125 group-active:bg-primary/60"
+                  }`}
+                />
+              </button>
             );
           })}
         </div>,
