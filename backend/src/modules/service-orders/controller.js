@@ -4446,6 +4446,8 @@ async function bulkDelete(req, res) {
     const deletedFilePaths = await deleteFileRowsForOrderIds(connection, foundIds)
     await connection.execute(`DELETE FROM service_reports WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_order_engineers WHERE service_order_id IN (${found.placeholders})`, found.params)
+    // 与单删 remove() 对齐：清理全部 edit 范围自报单草稿，避免孤儿草稿（草稿入口打开已删工单 404）
+    await connection.execute(`DELETE FROM self_report_drafts WHERE draft_scope = 'edit' AND service_order_id IN (${found.placeholders})`, found.params)
     const installationDeviceCleanup = await cleanupInstallationDevicesForOrderIds(connection, foundIds, { backfillLegacyDevice: false })
     await connection.execute(`DELETE FROM service_orders WHERE id IN (${found.placeholders})`, found.params)
 
