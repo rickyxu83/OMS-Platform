@@ -111,6 +111,37 @@ export function addHoursValue(value: string, amount: number) {
   return `${local.toISOString().slice(0, 13)}:00`;
 }
 
+// 调休午休窗口（产品裁决 2026-08-28）：12:00-13:00 不计入调休时长，8 小时 = 一天
+function lunchWindowsCrossed(start: Date, end: Date) {
+  let count = 0;
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+  const lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+  for (let day = startDay; day <= lastDay; day += 86400000) {
+    const d = new Date(day);
+    const lunchStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0);
+    const lunchEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 13, 0, 0);
+    if (end > lunchStart && start < lunchEnd) count += 1;
+  }
+  return count;
+}
+
+/** 调休结束时间推算（扣除 12:00-13:00 午休，镜像后端 compTimeEndAt）；开始时间落在午休内返回空串 */
+export function compTimeEndAtValue(startAt: string, hours: number) {
+  const start = new Date(String(startAt).replace("T", " "));
+  if (!Number.isFinite(start.getTime())) return "";
+  const startMinutes = start.getHours() * 60 + start.getMinutes();
+  if (startMinutes >= 12 * 60 && startMinutes < 13 * 60) return "";
+  let end = new Date(start.getTime() + hours * 3600000);
+  for (let i = 0; i < 3; i += 1) {
+    const extra = lunchWindowsCrossed(start, end);
+    const next = new Date(start.getTime() + (hours + extra) * 3600000);
+    if (next.getTime() === end.getTime()) break;
+    end = next;
+  }
+  const local = new Date(end.getTime() - end.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16).replace("T", " ");
+}
+
 export function dateValue(value?: string) {
   return String(value || nowLocalValue()).slice(0, 10);
 }
@@ -213,35 +244,41 @@ export function parseLocalDateTime(value?: string | null) {
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
-// 客户端预览用的加班时长核算，忠实镜像后端 overtimeWindow（掐平日 18:00、整点取整）。
+// 客户端预览用的加班时长核算，忠实镜像后端 overtimeWindow（整点取整 + 0.5h 保底）。
 // dayType 取所选 travel 段（同城往返为同一天，边界情况以提交后端核算为准）。
-// 镜像后端 overtimeWindow 的定稿口径（2026-08-25）：法定节假日/休息日全天计；
-// 工作日只计 09:00 上班前 + 18:00 下班后；有效时长按 0.5h 粒度四舍五入（满 15 分钟进 0.5h）。
+// 镜像后端 overtimeWindow 的定稿口径（2026-08-28）：法定节假日/休息日全天计；
+// 工作日计 09:00 前 + 18:00 后两段；每段不足整点但确有发生 → 0.5h 保底（不足 15 分钟也计）。
 export function previewOvertimeHours(startAt: string, endAt: string, dayType?: string) {
   const start = parseLocalDateTime(startAt);
   const end = parseLocalDateTime(endAt);
   if (!start || !end || end <= start) return 0;
   const fullDay = dayType === "legal_holiday" || dayType === "rest_day";
-  const endHour = end.getHours() + end.getMinutes() / 60;
-  if (!fullDay && endHour <= 18) return 0;
-  const overtimeStart = fullDay
-    ? start
-    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0);
-  const rawStart = start > overtimeStart ? start : overtimeStart;
-  const effStart = new Date(rawStart);
-  if (effStart.getMinutes() || effStart.getSeconds() || effStart.getMilliseconds()) {
-    effStart.setHours(effStart.getHours() + 1, 0, 0, 0);
+  // 拆有效时段：节假日/休息日为整段；工作日为 09:00 前 + 18:00 后两段
+  const parts: Array<[Date, Date]> = [];
+  if (fullDay) {
+    parts.push([start, end]);
   } else {
-    effStart.setMinutes(0, 0, 0);
+    const nine = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 9, 0, 0);
+    const eighteen = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0);
+    if (start < nine) parts.push([start, end < nine ? end : nine]);
+    if (end > eighteen) parts.push([start > eighteen ? start : eighteen, end]);
   }
-  const effEnd = new Date(end);
-  effEnd.setMinutes(0, 0, 0);
-  if (effEnd <= effStart) {
-    // 保底镜像后端 overtimeWindow：掐整归零但确有加班时段（如 11:10–11:35 仅 25 分钟）→ 0.5 小时
-    return end > rawStart ? 0.5 : 0;
+  if (!parts.length) return 0;
+  let total = 0;
+  for (const [pStart, pEnd] of parts) {
+    if (pEnd <= pStart) continue;
+    const effStart = new Date(pStart);
+    if (effStart.getMinutes() || effStart.getSeconds() || effStart.getMilliseconds()) {
+      effStart.setHours(effStart.getHours() + 1, 0, 0, 0);
+    } else {
+      effStart.setMinutes(0, 0, 0);
+    }
+    const effEnd = new Date(pEnd);
+    effEnd.setMinutes(0, 0, 0);
+    const hourDelta = Math.round((effEnd.getTime() - effStart.getTime()) / 3600000);
+    total += hourDelta > 0 ? hourDelta : 0.5;
   }
-  const hours = Math.round((effEnd.getTime() - effStart.getTime()) / 3600000);
-  return hours > 0 ? hours : 0;
+  return total > 0 ? total : 0;
 }
 
 export function overtimePayLabel(segment?: Pick<OvertimeSegment, "payMultiplier" | "dayType"> | null) {

@@ -80,9 +80,10 @@ function approvalRolesForRequest({ requestType, workingDays, approvalRoles }) {
 // - 普通员工：直属主管 → 行政主管
 // - 工程主管/销售主管（主管级）：行政主管 → 运营负责人
 // - 行政主管本人：运营负责人
-// - 请假满 3 天：末尾追加运营负责人终审
+// - 请假满 3 天（含跨假别相连工作日累计）：末尾追加运营负责人终审
+// - 台籍员工申请：末尾固定运营负责人签核（mich）
 // - 管理员/运营负责人：返回空链（沿用提交时报「审批流程不能为空」的既有行为）
-function deriveApprovalRoles({ applicantRole, requestType, workingDays, supervisorRole }) {
+function deriveApprovalRoles({ applicantRole, requestType, workingDays, supervisorRole, applicantNationality, connectedLongLeave = false }) {
   if (applicantRole === 'admin' || applicantRole === LONG_LEAVE_FINAL_APPROVER_ROLE) return []
   if (applicantRole === FINAL_APPROVER_ROLE) return [LONG_LEAVE_FINAL_APPROVER_ROLE]
   const roles = []
@@ -92,17 +93,22 @@ function deriveApprovalRoles({ applicantRole, requestType, workingDays, supervis
   if (!escalatedApplicant && supervisorRole && !skipSupervisor.has(supervisorRole)) roles.push(supervisorRole)
   roles.push(FINAL_APPROVER_ROLE)
   const days = Number(workingDays)
-  const longLeave = requestType === 'leave' && Number.isFinite(days) && days >= LONG_LEAVE_MIN_DAYS
-  if (escalatedApplicant || longLeave) roles.push(LONG_LEAVE_FINAL_APPROVER_ROLE)
+  const longLeave = ['leave', 'comp_time'].includes(requestType)
+    && ((Number.isFinite(days) && days >= LONG_LEAVE_MIN_DAYS) || connectedLongLeave)
+  if (escalatedApplicant || longLeave || applicantNationality === 'taiwan') roles.push(LONG_LEAVE_FINAL_APPROVER_ROLE)
   return roles
 }
 
-// 代理人仅作为登记字段（冲突校验/通知知会），不再设确认环节：默认代理人同意，
-// 提交后直接进入角色审批链。历史 pending_delegate 申请仍可由代理人通过旧入口确认。
-function buildApprovalSteps({ applicantRole, requestType, workingDays, supervisorRole, approvalRoles, workflowVersion = 2 }) {
+// 代理人恢复确认环节（产品裁决 2026-08-28）：请假/调休登记代理人时，
+// 审批链首部插入「代理人确认」步骤；代理人可同时被多人指定，代理期间本人禁止申请休假（提交校验拦截）。
+function buildApprovalSteps({ applicantRole, requestType, workingDays, supervisorRole, approvalRoles, workflowVersion = 2, delegateEmployeeId = null, applicantNationality = '', connectedLongLeave = false }) {
   if (Number(workflowVersion) >= 4) {
-    return deriveApprovalRoles({ applicantRole, requestType, workingDays, supervisorRole })
+    const steps = deriveApprovalRoles({ applicantRole, requestType, workingDays, supervisorRole, applicantNationality, connectedLongLeave })
       .map((role) => ({ stepType: 'role', assigneeEmployeeId: null, assigneeRole: role }))
+    if (delegateEmployeeId && ['leave', 'comp_time'].includes(requestType)) {
+      steps.unshift({ stepType: 'delegate', assigneeEmployeeId: Number(delegateEmployeeId), assigneeRole: null })
+    }
+    return steps
   }
 
   if (Number(workflowVersion) >= 3) {

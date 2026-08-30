@@ -88,7 +88,7 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
                 data-date-picker-panel
                 onMouseDown={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
-                className="fixed z-[100] flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                className="pointer-events-auto fixed z-[100] flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
                 style={panelPos ? { top: panelPos.top, left: panelPos.left } : undefined}>
           {/* 侧栏：年份纵列 */}
           <div className="max-h-[320px] w-[72px] overflow-y-auto border-r bg-slate-50 py-2 text-center text-sm dark:bg-slate-800/50">
@@ -123,11 +123,17 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
               month={viewMonth}
               onMonthChange={setViewMonth}
               selected={{ from: startDate, to: endDate }}
-              onSelect={(range) => {
-                const s = range?.from ? format(range.from, "yyyy-MM-dd") : "";
-                const e = range?.to ? format(range.to, "yyyy-MM-dd") : "";
-                onChange(s, e);
-                if (range?.from && range?.to) setOpen(false);
+              onSelect={(_range, day) => {
+                if (!day) return;
+                // 选择语义（覆盖 v8 原生“修边界”行为）：无起点或已有完整范围 → 点击=新开始日期；
+                // 有开始无结束 → 本次点击闭合范围（自动按早晚排序，允许先点晚再点早）
+                if (!startDate || endDate) {
+                  onChange(format(day, "yyyy-MM-dd"), "");
+                  return;
+                }
+                const [s, e] = day >= startDate ? [startDate, day] : [day, startDate];
+                onChange(format(s, "yyyy-MM-dd"), format(e, "yyyy-MM-dd"));
+                setOpen(false);
               }}
               className="rdp-custom"
             />

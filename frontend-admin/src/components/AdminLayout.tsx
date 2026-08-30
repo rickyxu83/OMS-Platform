@@ -136,6 +136,7 @@ const STRINGS: Record<AppLang, {
       sales: "业务",
       engineer: "工程师",
       purchaser: "采购",
+      driver: "司机",
     },
   },
   "zh-TW": {
@@ -191,6 +192,7 @@ const STRINGS: Record<AppLang, {
       sales: "業務",
       engineer: "工程師",
       purchaser: "採購",
+      driver: "司機",
     },
   },
 };

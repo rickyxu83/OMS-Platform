@@ -401,9 +401,27 @@ async function ensureServiceOrderInspectionColumns(connection = null) {
          'uk_service_orders_inspection_occurrence', 'idx_service_orders_target_engineer', 'idx_service_orders_inspection_schedule'
        )`,
   )
+  // 唯一索引口径与格式/巡检侧保持一致：3 列版含 target_engineer_id（见 schema.sql 与
+  // inspection-schedules/controller.js 自愈逻辑）。若库中残留早期 2 列版，先删后重建，
+  // 避免同表两端迁移各建各的导致 schema 漂移（issue #10）。
   const indexes = new Set(indexRows.map((row) => row.indexName || row.index_name))
+  if (indexes.has('uk_service_orders_inspection_occurrence')) {
+    const [indexColumns] = await execute(
+      `SELECT column_name AS columnName
+       FROM information_schema.statistics
+       WHERE table_schema = DATABASE()
+         AND table_name = 'service_orders'
+         AND index_name = 'uk_service_orders_inspection_occurrence'
+       ORDER BY seq_in_index`,
+    )
+    const columns = indexColumns.map((row) => row.columnName || row.column_name)
+    if (!columns.includes('target_engineer_id')) {
+      await execute('ALTER TABLE service_orders DROP KEY uk_service_orders_inspection_occurrence')
+      indexes.delete('uk_service_orders_inspection_occurrence')
+    }
+  }
   if (!indexes.has('uk_service_orders_inspection_occurrence')) {
-    await execute('ALTER TABLE service_orders ADD UNIQUE KEY uk_service_orders_inspection_occurrence (inspection_schedule_id, inspection_occurrence_date)')
+    await execute('ALTER TABLE service_orders ADD UNIQUE KEY uk_service_orders_inspection_occurrence (inspection_schedule_id, inspection_occurrence_date, target_engineer_id)')
   }
   if (!indexes.has('idx_service_orders_target_engineer')) {
     await execute('ALTER TABLE service_orders ADD KEY idx_service_orders_target_engineer (target_engineer_id)')
@@ -2480,7 +2498,9 @@ async function create(req, res) {
     const [countRows] = await connection.execute(
       `SELECT COUNT(*) AS total
        FROM service_orders
-       WHERE order_no LIKE :prefix`,
+       WHERE order_no LIKE :prefix
+       FOR UPDATE`,
+      // issue #8：锁定读串行化并发单号生成,避免 COUNT+1 撞唯一键 409（FOR UPDATE 为当前读,能看到最新已提交行）
       { prefix: `${prefix}%` },
     )
     const orderNo = buildOrderNo(Number(countRows[0].total) + 1, now)
@@ -2762,7 +2782,9 @@ async function createSelfReport(req, res) {
     const [countRows] = await connection.execute(
       `SELECT COUNT(*) AS total
        FROM service_orders
-       WHERE order_no LIKE :prefix`,
+       WHERE order_no LIKE :prefix
+       FOR UPDATE`,
+      // issue #8：锁定读串行化并发单号生成,避免 COUNT+1 撞唯一键 409（FOR UPDATE 为当前读,能看到最新已提交行）
       { prefix: `${prefix}%` },
     )
     const orderNo = buildOrderNo(Number(countRows[0].total) + 1, now)
@@ -4040,8 +4062,16 @@ async function update(req, res) {
   const { customerId, deviceId, targetDeviceIds, serviceMode, serviceType, timesheetCategory, timesheetSalesperson, priority, issueDescription, internalNote } = body
   const normalizedServiceMode = ['remote', 'onsite', 'office'].includes(serviceMode) ? serviceMode : null
   const effectiveServiceMode = normalizedServiceMode || order.service_mode || 'onsite'
+  // 非 remote 工单原无条件置 null 并被无限写入（issue #9）：任何 ops 编辑都会清空类别。
+  // remote 必须保持分类（兜底'排障'）；非 remote 仅当请求显式传入 timesheetCategory 时才覆盖。
+  const hasTimesheetCategory = Object.prototype.hasOwnProperty.call(body, 'timesheetCategory')
+  const setTimesheetCategory = effectiveServiceMode === 'remote' || hasTimesheetCategory
   const effectiveTimesheetCategory =
-    effectiveServiceMode === 'remote' ? timesheetCategory || order.timesheet_category || '排障' : null
+    effectiveServiceMode === 'remote'
+      ? timesheetCategory || order.timesheet_category || '排障'
+      : hasTimesheetCategory
+        ? timesheetCategory || null
+        : order.timesheet_category
   // 请求体未携带的字段不应被清空:仅当显式传入 deviceId / internalNote 时才覆盖
   const hasDeviceId = Object.prototype.hasOwnProperty.call(body, 'deviceId')
   const hasTargetDeviceIds = Object.prototype.hasOwnProperty.call(body, 'targetDeviceIds')
@@ -4065,7 +4095,7 @@ async function update(req, res) {
        SET customer_id = COALESCE(:customerId, customer_id),
            service_mode = COALESCE(:serviceMode, service_mode),
            service_type = COALESCE(:serviceType, service_type),
-           timesheet_category = :timesheetCategory,
+           timesheet_category = CASE WHEN :setCategory = 1 THEN :timesheetCategory ELSE timesheet_category END,
            timesheet_salesperson = COALESCE(:timesheetSalesperson, timesheet_salesperson),
            priority = COALESCE(:priority, priority),
            issue_description = COALESCE(:issueDescription, issue_description),
@@ -4077,6 +4107,7 @@ async function update(req, res) {
         serviceMode: normalizedServiceMode,
         serviceType: serviceType || null,
         timesheetCategory: effectiveTimesheetCategory,
+        setCategory: setTimesheetCategory ? 1 : 0,
         timesheetSalesperson: timesheetSalesperson || null,
         priority: priority || null,
         issueDescription: issueDescription || null,
@@ -4214,6 +4245,15 @@ async function transition(req, res) {
       WHERE id = :id`,
       { id: req.params.id, status, actorId: req.user.id, reason },
     )
+    if (status === 'cancelled') {
+      // issue #6：作废时撤销未完成的客户签署请求,避免客户经旧链接提交'已作废工单'的签名
+      await connection.execute(
+              `UPDATE service_order_customer_signature_requests
+       SET status = 'revoked'
+       WHERE service_order_id = :id AND status IN ('created', 'sent')`,
+        { id: req.params.id },
+      )
+    }
     const installationDeviceCleanup = status === 'cancelled'
       ? await cleanupInstallationDevicesForOrderIds(connection, [req.params.id])
       : { deletedDeviceIds: [], skippedDeviceIds: [] }
@@ -4312,6 +4352,13 @@ async function cancelByEngineer(req, res) {
       `UPDATE service_orders
        SET status = 'cancelled'
        WHERE id = :id`,
+      { id: req.params.id },
+    )
+    // issue #6：作废时撤销未完成的客户签署请求,避免客户经旧链接提交'已作废工单'的签名
+    await connection.execute(
+            `UPDATE service_order_customer_signature_requests
+       SET status = 'revoked'
+       WHERE service_order_id = :id AND status IN ('created', 'sent')`,
       { id: req.params.id },
     )
     const installationDeviceCleanup = await cleanupInstallationDevicesForOrderIds(connection, [req.params.id])
@@ -4428,6 +4475,8 @@ async function bulkDelete(req, res) {
     const deletedFilePaths = await deleteFileRowsForOrderIds(connection, foundIds)
     await connection.execute(`DELETE FROM service_reports WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_order_engineers WHERE service_order_id IN (${found.placeholders})`, found.params)
+    // 与单删 remove() 对齐：清理全部 edit 范围自报单草稿，避免孤儿草稿（草稿入口打开已删工单 404）
+    await connection.execute(`DELETE FROM self_report_drafts WHERE draft_scope = 'edit' AND service_order_id IN (${found.placeholders})`, found.params)
     const installationDeviceCleanup = await cleanupInstallationDevicesForOrderIds(connection, foundIds, { backfillLegacyDevice: false })
     await connection.execute(`DELETE FROM service_orders WHERE id IN (${found.placeholders})`, found.params)
 

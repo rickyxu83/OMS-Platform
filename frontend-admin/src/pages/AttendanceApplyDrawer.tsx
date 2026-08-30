@@ -6,16 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   LEAVE_TYPE_LABELS,
   OVERTIME_DAY_TYPE_LABELS,
   SERVICE_MODE_LABELS,
   SERVICE_TYPE_LABELS,
-  addHoursValue,
+  addHoursValue, compTimeEndAtValue,
   annualBalanceDays,
   applyAnnualLeaveRange,
   createBlankForm,
@@ -51,10 +53,11 @@ interface AttendanceApplyDrawerProps {
   holidayDates: Set<string>;
 }
 
-const REQUEST_TYPE_CARDS: Array<{ value: RequestType; label: string; description: string; icon: typeof CalendarClock }> = [
-  { value: "leave", label: "请假", description: "特休与常规假别", icon: CalendarClock },
-  { value: "overtime", label: "加班", description: "从工单带入时段", icon: Send },
-  { value: "comp_time", label: "调休", description: "使用已有调休余额", icon: RotateCcw },
+const REQUEST_TYPE_CARDS: Array<{ value: RequestType; label: string; description: string; icon: typeof CalendarClock; roles: string[] | null }> = [
+  { value: "leave", label: "请假", description: "特休与常规假别", icon: CalendarClock, roles: null },
+  // 类型门禁（产品裁决 2026-08-28）：调休与加班均为仅工程师与司机
+  { value: "overtime", label: "加班", description: "从工单带入时段", icon: Send, roles: ["engineer", "driver"] },
+  { value: "comp_time", label: "调休", description: "使用已有调休余额", icon: RotateCcw, roles: ["engineer", "driver"] },
 ];
 
 /** 时段腿展示的紧凑时间：'2026-10-01 11:10' → '10-01 11:10' */
@@ -64,6 +67,10 @@ function shortDateTime(value?: string) {
 
 /** 新建申请三步向导：选类型 → 填表单 → 确认提交。表单状态与提交逻辑自原考勤页内嵌表单迁入。 */
 export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfile, holidayDates }: AttendanceApplyDrawerProps) {
+  const { user } = useAuth();
+  const userRole = String(user?.role || "");
+  const canCompTime = ["engineer", "driver"].includes(userRole);
+  const visibleTypeCards = REQUEST_TYPE_CARDS.filter((item) => !item.roles || item.roles.includes(userRole));
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<ApplyForm>(createBlankForm);
   const [submitting, setSubmitting] = useState(false);
@@ -201,8 +208,19 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   }, [travelSegment, selectedOvertimeOrder, travelDepartureAt, travelReturnAt]);
 
   const naturalDayLeave = form.requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
-  const annualPreview = ["leave", "comp_time"].includes(form.requestType)
-    ? workingLeaveSummary(form, holidayDates, naturalDayLeave)
+  const annualPreview = form.requestType === "leave" ? workingLeaveSummary(form, holidayDates, naturalDayLeave) : null;
+  // 调休按小时申请（0.5h 步进，产品裁决 2026-08-28）：不走半天槽，独立三个字段
+  const [compDate, setCompDate] = useState(() => dateValue());
+  const [compStartTime, setCompStartTime] = useState("09:00");
+  const [compHours, setCompHours] = useState("1");
+  const compHoursNum = Number(compHours);
+  const compTimeValid = Boolean(
+    compDate && compStartTime
+    && Number.isFinite(compHoursNum) && compHoursNum > 0
+    && Math.abs(compHoursNum * 2 - Math.round(compHoursNum * 2)) <= 0.0001,
+  );
+  const compPreview = compTimeValid
+    ? { startAt: `${compDate} ${compStartTime}`, endAt: compTimeEndAtValue(`${compDate} ${compStartTime}`, compHoursNum), hours: compHoursNum }
     : null;
   const annualSingleDay = form.annualStartDate === form.annualEndDate;
   const selectedDelegateName = delegates.find((item) => String(item.id) === form.delegateEmployeeId)?.employeeName || "";
@@ -211,7 +229,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   const compBalance = Number(myProfile?.compTimeBalanceHours || 0);
   const annualBalance = annualBalanceDays(myProfile);
   const balanceInsufficient = form.requestType === "comp_time"
-    ? Number(annualPreview?.hours || 0) > compBalance
+    ? !compPreview || compPreview.hours > compBalance
     : form.requestType === "leave" && form.leaveType === "annual"
       ? Number(annualPreview?.workingDays || 0) > annualBalance
       : false;
@@ -268,6 +286,12 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
       return "";
     }
     if (!form.delegateEmployeeId) return "请选择代理人";
+    if (form.requestType === "comp_time") {
+      if (!compDate) return "请选择调休日期";
+      const startMinutes = Number(compStartTime.slice(0, 2)) * 60 + Number(compStartTime.slice(3, 5) || 0);
+      if (startMinutes >= 12 * 60 && startMinutes < 13 * 60) return "调休开始时间不能在 12:00-13:00 午休时段内";
+      if (!compTimeValid) return "调休时长必须以 0.5 小时为单位（最小 0.5 小时）";
+    }
     if (form.requestType === "leave" && form.leaveType === "personal" && !String(form.reason || "").trim()) return "请填写事假事由";
     if (proofRequired && proofFiles.length === 0) {
       return form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明";
@@ -298,18 +322,32 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
         if (requestType === "leave" && ["sick", "marriage"].includes(form.leaveType) && proofFiles.length === 0) {
           throw new Error(form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明");
         }
-        const includeNonWorkingDays = requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
-        const leaveRange = workingLeaveSummary(form, holidayDates, includeNonWorkingDays);
-        if (!leaveRange.workingDays) throw new Error(includeNonWorkingDays ? "申请范围内没有有效日期" : "申请范围内没有工作日");
+        let payloadStartAt: string;
+        let payloadEndAt: string;
+        let payloadHours: number;
+        if (requestType === "comp_time") {
+          // 调休按小时申请：开始日期+时间+时长（0.5h 步进），结束时间按时长推算
+          if (!compPreview) throw new Error("请选择调休日期、开始时间并填写 0.5 小时步进的时长");
+          payloadStartAt = compPreview.startAt;
+          payloadEndAt = compPreview.endAt;
+          payloadHours = compPreview.hours;
+        } else {
+          const includeNonWorkingDays = ["marriage", "bereavement"].includes(form.leaveType);
+          const leaveRange = workingLeaveSummary(form, holidayDates, includeNonWorkingDays);
+          if (!leaveRange.workingDays) throw new Error(includeNonWorkingDays ? "申请范围内没有有效日期" : "申请范围内没有工作日");
+          payloadStartAt = leaveRange.startAt;
+          payloadEndAt = leaveRange.endAt;
+          payloadHours = leaveRange.hours;
+        }
         // 草稿功能已下线：一律新建申请（create + 传附件 + submit 连续完成）
         const draft = await api.post("/attendance/requests", {
             requestType,
             leaveType: requestType === "leave" ? form.leaveType : undefined,
             delegateEmployeeId: form.delegateEmployeeId,
-            startAt: leaveRange.startAt,
-            endAt: leaveRange.endAt,
-            hours: leaveRange.hours,
-            reason: requestType === "leave" && form.leaveType === "personal" ? String(form.reason || "").trim() || undefined : undefined,
+            startAt: payloadStartAt,
+            endAt: payloadEndAt,
+            hours: payloadHours,
+            reason: requestType === "leave" && ["personal", "annual"].includes(form.leaveType) ? String(form.reason || "").trim() || undefined : undefined,
           });
         const draftId: number | string = draft.id;
         // 附件阶段独立捕获：失败自动撤回刚建的申请，提示重填重提（不留草稿续传）
@@ -378,7 +416,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
         <div className="min-h-0 flex-1 overflow-y-auto py-5">
           {step === 1 ? (
             <div className="grid gap-3">
-              {REQUEST_TYPE_CARDS.map((item) => {
+              {visibleTypeCards.map((item) => {
                 const Icon = item.icon;
                 const active = form.requestType === item.value;
                 return (
@@ -407,7 +445,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
               })}
               <div className="flex gap-2 pt-1 text-xs text-muted-foreground">
                 <Badge variant="secondary">特休 {days(annualBalanceDays(myProfile))} 天</Badge>
-                <Badge variant="secondary">调休 {hours(myProfile?.compTimeBalanceHours)} 小时</Badge>
+                {canCompTime ? <Badge variant="secondary">调休 {hours(myProfile?.compTimeBalanceHours)} 小时</Badge> : null}
               </div>
             </div>
           ) : null}
@@ -593,77 +631,103 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </div>
                 ) : null}
 
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(0, "morning")}>今天上午</Button>
-                  <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(0, "day")}>今天全天</Button>
-                  <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(1, "day")}>明天全天</Button>
-                </div>
+                {form.requestType === "leave" ? (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(1, "morning")}>明天上午</Button>
+                      <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(1, "afternoon")}>明天下午</Button>
+                      <Button variant="outline" size="sm" onClick={() => applyQuickDatePreset(1, "day")}>明天全天</Button>
+                    </div>
 
-                <div className="space-y-2">
-                  <Label>开始日期 ~ 结束日期</Label>
-                  <DateRangePicker
-                    start={form.annualStartDate}
-                    end={form.annualEndDate}
-                    onChange={(s3, e3) => setAnnualDraft({ annualStartDate: s3, annualEndDate: e3 })}
-                    placeholder="开始日期 ~ 结束日期"
-                    ariaLabel="特休起止日期"
-                  />
-                </div>
+                    <div className="space-y-2">
+                      <Label>开始日期 ~ 结束日期</Label>
+                      <DateRangePicker
+                        start={form.annualStartDate}
+                        end={form.annualEndDate}
+                        onChange={(s3, e3) => setAnnualDraft({ annualStartDate: s3, annualEndDate: e3 })}
+                        placeholder="开始日期 ~ 结束日期"
+                        ariaLabel="特休起止日期"
+                      />
+                    </div>
 
-                {annualSingleDay ? (
-                  <div className="space-y-2">
-                    <Label>时段</Label>
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      {[
-                        { value: "morning" as AnnualLeavePeriod, label: "上午", time: "09:00-14:00" },
-                        { value: "afternoon" as AnnualLeavePeriod, label: "下午", time: "14:00-18:00" },
-                        { value: "day" as AnnualLeavePeriod, label: "全天", time: "09:00-18:00" },
-                      ].map((item) => {
-                        const active = form.annualPeriod === item.value;
-                        return (
-                          <button
-                            key={item.value}
-                            type="button"
-                           
-                            onClick={() => setAnnualDraft({ annualPeriod: item.value })}
-                            className={`${active
-                              ? "rounded-lg border border-primary bg-primary/5 p-3 text-left ring-1 ring-primary/25 transition"
-                              : "rounded-lg border p-3 text-left transition hover:bg-muted/40"} disabled:cursor-not-allowed disabled:opacity-60`}
-                          >
-                            <div className="flex items-center justify-between gap-2 text-sm font-medium">
-                              {item.label}
-                              {active ? <Check className="h-4 w-4 text-primary" /> : null}
-                            </div>
-                            <div className="mt-1 text-xs text-muted-foreground">{item.time}</div>
-                          </button>
-                        );
-                      })}
+                    {annualSingleDay ? (
+                      <div className="space-y-2">
+                        <Label>时段</Label>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          {[
+                            { value: "morning" as AnnualLeavePeriod, label: "上午", time: "09:00-14:00" },
+                            { value: "afternoon" as AnnualLeavePeriod, label: "下午", time: "14:00-18:00" },
+                            { value: "day" as AnnualLeavePeriod, label: "全天", time: "09:00-18:00" },
+                          ].map((item) => {
+                            const active = form.annualPeriod === item.value;
+                            return (
+                              <button
+                                key={item.value}
+                                type="button"
+                               
+                                onClick={() => setAnnualDraft({ annualPeriod: item.value })}
+                                className={`${active
+                                  ? "rounded-lg border border-primary bg-primary/5 p-3 text-left ring-1 ring-primary/25 transition"
+                                  : "rounded-lg border p-3 text-left transition hover:bg-muted/40"} disabled:cursor-not-allowed disabled:opacity-60`}
+                              >
+                                <div className="flex items-center justify-between gap-2 text-sm font-medium">
+                                  {item.label}
+                                  {active ? <Check className="h-4 w-4 text-primary" /> : null}
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">{item.time}</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>开始时段</Label>
+                          <Select value={form.annualStartPeriod} onValueChange={(value) => setAnnualDraft({ annualStartPeriod: value as AnnualLeavePeriod })}>
+                            <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="morning">上午 09:00 起</SelectItem>
+                              <SelectItem value="afternoon">下午 14:00 起</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>结束时段</Label>
+                          <Select value={form.annualEndPeriod} onValueChange={(value) => setAnnualDraft({ annualEndPeriod: value as AnnualLeavePeriod })}>
+                            <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="morning">上午 14:00 止</SelectItem>
+                              <SelectItem value="afternoon">下午 18:00 止</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : null}
+
+                {form.requestType === "comp_time" ? (
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label>调休日期</Label>
+                      <DatePicker value={compDate} onChange={setCompDate} placeholder="选择日期" ariaLabel="调休日期" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>开始时间</Label>
+                      <Input type="time" step="1800" className="h-11" value={compStartTime} onChange={(event) => setCompStartTime(event.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>时长（小时，0.5 步进）</Label>
+                      <Input type="number" min="0.5" max="24" step="0.5" className="h-11" value={compHours} onChange={(event) => setCompHours(event.target.value)} />
+                    </div>
+                    <div className="text-xs text-muted-foreground sm:col-span-3">
+                      {compPreview
+                        ? `结束于 ${compPreview.endAt} · 时长 ${compPreview.hours} 小时（已扣除 12:00-13:00 午休，可用余额 ${hours(compBalance)} 小时）`
+                        : "选择日期、开始时间并填写 0.5 小时步进的时长（12:00-13:00 午休不计入）"}
                     </div>
                   </div>
-                ) : (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>开始时段</Label>
-                      <Select value={form.annualStartPeriod} onValueChange={(value) => setAnnualDraft({ annualStartPeriod: value as AnnualLeavePeriod })}>
-                        <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="morning">上午 09:00 起</SelectItem>
-                          <SelectItem value="afternoon">下午 14:00 起</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>结束时段</Label>
-                      <Select value={form.annualEndPeriod} onValueChange={(value) => setAnnualDraft({ annualEndPeriod: value as AnnualLeavePeriod })}>
-                        <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="morning">上午 14:00 止</SelectItem>
-                          <SelectItem value="afternoon">下午 18:00 止</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                )}
+                ) : null}
 
                 {form.requestType === "leave" && form.leaveType === "personal" ? (
                   <div className="space-y-2">
@@ -673,6 +737,28 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       className="resize-none"
                       value={form.reason || ""}
                       placeholder="请填写事假事由，审批人可见"
+                      onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
+                    />
+                  </div>
+                ) : null}
+
+                {form.requestType === "leave" && form.leaveType === "annual" ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>理由（选填）</Label>
+                      <button
+                        type="button"
+                        className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors ${(form.reason || "").includes("返台") ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent"}`}
+                        onClick={() => setForm((current) => ({ ...current, reason: "返台" }))}
+                      >
+                        返台
+                      </button>
+                    </div>
+                    <Textarea
+                      rows={2}
+                      className="resize-none"
+                      value={form.reason || ""}
+                      placeholder="选填；返台请点右上角“返台”或自行注明"
                       onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
                     />
                   </div>
@@ -752,12 +838,12 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </div>
                 ) : null}
 
-                {annualPreview ? (
+                {annualPreview || (form.requestType === "comp_time" && compPreview) ? (
                   <div className={balanceInsufficient
                     ? "rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
                     : "rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground"}>
                     <div className="flex items-center justify-between gap-3">
-                      <span>本次申请：<b>{form.requestType === "comp_time" ? `${hours(annualPreview.hours)} 小时` : `${days(annualPreview.workingDays)} 天`}</b></span>
+                      <span>本次申请：<b>{form.requestType === "comp_time" ? `${hours(compPreview?.hours || 0)} 小时` : `${days(annualPreview?.workingDays || 0)} 天`}</b></span>
                       <span className="text-xs">可用：<b>{form.requestType === "comp_time" ? `${hours(compBalance)} 小时` : `${days(annualBalance)} 天`}</b></span>
                     </div>
                     {balanceInsufficient ? (
@@ -817,22 +903,41 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       <span className="text-muted-foreground">申请类型</span>
                       <span className="font-medium">{typeLabel}</span>
                     </div>
-                    <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
-                      <span className="text-muted-foreground">日期范围</span>
-                      <span className="font-medium">{form.annualStartDate} - {form.annualEndDate}</span>
-                    </div>
-                    <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
-                      <span className="text-muted-foreground">申请时段</span>
-                      <span className="font-medium">
-                        {annualSingleDay
-                          ? form.annualPeriod === "day" ? "全天" : form.annualPeriod === "morning" ? "上午" : "下午"
-                          : (form.annualStartPeriod === "morning" ? "上午起" : "下午起") + " / " + (form.annualEndPeriod === "morning" ? "上午止" : "下午止")}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
-                      <span className="text-muted-foreground">核算时长</span>
-                      <span className="font-medium">{days(annualPreview?.workingDays)} {naturalDayLeave ? "自然日" : "工作日"} · {hours(annualPreview?.hours)} 小时</span>
-                    </div>
+                    {form.requestType === "comp_time" ? (
+                      <>
+                        <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
+                          <span className="text-muted-foreground">调休日期</span>
+                          <span className="font-medium">{compDate}</span>
+                        </div>
+                        <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
+                          <span className="text-muted-foreground">开始时间</span>
+                          <span className="font-medium">{compStartTime}</span>
+                        </div>
+                        <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
+                          <span className="text-muted-foreground">时长</span>
+                          <span className="font-medium">{compPreview ? `${hours(compPreview.hours)} 小时 · 结束于 ${compPreview.endAt}` : "-"}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
+                          <span className="text-muted-foreground">日期范围</span>
+                          <span className="font-medium">{form.annualStartDate} - {form.annualEndDate}</span>
+                        </div>
+                        <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
+                          <span className="text-muted-foreground">申请时段</span>
+                          <span className="font-medium">
+                            {annualSingleDay
+                              ? form.annualPeriod === "day" ? "全天" : form.annualPeriod === "morning" ? "上午" : "下午"
+                              : (form.annualStartPeriod === "morning" ? "上午起" : "下午起") + " / " + (form.annualEndPeriod === "morning" ? "上午止" : "下午止")}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
+                          <span className="text-muted-foreground">核算时长</span>
+                          <span className="font-medium">{days(annualPreview?.workingDays)} {naturalDayLeave ? "自然日" : "工作日"} · {hours(annualPreview?.hours)} 小时</span>
+                        </div>
+                      </>
+                    )}
                     <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
                       <span className="text-muted-foreground">工作代理</span>
                       <span className="font-medium">{selectedDelegateName || "未选择"}</span>

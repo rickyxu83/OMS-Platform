@@ -131,6 +131,43 @@ function assertWholeHour(value, label) {
   if (Math.abs(Number(value) - Math.round(Number(value))) > 0.0001) throw badRequest(`${label}必须以整小时为单位`)
 }
 
+// 调休午休窗口（产品裁决 2026-08-28）：12:00-13:00 不计入调休时长，8 小时 = 一天
+const COMP_LUNCH_START_MINUTES = 12 * 60
+const COMP_LUNCH_END_MINUTES = 13 * 60
+
+function lunchWindowsCrossed(start, end) {
+  // [start, end) 覆盖的 12:00-13:00 午休窗口数量（每个自然日最多一个）
+  let count = 0
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime()
+  const lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime()
+  for (let day = startDay; day <= lastDay; day += 86400000) {
+    const d = new Date(day)
+    const lunchStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0)
+    const lunchEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 13, 0, 0)
+    if (end > lunchStart && start < lunchEnd) count += 1
+  }
+  return count
+}
+
+// 调休结束时间推算：起止跨度自动补偿被覆盖的午休窗口（每窗 +1h，跨天多窗迭代收敛）
+function compTimeEndAt(startAt, hours) {
+  const start = new Date(String(startAt).replace(' ', 'T'))
+  if (!Number.isFinite(start.getTime())) throw badRequest('调休开始时间格式不正确')
+  const startMinutes = start.getHours() * 60 + start.getMinutes()
+  if (startMinutes >= COMP_LUNCH_START_MINUTES && startMinutes < COMP_LUNCH_END_MINUTES) {
+    throw badRequest('调休开始时间不能在 12:00-13:00 午休时段内')
+  }
+  let end = new Date(start.getTime() + Number(hours) * 3600000)
+  for (let i = 0; i < 3; i += 1) {
+    const extra = lunchWindowsCrossed(start, end)
+    const next = new Date(start.getTime() + (Number(hours) + extra) * 3600000)
+    if (next.getTime() === end.getTime()) break
+    end = next
+  }
+  const local = new Date(end.getTime() - end.getTimezoneOffset() * 60000)
+  return `${local.toISOString().slice(0, 16).replace('T', ' ')}:00`
+}
+
 function assertTimeRange(startAt, endAt) {
   const startTime = Date.parse(startAt.replace(' ', 'T'))
   const endTime = Date.parse(endAt.replace(' ', 'T'))
@@ -1270,11 +1307,16 @@ function normalizeRequestInput(body) {
   }
 
   let hours = positiveNumber(body?.hours, '申请小时数')
-  assertWholeHour(hours, '申请小时数')
+  if (requestType === 'comp_time') {
+    // 调休按小时申请，最小单位 0.5 小时（产品裁决 2026-08-28）
+    if (Math.abs(Number(hours) * 2 - Math.round(Number(hours) * 2)) > 0.0001) throw badRequest('调休时长必须以 0.5 小时为单位')
+  } else {
+    assertWholeHour(hours, '申请小时数')
+  }
   let startAt = text(body?.startAt).replace('T', ' ')
   let endAt = text(body?.endAt).replace('T', ' ')
   if (!startAt || !endAt) throw badRequest('开始和结束时间不能为空')
-  if (requestType === 'leave' || requestType === 'comp_time') {
+  if (requestType === 'leave') {
     startAt = leaveSlot(startAt, 'start').value
     endAt = leaveSlot(endAt, 'end').value
   }
@@ -1295,6 +1337,11 @@ function normalizeRequestInput(body) {
     endAt,
     hours,
     reason: nullableText(body?.reason),
+  }
+
+  if (requestType === 'comp_time') {
+    // 调休结束时间由后端按「扣除 12:00-13:00 午休」口径权威重算（不采信传入的 endAt）
+    payload.endAt = compTimeEndAt(startAt, hours)
   }
 
   if (requestType === 'leave') {
@@ -1322,6 +1369,9 @@ async function createRequest(req, res) {
   const employee = await currentEmployee(req.user.id)
   if (!employee) throw forbidden('当前账号没有启用的员工档案')
   const input = normalizeRequestInput(req.body)
+  // 类型门禁（产品裁决 2026-08-28）：调休与加班均为仅工程师与司机；主管及其他角色无这两种申请
+  if (input.requestType === 'comp_time' && !['engineer', 'driver'].includes(req.user.role)) throw forbidden('仅工程师与司机可以申请调休')
+  if (input.requestType === 'overtime' && !['engineer', 'driver'].includes(req.user.role)) throw forbidden('仅工程师与司机可以申请加班')
 
   let delegateEmployeeId = null
   let workingDays = null
@@ -1332,14 +1382,15 @@ async function createRequest(req, res) {
     const delegate = await enabledEmployeeById(delegateEmployeeId)
     if (!delegate) throw badRequest('代理人不存在或未启用考勤')
 
-    if (input.requestType === 'leave' || input.requestType === 'comp_time') {
+    if (input.requestType === 'leave') {
       try {
         const range = calculateWorkingLeaveRange({
           startAt: input.startAt,
           endAt: input.endAt,
           holidays: new Set(legalHolidayCache.keys()),
           makeupWorkdays: new Set(makeupWorkdayCache),
-          includeNonWorkingDays: input.requestType === 'leave' && ['marriage', 'bereavement'].includes(input.leaveType),
+          // 病假/事假/特休不含六日与法定假；婚丧假含六日（自然日口径）
+          includeNonWorkingDays: ['marriage', 'bereavement'].includes(input.leaveType),
         })
         input.startAt = range.startAt
         input.endAt = range.endAt
@@ -1348,7 +1399,21 @@ async function createRequest(req, res) {
       } catch (error) {
         throw badRequest(error.message)
       }
+    } else {
+      // 调休按小时申请（0.5h 步进）：天数按 8h/天折算，不再走半天槽与六日掐算
+      workingDays = Number((Number(input.hours) / 8).toFixed(2))
     }
+
+    // 代理期间禁止休假（产品裁决 2026-08-28）：申请人若在所选时段已被他人指定为代理人，禁止提交
+    const agencyConflict = await query(
+      `SELECT r.id FROM attendance_requests r
+       WHERE r.delegate_employee_id = :employeeId
+         AND r.status IN ('pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin', 'approved')
+         AND NOT (r.end_at < :startAt OR r.start_at > :endAt)
+       LIMIT 1`,
+      { employeeId: employee.id, startAt: input.startAt, endAt: input.endAt },
+    )
+    if (agencyConflict.length) throw badRequest('您在所选时段已被指定为代理人，代理期间不能申请休假')
 
     if (input.requestType === 'leave') {
       const conflict = await findConflictingLeave(
@@ -1403,7 +1468,7 @@ function toDate(value) {
 }
 
 // 有效加班分钟数（佬 2026-08-25 定稿）：法定节假日/休息日全天计；
-// 工作日只计 09:00 上班前 + 18:00 下班后（工作时间内的部分不算加班）。跨天时边界取起始日（与历史行为一致）。
+// 工作日只计 18:00 下班后（上午 9 点前不计；工作时间内的部分不算加班）。跨天时边界取起始日（与历史行为一致）。
 
 function ceilToHour(date) {
   const rounded = new Date(date)
@@ -1421,43 +1486,49 @@ function floorToHour(date) {
   return rounded
 }
 
-// 加班时长核算：有效部分（工作日 9 点前 + 18 点后，节假日全天）按 0.5h 粒度四舍五入。
+// 加班时长核算：工作日计 09:00 前 + 18:00 后两段（2026-08-28 产品裁决：早到加班也要算），
+// 节假日/休息日全天；每段开始向上取整点、结束向下取整点，不足整点但确有发生时按 0.5h 保底。
 // 前端 attendance-shared.ts 的 previewOvertimeHours 镜像这套口径做即时预览，改动规则时需同步那里。
-// 加班时长核算：掐平日 18:00、开始向上取整点、结束向下取整点。
-// 前端 Attendance.tsx 的 previewOvertimeHours 镜像了这套口径做即时预览，
-// 改动本函数的 18:00/取整规则时需同步那里。参见 docs/adr/0002。
+// 跨天时边界取起始日（与历史行为一致）。参见 docs/adr/0002。
 function overtimeWindow(startAt, endAt) {
   const start = toDate(startAt)
   const end = toDate(endAt)
   if (!start || !end || end <= start) return null
   const dayType = overtimeDayType(start)
   const fullDayOvertime = dayType === 'legal_holiday' || dayType === 'rest_day'
-  const endHour = end.getHours() + end.getMinutes() / 60
-  if (!fullDayOvertime && endHour <= 18) return null
-  const overtimeStart = fullDayOvertime
-    ? start
-    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 18, 0, 0)
-  const effectiveStart = ceilToHour(start > overtimeStart ? start : overtimeStart)
-  const effectiveEnd = floorToHour(end)
-  if (effectiveEnd <= effectiveStart) {
-    // 掐整后归零但实际存在加班时段（如法定节假日去程 11:10–11:35 仅 25 分钟）：按 0.5 小时
-    // 保底计，时段显示原始起止。平日 18:00 前无加班事实的窗口已在上方拦截，不受保底影响。
-    // 产品裁决 2026-08-27；前端 previewOvertimeHours 同步镜像。参见 docs/adr/0002。
-    const rawStart = start > overtimeStart ? start : overtimeStart
-    if (end <= rawStart) return null
-    return {
-      startAt: formatMysqlDateTime(rawStart),
-      endAt: formatMysqlDateTime(end),
-      hours: 0.5,
-      dayType,
-    }
+  // 拆有效时段：节假日/休息日为整段；工作日为 09:00 前 + 18:00 后两段
+  const parts = []
+  if (fullDayOvertime) {
+    parts.push([start, end])
+  } else {
+    const day = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+    const nine = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 9, 0, 0)
+    const eighteen = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 18, 0, 0)
+    if (start < nine) parts.push([start, end < nine ? end : nine])
+    if (end > eighteen) parts.push([start > eighteen ? start : eighteen, end])
   }
-  const hours = Math.round((effectiveEnd.getTime() - effectiveStart.getTime()) / 3600000)
-  if (hours <= 0) return null
+  if (!parts.length) return null
+  // 每段各自取整（开始上取整、结束下取整）；不足整点但确有发生 → 0.5h 保底（不足 15 分钟也计，产品裁决 2026-08-28）
+  let totalHours = 0
+  let minStartTs = null
+  let maxEndTs = null
+  for (const [pStart, pEnd] of parts) {
+    if (pEnd <= pStart) continue
+    const effStart = ceilToHour(pStart)
+    const effEnd = floorToHour(pEnd)
+    const hourDelta = Math.round((effEnd.getTime() - effStart.getTime()) / 3600000)
+    const partHours = hourDelta > 0 ? hourDelta : 0.5
+    totalHours += partHours
+    const displayStart = hourDelta > 0 ? effStart : pStart
+    const displayEnd = hourDelta > 0 ? effEnd : pEnd
+    if (minStartTs === null || displayStart.getTime() < minStartTs) minStartTs = displayStart.getTime()
+    if (maxEndTs === null || displayEnd.getTime() > maxEndTs) maxEndTs = displayEnd.getTime()
+  }
+  if (totalHours <= 0 || minStartTs === null || maxEndTs === null) return null
   return {
-    startAt: formatMysqlDateTime(effectiveStart),
-    endAt: formatMysqlDateTime(effectiveEnd),
-    hours,
+    startAt: formatMysqlDateTime(new Date(minStartTs)),
+    endAt: formatMysqlDateTime(new Date(maxEndTs)),
+    hours: totalHours,
     dayType,
   }
 }
@@ -2332,7 +2403,7 @@ async function listApprovalTaskItems(user, view = 'pending') {
 async function requestForUpdate(connection, id) {
   const [rows] = await connection.execute(
     `SELECT r.*, p.employee_name, p.user_id, u.email AS applicant_email,
-            u.role AS applicant_role, p.supervisor_employee_id
+            u.role AS applicant_role, p.supervisor_employee_id, p.nationality AS applicant_nationality
      FROM attendance_requests r
      JOIN attendance_employee_profiles p ON p.id = r.employee_id
      LEFT JOIN users u ON u.id = p.user_id
@@ -2342,6 +2413,51 @@ async function requestForUpdate(connection, id) {
     { id },
   )
   return rows[0] || null
+}
+
+// 相连工作日累计（产品裁决 2026-08-28）：当前请假/调休与本人其他有效申请
+// （待审或已批准的请假/调休，跨假别也算）日期相连时合并累计，
+// 相连总工作日 ≥ 3 天同样触发运营负责人终审。
+function datesConnect(prevEnd, nextStart) {
+  const prevDate = String(prevEnd || '').slice(0, 10)
+  const nextDate = String(nextStart || '').slice(0, 10)
+  if (!prevDate || !nextDate) return false
+  if (nextDate <= prevDate) return true
+  const start = new Date(`${prevDate}T00:00:00Z`).getTime()
+  const end = new Date(`${nextDate}T00:00:00Z`).getTime()
+  for (let t = start + 86400000; t < end; t += 86400000) {
+    const cursor = new Date(t)
+    const key = cursor.toISOString().slice(0, 10)
+    const day = cursor.getUTCDay()
+    const isWorkingDay = !(day === 0 || day === 6 || legalHolidayCache.has(key)) || makeupWorkdayCache.has(key)
+    if (isWorkingDay) return false
+  }
+  return true
+}
+
+async function connectedLeaveWorkingDays(connection, request) {
+  if (!['leave', 'comp_time'].includes(request.request_type)) return 0
+  const [rows] = await connection.execute(
+    `SELECT id, start_at, end_at, working_days FROM attendance_requests
+     WHERE employee_id = :employeeId AND id <> :id
+       AND request_type IN ('leave', 'comp_time')
+       AND status IN ('pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin', 'approved')
+     ORDER BY start_at`,
+    { employeeId: request.employee_id, id: request.id },
+  )
+  const all = [...rows, { id: Number(request.id), start_at: request.start_at, end_at: request.end_at, working_days: request.working_days }]
+    .sort((a, b) => String(a.start_at).localeCompare(String(b.start_at)))
+  const chains = []
+  for (const item of all) {
+    const last = chains[chains.length - 1]
+    if (last && datesConnect(last[last.length - 1].end_at, item.start_at)) {
+      last.push(item)
+    } else {
+      chains.push([item])
+    }
+  }
+  const ownChain = chains.find((chain) => chain.some((item) => Number(item.id) === Number(request.id))) || []
+  return ownChain.reduce((sum, item) => sum + Number(item.working_days || 0), 0)
 }
 
 // 组联动加载：带 batch_id 的申请（同工单加班的路+工作，specs/003）在审批/驳回/撤回/作废上视为一体，
@@ -2400,6 +2516,18 @@ async function submitRequest(req, res) {
     }
 
     if (request.request_type !== 'overtime' && !request.delegate_employee_id) throw badRequest('请选择代理人')
+    if (['leave', 'comp_time'].includes(request.request_type)) {
+      // 代理期间禁止休假：提交草稿时复核（草稿可能创建于规则生效前）
+      const [agencyRows] = await connection.execute(
+        `SELECT r.id FROM attendance_requests r
+         WHERE r.delegate_employee_id = :employeeId AND r.id <> :id
+           AND r.status IN ('pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin', 'approved')
+           AND NOT (r.end_at < :startAt OR r.start_at > :endAt)
+         LIMIT 1`,
+        { employeeId: request.employee_id, id: request.id, startAt: request.start_at, endAt: request.end_at },
+      )
+      if (agencyRows.length) throw badRequest('您在所选时段已被指定为代理人，代理期间不能申请休假')
+    }
     if (request.request_type === 'leave') {
       const conflict = await findConflictingLeave(
         async (sql, params) => {
@@ -2430,12 +2558,16 @@ async function submitRequest(req, res) {
     if (workflowVersion >= 4) {
       // v4：提交时按当前直属主管映射实时推导审批链（配置变更对未提交草稿即时生效）
       const supervisorRole = await supervisorRoleForApplicantRoleConnection(connection, request.applicant_role)
+      const connectedDays = await connectedLeaveWorkingDays(connection, request)
       steps = buildApprovalSteps({
         applicantRole: request.applicant_role,
         requestType: request.request_type,
         workingDays: Number(request.working_days || 0),
         supervisorRole,
         workflowVersion,
+        delegateEmployeeId: request.delegate_employee_id,
+        applicantNationality: request.applicant_nationality,
+        connectedLongLeave: connectedDays >= 3,
       })
       await assertApprovalRolesAvailable(connection, approvalRolesFromSteps(steps), request.submitted_by)
     } else if (workflowVersion >= 3) {
@@ -2682,7 +2814,8 @@ async function approveWorkflowStep(req, res, expectedStepType, workflowVersions 
 }
 
 async function approveDelegate(req, res) {
-  return approveWorkflowStep(req, res, 'delegate', [2, 3])
+  // v4 恢复代理人确认环节（2026-08-28）：delegate 步骤与 v2/v3 同入口
+  return approveWorkflowStep(req, res, 'delegate', [2, 3, 4])
 }
 
 async function approveHr(req, res) {
