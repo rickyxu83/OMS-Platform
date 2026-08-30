@@ -149,6 +149,29 @@ async function loadAndRunLogin({ disableAccountLockout = false, user, passwordOk
       'new device login should set the long-lived device marker cookie',
     )
   }
+
+  {
+    // 回归：MySQL DATETIME 字符串无时区标记（会话时区 +08:00），后端容器 UTC 下直接 new Date()
+    // 会把 "2026-08-30 22:17:04" 误读成 UTC 22:17，15 分钟锁定被放大成 8 小时+。
+    // 这里 TZ=UTC 模拟生产容器，锁定期串 22:17(+08)=14:17Z 在 14:50Z 时已过期 → 应走密码校验并放行。
+    const savedTz = process.env.TZ
+    const savedDateNow = Date.now
+    process.env.TZ = 'UTC'
+    Date.now = () => new Date('2026-08-30T14:50:00.000Z').getTime()
+    let result
+    try {
+      result = await loadAndRunLogin({
+        user: makeUser({ locked_until: '2026-08-30 22:17:04' }),
+        passwordOk: true,
+      })
+    } finally {
+      process.env.TZ = savedTz
+      Date.now = savedDateNow
+    }
+    assert.equal(result.thrown, null)
+    assert.equal(result.compareCalls.length, 1, 'expired +08 lock string should still check the password')
+    assert.equal(result.response.body.user.id, 42)
+  }
 })().catch((error) => {
   console.error(error)
   process.exit(1)

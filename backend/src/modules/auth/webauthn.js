@@ -17,8 +17,12 @@ const MAX_PASSKEYS_PER_USER = 10
 const CHALLENGE_TTL_MINUTES = 5
 
 // 与 controller.login 的锁定口径保持一致（本地副本避免循环依赖）
+// 注意：MySQL DATETIME 字符串无时区标记（会话时区 +08:00），必须按 +08 解析而不是容器
+// 本地时区（UTC），否则锁定会被误判为延长 8 小时。详细见 auth/controller.js isLockActive。
 function isLockActive(lockedUntil) {
-  return Boolean(lockedUntil) && new Date(lockedUntil).getTime() > Date.now()
+  if (!lockedUntil) return false
+  const normalized = /[+-]\d{2}:\d{2}$|Z$/i.test(lockedUntil) ? lockedUntil : `${lockedUntil}+08:00`
+  return new Date(normalized).getTime() > Date.now()
 }
 
 function passkeyEnabled() {
