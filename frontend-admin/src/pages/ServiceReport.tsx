@@ -310,7 +310,16 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   const [loading, setLoading] = useState(true);
   const [formLoading, setFormLoading] = useState(false);
   // 列表页筛选：草稿默认折叠 + 全文搜索 + 服务日期范围（与工单处理页一致的筛选行）
-  const [draftsOpen, setDraftsOpen] = useState(false);
+  // 当前列表 tab（草稿/派单待处理/已填写）,持久化到 localStorage 刷新保持（默认派单待处理）
+  const [reportTab, setReportTab] = useState<"draft" | "dispatch" | "filled">(() => {
+    const saved = localStorage.getItem("sr:reportTab");
+    // 派单功能尚未启用：默认/高频为'已填写服务记录'（干完活直接落这里）,其次草稿,最后派单
+    return saved === "draft" || saved === "dispatch" ? saved : "filled";
+  });
+  // 无限下拉：分页游标（ref 避免滚动闭包读到过期值）
+  const ordersPageRef = useRef(1);
+  const ordersTotalRef = useRef(0);
+  const loadingMoreRef = useRef(false);
   const [searchQuery, setSearchQuery] = useState(searchParams.get("keyword") || "");
   const [startDate, setStartDate] = useState(searchParams.get("startDate") || "");
   const [endDate, setEndDate] = useState(searchParams.get("endDate") || "");
@@ -504,6 +513,39 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       ].some((value) => matchesSearchText(value, routeKeyword));
     })
   ), [createDrafts, routeKeyword, dateRange, engineers]);
+  // 无限下拉：滚动接近页面底部时加载下一页,直到拉完 total
+  const loadMoreOrders = useCallback(async () => {
+    if (loadingMoreRef.current) return;
+    if (ordersPageRef.current * 100 >= ordersTotalRef.current) return;
+    loadingMoreRef.current = true;
+    try {
+      const nextPage = ordersPageRef.current + 1;
+      const data = await api.get(`/service-orders?mine=1&page=${nextPage}&pageSize=100&sortBy=createdAt&sortDir=desc`);
+      const items = (data?.items || []) as ServiceOrder[];
+      setOrders((prev) => [...prev, ...items]);
+      ordersPageRef.current = nextPage;
+      ordersTotalRef.current = Number(data?.total || ordersTotalRef.current);
+    } catch {
+      // 静默失败,滚动再次触底时重试
+    } finally {
+      loadingMoreRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    const onScroll = () => {
+      if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 400) {
+        void loadMoreOrders();
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [loadMoreOrders]);
+
+  useEffect(() => {
+    localStorage.setItem("sr:reportTab", reportTab);
+  }, [reportTab]);
+
   const dispatchOrders = useMemo(() => (
     matchingReportOrders.filter(isDispatchOrder)
   ), [matchingReportOrders]);
@@ -645,7 +687,10 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
         api.get("/service-orders?mine=1&pageSize=100&sortBy=createdAt&sortDir=desc"),
         api.get("/service-orders/draft/self-report?all=1").catch(() => ({ items: [], item: null })),
       ]);
-      setOrders((orderData?.items || []) as ServiceOrder[]);
+      const initialItems = (orderData?.items || []) as ServiceOrder[];
+      setOrders(initialItems);
+      ordersPageRef.current = 1;
+      ordersTotalRef.current = Number(orderData?.total || initialItems.length);
       const draftItems = Array.isArray(draftData?.items)
         ? draftData.items
         : draftData?.item
@@ -2380,7 +2425,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   function renderReportOrderList(orderList: ServiceOrder[], emptyText: string) {
     const displayEmptyText = !loading && filtersActive ? "无匹配当前筛选的结果" : emptyText;
     return (
-      <div className="min-h-[220px] overflow-auto sm:max-h-[44vh]">
+      <div className="min-h-[220px]">
         {loading ? (
           <div className="flex min-h-[220px] items-center justify-center gap-2 text-sm text-muted-foreground">
             <span className="btn-loader" aria-hidden="true" />
@@ -2396,7 +2441,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 <col className="w-[12%]" />
                 <col className="w-[12%]" />
               </colgroup>
-              <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+              <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
                   <TableHead>客户 / 工单编号</TableHead>
                   <TableHead>服务内容 / 模式</TableHead>
@@ -2628,7 +2673,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   /** 草稿列表：同款 C 款表格 */
   function renderDraftsList() {
     return (
-      <div className="overflow-auto sm:max-h-[44vh]">
+      <div>
         {filteredCreateDrafts.length ? (
           <ResponsiveList items={filteredCreateDrafts} keyExtractor={(item) => item.draftKey} renderCard={renderDraftCard}>
             <table className="w-full table-fixed caption-bottom text-sm">
@@ -2639,7 +2684,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 <col className="w-[12%]" />
                 <col className="w-[12%]" />
               </colgroup>
-              <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+              <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
                   <TableHead>客户 / 更新时间</TableHead>
                   <TableHead>服务内容 / 模式</TableHead>
@@ -2853,54 +2898,101 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             </CardContent>
           </Card>
 
-          <div className="grid gap-3 lg:gap-4">
-            <Card className="overflow-hidden">
-              <CardHeader className={`${draftsOpen ? "border-b" : ""} bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3`}>
-                <CardTitle className="flex w-full items-center justify-between gap-3 text-sm sm:text-base">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <Save className="h-4 w-4 shrink-0" />
-                    <span className="truncate">草稿 ({filtersActive ? `${filteredCreateDrafts.length}/${createDrafts.length}` : createDrafts.length})</span>
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 shrink-0 px-2 text-xs"
-                    onClick={() => setDraftsOpen((open) => !open)}
-                    aria-expanded={draftsOpen}
-                  >
-                    {draftsOpen ? "收起" : "展开"}
-                    <ChevronDown className={`h-4 w-4 transition-transform ${draftsOpen ? "rotate-180" : ""}`} />
-                  </Button>
-                </CardTitle>
-              </CardHeader>
-              {draftsOpen ? (
-                <CardContent className="p-0">
-                  {renderDraftsList()}
-                </CardContent>
-              ) : null}
-            </Card>
-
-            <Card className="overflow-hidden">
-              <CardHeader className={`${loading || dispatchOrders.length || filtersActive ? "border-b" : ""} bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3`}>
-                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
-                  <ClipboardPenLine className="h-4 w-4" />
-                  派单待处理 ({dispatchOrders.length})
-                </CardTitle>
-              </CardHeader>
-              {loading || dispatchOrders.length || filtersActive ? (
-                <CardContent className="p-0">
-                  {renderReportOrderList(dispatchOrders, "暂无派单待处理工单")}
-                </CardContent>
-              ) : null}
-            </Card>
-
-            <Card className="overflow-hidden">
-              <CardContent className="p-0">
-                {renderReportOrderList(filledOrders, "暂无已填写服务记录")}
-              </CardContent>
-            </Card>
+          {/* 桌面（≥lg）：顶部下划线 Tab */}
+          <div className="hidden items-end gap-1 border-b border-border px-1 lg:flex" role="tablist" aria-label="工单分类">
+            {(
+              [
+                { key: "filled", label: "已填写服务记录", count: filledOrders.length, Icon: ClipboardCheck },
+                { key: "draft", label: "草稿", count: createDrafts.length, Icon: Save },
+                { key: "dispatch", label: "派单待处理", count: dispatchOrders.length, Icon: ClipboardPenLine },
+              ] as const
+            ).map(({ key, label, count, Icon }) => {
+              const active = reportTab === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className={`-mb-px flex items-center gap-2 border-b-2 px-4 pb-2.5 pt-3 text-sm font-medium transition-colors ${
+                    active
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                  }`}
+                  onClick={() => setReportTab(key)}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="whitespace-nowrap">{label}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
+                    active ? "bg-primary-soft text-primary" : "bg-muted text-muted-foreground"
+                  }`}>{count}</span>
+                </button>
+              );
+            })}
           </div>
+
+          {/* 列表主体：按当前 tab 渲染（桌面与手机共用同一数据源与无限下拉） */}
+          <div className="min-h-[220px]">
+            {loading ? (
+              <div className="flex min-h-[220px] items-center justify-center gap-2 text-sm text-muted-foreground">
+                <span className="btn-loader" aria-hidden="true" />
+                正在加载工单…
+              </div>
+            ) : reportTab === "draft" ? (
+              renderDraftsList()
+            ) : reportTab === "dispatch" ? (
+              renderReportOrderList(dispatchOrders, "暂无派单待处理工单")
+            ) : (
+              renderReportOrderList(filledOrders, "暂无已填写服务记录")
+            )}
+          </div>
+
+          {/* 手机（<lg）：底部 App 栏,列表全屏最大化一屏内容；fixed 底部拇指操作 */}
+          <div
+            className="fixed inset-x-0 bottom-0 z-40 border-t bg-background lg:hidden"
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+            role="tablist"
+            aria-label="工单分类"
+          >
+            <div className="flex">
+              {(
+                [
+                  { key: "filled", label: "已填写", count: filledOrders.length, Icon: ClipboardCheck },
+                  { key: "draft", label: "草稿", count: createDrafts.length, Icon: Save },
+                  { key: "dispatch", label: "派单", count: dispatchOrders.length, Icon: ClipboardPenLine },
+                ] as const
+              ).map(({ key, label, count, Icon }) => {
+                const active = reportTab === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={`relative flex flex-1 flex-col items-center gap-1 pb-2 pt-2.5 text-[11px] font-medium ${
+                      active ? "text-primary" : "text-muted-foreground"
+                    }`}
+                    onClick={() => setReportTab(key)}
+                  >
+                    <Icon className="h-6 w-6" strokeWidth={active ? 2.2 : 1.8} />
+                    {label}
+                    {count > 0 ? (
+                      <span
+                        className={`pointer-events-none absolute right-1/2 top-0.5 flex h-[15px] min-w-[15px] translate-x-[22px] items-center justify-center rounded-full px-1 text-[9px] font-bold text-white ${
+                          key === "dispatch" ? "bg-amber-500" : "bg-rose-500"
+                        }`}
+                      >
+                        {count > 99 ? "99+" : count}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {/* 手机底部栏遮挡补偿 */}
+          <div className="h-16 lg:hidden" aria-hidden="true" />
+
         </div>
 
         <Dialog open={Boolean(previewOrder)} onOpenChange={(open) => {
