@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -36,7 +37,9 @@ import {
   MonitorCog,
   MoreHorizontal,
   Package,
+  Paperclip,
   PenLine,
+  PenTool,
   Pencil,
   Plus,
   QrCode,
@@ -309,6 +312,30 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   const [editDraftLoaded, setEditDraftLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [formLoading, setFormLoading] = useState(false);
+  // 右侧目录指示点：当前分区高亮（IntersectionObserver 跟踪,表单渲染完成后激活）
+  const [activeFormSection, setActiveFormSection] = useState("customer");
+
+  useEffect(() => {
+    if (formLoading || isFormRoute === false) return;
+    // 滚动位置计算（捕获监听容器滚动）：取'上边距 ≤ 视口40% 线'的最后一项为当前分区。
+    // IntersectionObserver 在嵌套滚动容器 + 视口中部窄带的几何判定不可靠（滚到底不带触发），改位置判断更稳。
+    // 末尾元素（提交栏）滚动到底时仍停在视口下部,永远滚不过 40% 线——必须把签名区
+    // 纳入计算:滚到底时最后一个'顶边滚过 60% 线'的是签名区,它将映射到'保存提交'点亮
+    const KEYS = ["customer", "module", "work", "attachment", "signoff", "submit"] as const;
+    const compute = () => {
+      const probe = window.innerHeight * 0.6;
+      let current: string = KEYS[0];
+      for (const key of KEYS) {
+        const el = key === "submit" ? document.getElementById("report-submit-actions") : document.getElementById(`report-section-${key}`);
+        if (el && el.getBoundingClientRect().top <= probe) current = key;
+      }
+      setActiveFormSection(current);
+    };
+    compute();
+    // scroll 不冒泡：用捕获阶段监听以覆盖滚动容器（mobile-admin-content）内的滚动
+    window.addEventListener("scroll", compute, { passive: true, capture: true });
+    return () => window.removeEventListener("scroll", compute, { capture: true });
+  }, [formLoading, isFormRoute]);
   // 列表页筛选：草稿默认折叠 + 全文搜索 + 服务日期范围（与工单处理页一致的筛选行）
   // 当前列表 tab（草稿/派单待处理/已填写）,持久化到 localStorage 刷新保持（默认派单待处理）
   const [reportTab, setReportTab] = useState<"records" | "dispatch">(() => {
@@ -389,7 +416,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   const [customerSearching, setCustomerSearching] = useState(false);
   const [geoCandidates, setGeoCandidates] = useState<GeoCandidate[]>([]);
   const [geoLoading, setGeoLoading] = useState(false);
-  const [geoHint, setGeoHint] = useState("");
   const [contactOptionsOpen, setContactOptionsOpen] = useState(false);
   const [engineerPanelOpen, setEngineerPanelOpen] = useState(false);
   const [loadingLatestSignature, setLoadingLatestSignature] = useState(false);
@@ -1006,14 +1032,13 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     });
     setCustomerOptionsOpen(false);
     setGeoCandidates([]);
-    setGeoHint(customer.latitude && customer.longitude ? `已载入客户定位：${coordinateLabel(String(customer.latitude), String(customer.longitude))}` : "");
     setContactOptionsOpen(false);
   }
 
   async function searchCustomerGeo() {
     const keyword = form.customerName.trim() || form.customerAddress.trim();
     if (!keyword) {
-      setGeoHint("请先输入客户公司名或详细地址");
+
       return;
     }
 
@@ -1023,15 +1048,12 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       params.set("longitude", form.customerLongitude);
     }
     setGeoLoading(true);
-    setGeoHint("正在搜索地图候选…");
     try {
       const data = await api.get(`/geo/companies?${params.toString()}`);
       const items = ((data?.items || []) as GeoCandidate[]).slice(0, 8);
       setGeoCandidates(items);
-      setGeoHint(items.length ? `找到 ${items.length} 条候选，请选择一条补全客户信息` : "未找到匹配位置，可继续手动填写客户信息");
     } catch (err) {
       setGeoCandidates([]);
-      setGeoHint(err instanceof Error ? err.message : "地图候选搜索失败");
     } finally {
       setGeoLoading(false);
     }
@@ -1053,7 +1075,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
         mapPoiName: candidate.mapPoiName,
         mapAddress: candidate.mapAddress,
       });
-      setGeoHint(`已关联系统客户：${candidate.name || candidate.customerId}`);
       return;
     }
 
@@ -1074,7 +1095,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       customerConfirmName: candidate.contactName || form.customerConfirmName,
     });
     setGeoCandidates([]);
-    setGeoHint(coordinates ? `已补全地图信息：${coordinateLabel(String(coordinates.latitude), String(coordinates.longitude))}` : "已补全地图信息");
   }
 
   function changeCustomerAddress(value: string) {
@@ -1088,7 +1108,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       customerMapAddress: value,
     });
     setGeoCandidates([]);
-    setGeoHint(value.trim() ? "地址已修改，提交前建议重新定位" : "");
   }
 
   function changeCustomerName(value: string) {
@@ -1097,11 +1116,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       customerName: value,
     });
     setGeoCandidates([]);
-    setGeoHint(value.trim()
-      ? coordinateLabel(form.customerLatitude, form.customerLongitude)
-        ? "客户名称已修改，地址与定位已保留"
-        : "未关联系统客户，可按新客户继续填写"
-      : "");
     setCustomerOptionsOpen(true);
     scheduleCustomerSearch(value);
   }
@@ -3380,6 +3394,46 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
         </div>
       </div>
 
+      {/* 移动/平板：右侧目录指示点（D 方案）——常驻右缘,当前分区拉长紫条,点击跳分区 */}
+      {createPortal(
+        <div className="fixed right-1.5 top-1/2 z-30 -translate-y-1/2 flex flex-col items-center gap-2.5 lg:hidden"
+          role="tablist"
+          aria-label="表单分区跳转"
+        >
+          {[
+            { key: "customer", label: "客户" },
+            { key: "module", label: "服务" },
+            { key: "work", label: "记录" },
+            { key: "attachment", label: "附件" },
+            { key: "submit", label: "保存提交" },
+          ].map((item) => {
+            // 签名区与保存提交同属'最后一步',任一可见都点亮提交点
+            const active = item.key === "submit"
+              ? activeFormSection === "submit" || activeFormSection === "signoff"
+              : activeFormSection === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                title={item.label}
+                aria-label={`跳到${item.label}分区`}
+                className={`-m-1.5 rounded-full p-1.5 transition-colors ${
+                  active ? "text-primary" : "text-border hover:text-primary/60 active:text-primary/70"
+                }`}
+                onClick={() => document.getElementById(item.key === "submit" ? "report-submit-actions" : `report-section-${item.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+>
+                <span
+                  className={`block rounded-full transition-all duration-200 ${
+                    active ? "h-2.5 w-6 bg-primary" : "h-2 w-2 bg-current"
+                  }`}
+                />
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      )}
+
       <ErrorToast message={error} />
       <InlineError message={error} />
 
@@ -3554,20 +3608,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                   </div>
                 </div>
 
-                <div className="mt-3 grid gap-2 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground sm:flex sm:flex-wrap sm:items-center">
-                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                    <Badge className="justify-center sm:justify-start" variant={form.customerId ? "outline" : "secondary"}>
-                      {form.customerId ? "已关联系统" : form.customerName.trim() ? "待建档" : "未选择"}
-                    </Badge>
-                    {coordinateLabel(form.customerLatitude, form.customerLongitude) ? (
-                      <Badge className="justify-center sm:justify-start" variant="outline">
-                        <span className="sm:hidden">已定位</span>
-                        <span className="hidden sm:inline">已定位 {coordinateLabel(form.customerLatitude, form.customerLongitude)}</span>
-                      </Badge>
-                    ) : null}
-                  </div>
-                  {geoHint ? <span className="min-w-0 leading-5 sm:flex-1">{geoHint}</span> : null}
-                </div>
 
                 {isOnsite && geoCandidates.length ? (
                   <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -4375,23 +4415,24 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 </div>
               </ReportSection>
             ) : null}
-            <div className="sticky bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 -mx-3 border-t bg-background/95 shadow-[0_-12px_30px_rgba(15,23,42,0.10)] backdrop-blur sm:mx-0 sm:rounded-lg sm:border lg:bottom-0">
+            {/* 保存/提交栏：文档流底部（不悬浮,避免遮挡与定位问题） */}
+            <div id="report-submit-actions" className="-mx-3 border-t bg-background/95 sm:mx-0 sm:rounded-lg sm:border">
               <div className="flex gap-2 px-3 py-3 lg:justify-end">
-              <Button className="h-10 flex-1 lg:flex-none" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
-                <Save className="h-4 w-4" />
-                <span className="sm:hidden">保存</span>
-                <span className="hidden sm:inline">保存草稿</span>
-              </Button>
-              <Button
-                className="h-10 flex-1 lg:flex-none"
-                onClick={submit}
-                disabled={saving || formLoading || uploadingFiles}
-                aria-label={electronicSignatureSelected && !form.customerSignature && !form.customerSignatureFileId ? "提交并生成签署链接" : "提交服务记录"}
-              >
-                {saving || uploadingFiles ? <span className="btn-loader" aria-hidden="true" /> : <PenLine className="h-4 w-4" />}
-                <span className="sm:hidden">提交</span>
-	                <span className="hidden sm:inline">{electronicSignatureSelected && !form.customerSignature && !form.customerSignatureFileId ? "提交并生成签署链接" : "提交服务记录"}</span>
-              </Button>
+                <Button className="h-10 flex-1 lg:flex-none" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
+                  <Save className="h-4 w-4" />
+                  <span className="sm:hidden">保存</span>
+                  <span className="hidden sm:inline">保存草稿</span>
+                </Button>
+                <Button
+                  className="h-10 flex-1 lg:flex-none"
+                  onClick={submit}
+                  disabled={saving || formLoading || uploadingFiles}
+                  aria-label={electronicSignatureSelected && !form.customerSignature && !form.customerSignatureFileId ? "提交并生成签署链接" : "提交服务记录"}
+                >
+                  {saving || uploadingFiles ? <span className="btn-loader" aria-hidden="true" /> : <PenLine className="h-4 w-4" />}
+                  <span className="sm:hidden">提交</span>
+                  <span className="hidden sm:inline">{electronicSignatureSelected && !form.customerSignature && !form.customerSignatureFileId ? "提交并生成签署链接" : "提交服务记录"}</span>
+                </Button>
               </div>
             </div>
           </div>
