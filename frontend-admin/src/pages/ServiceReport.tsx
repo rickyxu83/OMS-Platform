@@ -3370,6 +3370,26 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
         </div>
       </div>
 
+      {/* 移动/平板：分区快速跳转（文档流内,不悬浮不遮挡,随内容滚动） */}
+      <div className="-mx-3 flex gap-1.5 overflow-x-auto px-3 sm:mx-0 sm:px-1 lg:hidden">
+        {[
+          { key: "customer", label: "客户" },
+          { key: "module", label: "服务" },
+          { key: "work", label: "记录" },
+          { key: "attachment", label: "附件" },
+          { key: "signoff", label: "签名" },
+        ].map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary active:scale-95"
+            onClick={() => document.getElementById(`report-section-${item.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
       <ErrorToast message={error} />
       <InlineError message={error} />
 
@@ -4351,58 +4371,26 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 </div>
               </ReportSection>
             ) : null}
-            {createPortal(
-              <div
-                className="fixed right-1 top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-1.5 lg:hidden"
-                style={{ maxHeight: "60dvh", overflowY: "auto" }}
-                role="tablist"
-                aria-label="表单分区跳转"
-              >
-                {[
-                  { key: "customer", label: "客户", Icon: User },
-                  { key: "module", label: "服务", Icon: Wrench },
-                  { key: "work", label: "记录", Icon: FileText },
-                  { key: "attachment", label: "附件", Icon: Paperclip },
-                  { key: "signoff", label: "签名", Icon: PenTool },
-                ].map((item) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    title={item.label}
-                    className="flex h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:border-primary/50 hover:text-primary active:scale-95"
-                    onClick={() => document.getElementById(`report-section-${item.key}`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                    aria-label={`跳到${item.label}分区`}
-                  >
-                    <item.Icon className="h-4 w-4" />
-                  </button>
-                ))}
-              </div>,
-              document.body,
-            )}
-            {createPortal(
-              <div className="fixed inset-x-0 bottom-16 z-30 border-t bg-background/95 shadow-[0_-12px_30px_rgba(15,23,42,0.10)] backdrop-blur lg:inset-x-auto lg:bottom-4 lg:right-6 lg:left-auto lg:rounded-xl lg:border"
-                style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-                <div className="flex gap-2 px-3 py-3 lg:justify-end">
-              <Button className="h-10 flex-1 lg:flex-none" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
-                <Save className="h-4 w-4" />
-                <span className="sm:hidden">保存</span>
-                <span className="hidden sm:inline">保存草稿</span>
-              </Button>
-              <Button
-                className="h-10 flex-1 lg:flex-none"
-                onClick={submit}
-                disabled={saving || formLoading || uploadingFiles}
-                aria-label={electronicSignatureSelected && !form.customerSignature && !form.customerSignatureFileId ? "提交并生成签署链接" : "提交服务记录"}
-              >
-                {saving || uploadingFiles ? <span className="btn-loader" aria-hidden="true" /> : <PenLine className="h-4 w-4" />}
-                <span className="sm:hidden">提交</span>
-	                <span className="hidden sm:inline">{electronicSignatureSelected && !form.customerSignature && !form.customerSignatureFileId ? "提交并生成签署链接" : "提交服务记录"}</span>
-              </Button>
-                </div>
-              </div>,
-              document.body,
-            )}
-            <div className="h-28 lg:h-20" aria-hidden="true" />
+            {/* 保存/提交栏：文档流底部（不悬浮,避免遮挡与定位问题） */}
+            <div className="-mx-3 border-t bg-background/95 sm:mx-0 sm:rounded-lg sm:border">
+              <div className="flex gap-2 px-3 py-3 lg:justify-end">
+                <Button className="h-10 flex-1 lg:flex-none" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
+                  <Save className="h-4 w-4" />
+                  <span className="sm:hidden">保存</span>
+                  <span className="hidden sm:inline">保存草稿</span>
+                </Button>
+                <Button
+                  className="h-10 flex-1 lg:flex-none"
+                  onClick={submit}
+                  disabled={saving || formLoading || uploadingFiles}
+                  aria-label={electronicSignatureSelected && !form.customerSignature && !form.customerSignatureFileId ? "提交并生成签署链接" : "提交服务记录"}
+                >
+                  {saving || uploadingFiles ? <span className="btn-loader" aria-hidden="true" /> : <PenLine className="h-4 w-4" />}
+                  <span className="sm:hidden">提交</span>
+                  <span className="hidden sm:inline">{electronicSignatureSelected && !form.customerSignature && !form.customerSignatureFileId ? "提交并生成签署链接" : "提交服务记录"}</span>
+                </Button>
+              </div>
+            </div>
           </div>
         </>
       )}
