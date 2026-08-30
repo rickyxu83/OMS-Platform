@@ -310,8 +310,9 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   const [loading, setLoading] = useState(true);
   const [formLoading, setFormLoading] = useState(false);
   // 列表页筛选：草稿默认折叠 + 全文搜索 + 服务日期范围（与工单处理页一致的筛选行）
-  const [draftsOpen, setDraftsOpen] = useState(false);
-  const [dispatchOpen, setDispatchOpen] = useState(true); // 派单待处理默认展开（主工作区）,可折叠
+  // 折叠状态持久化到 localStorage,刷新后保持用户上次的选择
+  const [draftsOpen, setDraftsOpen] = useState(() => localStorage.getItem("sr:draftsOpen") !== "0");
+  const [dispatchOpen, setDispatchOpen] = useState(() => localStorage.getItem("sr:dispatchOpen") !== "0"); // 派单待处理默认展开
   // 无限下拉：分页游标（ref 避免滚动闭包读到过期值）
   const ordersPageRef = useRef(1);
   const ordersTotalRef = useRef(0);
@@ -537,6 +538,11 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, [loadMoreOrders]);
+
+  useEffect(() => {
+    localStorage.setItem("sr:draftsOpen", draftsOpen ? "1" : "0");
+    localStorage.setItem("sr:dispatchOpen", dispatchOpen ? "1" : "0");
+  }, [draftsOpen, dispatchOpen]);
 
   const dispatchOrders = useMemo(() => (
     matchingReportOrders.filter(isDispatchOrder)
@@ -2892,23 +2898,25 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 
           <div className="grid gap-3 lg:gap-4">
             <Card className="overflow-hidden">
-              <CardHeader className={`${draftsOpen ? "border-b" : ""} bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3`}>
-                <CardTitle className="flex w-full items-center justify-between gap-3 text-sm sm:text-base">
+              <CardHeader className={`${draftsOpen ? "border-b" : ""} bg-muted/30 px-3 ${draftsOpen ? "py-2.5 sm:py-3" : "py-1.5 sm:py-2"} sm:px-4`}>
+                <CardTitle
+                  className="flex w-full cursor-pointer select-none items-center justify-between gap-3 text-sm sm:text-base"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={draftsOpen}
+                  onClick={() => setDraftsOpen((open) => !open)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setDraftsOpen((open) => !open);
+                    }
+                  }}
+                >
                   <span className="flex min-w-0 items-center gap-2">
                     <Save className="h-4 w-4 shrink-0" />
                     <span className="truncate">草稿 ({filtersActive ? `${filteredCreateDrafts.length}/${createDrafts.length}` : createDrafts.length})</span>
                   </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 shrink-0 px-2 text-xs"
-                    onClick={() => setDraftsOpen((open) => !open)}
-                    aria-expanded={draftsOpen}
-                  >
-                    {draftsOpen ? "收起" : "展开"}
-                    <ChevronDown className={`h-4 w-4 transition-transform ${draftsOpen ? "rotate-180" : ""}`} />
-                  </Button>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${draftsOpen ? "rotate-180" : ""}`} />
                 </CardTitle>
               </CardHeader>
               {draftsOpen ? (
@@ -2919,23 +2927,25 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             </Card>
 
             <Card className="overflow-hidden">
-              <CardHeader className={`${loading || (dispatchOrders.length && dispatchOpen) || (filtersActive && dispatchOpen) ? "border-b" : ""} bg-muted/30 px-3 py-2.5 sm:px-4 sm:py-3`}>
-                <CardTitle className="flex w-full items-center justify-between gap-3 text-sm sm:text-base">
+              <CardHeader className={`${loading || (dispatchOrders.length && dispatchOpen) || (filtersActive && dispatchOpen) ? "border-b" : ""} bg-muted/30 px-3 ${dispatchOpen ? "py-2.5 sm:py-3" : "py-1.5 sm:py-2"} sm:px-4`}>
+                <CardTitle
+                  className="flex w-full cursor-pointer select-none items-center justify-between gap-3 text-sm sm:text-base"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={dispatchOpen}
+                  onClick={() => setDispatchOpen((open) => !open)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setDispatchOpen((open) => !open);
+                    }
+                  }}
+                >
                   <span className="flex min-w-0 items-center gap-2">
                     <ClipboardPenLine className="h-4 w-4 shrink-0" />
                     <span className="truncate">派单待处理 ({dispatchOrders.length})</span>
                   </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 shrink-0 px-2 text-xs"
-                    onClick={() => setDispatchOpen((open) => !open)}
-                    aria-expanded={dispatchOpen}
-                  >
-                    {dispatchOpen ? "收起" : "展开"}
-                    <ChevronDown className={`h-4 w-4 transition-transform ${dispatchOpen ? "rotate-180" : ""}`} />
-                  </Button>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${dispatchOpen ? "rotate-180" : ""}`} />
                 </CardTitle>
               </CardHeader>
               {dispatchOpen && (loading || dispatchOrders.length || filtersActive) ? (
