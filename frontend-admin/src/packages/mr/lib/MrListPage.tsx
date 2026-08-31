@@ -324,17 +324,35 @@ export function MrListPage() {
             待我签核 <span className="font-bold">{pendingMineCount}</span>
           </button>
         ) : null}
-        <span className="inline-flex items-baseline gap-1.5"><span className="text-muted-foreground">全部</span><span className="text-base font-bold">{items.length}</span></span>
-        {(['draft', 'in_review', 'approved', 'rejected', 'voided'] as MrStatus[]).map((st) => {
-          const count = items.filter((o) => (o.status || 'draft') === st).length
-          const conf = STATUS_INDICATOR[st]
-          const Icon = conf.icon
+        {/* 统计条可点击筛选：全部 + 各状态,点击切换 status 筛选 */}
+        {(
+          [
+            { key: 'all', label: '全部', icon: null as LucideIcon | null },
+            { key: 'draft', label: '草稿', icon: STATUS_INDICATOR.draft.icon },
+            { key: 'in_review', label: '签核中', icon: STATUS_INDICATOR.in_review.icon },
+            { key: 'approved', label: '已通过', icon: STATUS_INDICATOR.approved.icon },
+            { key: 'rejected', label: '已驳回', icon: STATUS_INDICATOR.rejected.icon },
+            { key: 'voided', label: '已作废', icon: STATUS_INDICATOR.voided.icon },
+          ] as Array<{ key: string; label: string; icon: LucideIcon | null }>
+        ).map((item) => {
+          const count = item.key === 'all' ? items.length : items.filter((o) => (o.status || 'draft') === item.key).length
+          const active = status === item.key
+          const Icon = item.icon
+          const color = item.key === 'all' ? '' : STATUS_INDICATOR[item.key as MrStatus].color
           return (
-            <span key={st} className="inline-flex items-baseline gap-1.5">
-              <Icon className={`h-3.5 w-3.5 ${conf.color} translate-y-0.5`} />
-              <span className="text-muted-foreground">{STATUS_LABELS[st]}</span>
-              <span className="text-base font-bold">{count}</span>
-            </span>
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setStatus(item.key)}
+              aria-pressed={active}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm transition-colors ${
+                active ? 'bg-primary font-medium text-white' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
+              }`}
+            >
+              {Icon ? <Icon className={`h-3.5 w-3.5 ${active ? '' : color}`} /> : null}
+              <span>{item.label}</span>
+              <span className="font-bold tabular-nums">{count}</span>
+            </button>
           )
         })}
       </div>
