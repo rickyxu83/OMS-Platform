@@ -455,9 +455,9 @@ export function MrListPage() {
                       <StatusHoverButton orderStatus={orderStatus} order={order} stepLabel={stepLabel} assigneeName={order.currentAssigneeName} onFilter={() => setStatus(orderStatus)} />
                       {orderStatus === 'approved' && order.purchaseStatus ? (
                         <>
-                          {/* 流程递进箭头：悬停/触摸时右滑+琥珀色,呼应采购状态 */}
-                          <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/60 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-amber-600" />
-                          <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`按采购状态筛选：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
+                          {/* 流程递进箭头：常驻琥珀色（呼应采购状态色）,无打扰动效 */}
+                          <ArrowRight className="h-3 w-3 shrink-0 text-amber-600/80" />
+                          <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`采购状态：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}${order.updatedAt ? ` · 更新于 ${shortDate(order.updatedAt)}` : ''}（点击按采购状态筛选）`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
                             {(() => { const conf = PURCHASE_INDICATOR[order.purchaseStatus || '']; const Icon = conf ? conf.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null })()}
                             {PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}
                           </button>
