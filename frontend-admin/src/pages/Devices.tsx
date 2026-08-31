@@ -1026,7 +1026,7 @@ export function Devices() {
 
   // —— 手动合并设备（keep/target 选择 -> 预览 -> 确认）——
   const keepDeviceById = (id: string) => devices.find((d) => String(d.id) === String(id));
-  const deviceSnLabel = (item: Device) => item.serialNo || item.name || item.model || `#${item.id}`;
+  const deviceSnLabel = (item: Device) => [item.model || item.name || `#${item.id}`, item.serialNo].filter(Boolean).join(' · ');
 
 
 
@@ -3823,39 +3823,60 @@ export function Devices() {
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label>待合并设备（可多选）</Label>
+                <Label>待合并设备（选择即一并合并）</Label>
                 <button
                   type="button"
                   className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
                   onClick={() => setShowAllMergeOptions((value) => !value)}
                 >
-                  {showAllMergeOptions ? "只显示勾选的设备" : "从全部设备中选择…"}
+                  {showAllMergeOptions ? "收起全部设备" : "从全部设备添加…"}
                 </button>
               </div>
-              <div className="max-h-[240px] space-y-1.5 overflow-y-auto rounded-md border p-2">
-                {(showAllMergeOptions ? devices.filter((item) => {
-                  const keep = keepDeviceById(mergeKeepId);
-                  return keep && String(item.customerId) === String(keep.customerId) && String(item.id) !== String(mergeKeepId);
-                }) : devices.filter((item) => selectedDeviceIds.slice(0, 4).includes(String(item.id)) && String(item.id) !== String(mergeKeepId))).map((item) => {
-                  const checked = mergeTargetIds.includes(String(item.id));
-                  return (
-                    <label key={String(item.id)} className={`flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-2 text-sm transition-colors ${checked ? "border-primary/50 bg-primary/5" : ""}`}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(event) => {
-                          const id = String(item.id);
-                          setMergeTargetIds((prev) => (event.target.checked ? Array.from(new Set([...prev, id])) : prev.filter((x) => x !== id)));
-                        }}
-                      />
-                      <span className="min-w-0 flex-1 truncate">
-                        {deviceSnLabel(item)}{item.model ? ` · ${item.model}` : ""}
-                      </span>
-                    </label>
-                  );
-                })}
-                {!mergeKeepId ? <div className="py-2 text-center text-sm text-muted-foreground">请先选择保留设备</div> : null}
-              </div>
+              {mergeTargetIds.length ? (
+                <div className="space-y-1.5">
+                  {mergeTargetIds
+                    .map((id) => devices.find((item) => String(item.id) === String(id)))
+                    .filter((item): item is Device => Boolean(item))
+                    .map((item) => (
+                      <div key={String(item.id)} className="flex items-center gap-2 rounded-md border bg-primary/5 px-2.5 py-2 text-sm">
+                        <span className="min-w-0 flex-1 truncate">{deviceSnLabel(item)}</span>
+                        <button
+                          type="button"
+                          className="shrink-0 text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-rose-600 hover:underline"
+                          onClick={() => setMergeTargetIds((prev) => prev.filter((id) => id !== String(item.id)))}
+                        >
+                          移除
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="rounded-md border border-dashed px-3 py-2 text-center text-sm text-muted-foreground">
+                  {showAllMergeOptions ? "点击下方设备加入合并清单" : "勾选的设备已自动加入；可点右上角从全部设备添加"}
+                </div>
+              )}
+              {showAllMergeOptions ? (
+                <div className="max-h-[180px] space-y-1 overflow-y-auto rounded-md border p-2">
+                  {devices
+                    .filter((item) => {
+                      const keep = keepDeviceById(mergeKeepId);
+                      return keep && String(item.customerId) === String(keep.customerId) && String(item.id) !== String(mergeKeepId);
+                    })
+                    .filter((item) => !mergeTargetIds.includes(String(item.id)))
+                    .map((item) => (
+                      <button
+                        key={String(item.id)}
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent"
+                        onClick={() => setMergeTargetIds((prev) => Array.from(new Set([...prev, String(item.id)])))}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{deviceSnLabel(item)}</span>
+                        <span className="shrink-0 text-xs text-primary">添加</span>
+                      </button>
+                    ))}
+                  {!mergeKeepId ? <div className="py-2 text-center text-sm text-muted-foreground">请先选择保留设备</div> : null}
+                </div>
+              ) : null}
             </div>
 
             {mergeError ? <div className="text-sm text-destructive">{mergeError}</div> : null}
