@@ -16,7 +16,6 @@ import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { formatCount, formatDateTime } from "@/lib/format";
 import {
-  AUDIT_ACTION_LABELS,
   auditActionLabel,
   auditTargetLabel,
   describeAuditLog,
@@ -197,7 +196,6 @@ export function AuditLogs() {
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [actorFilter, setActorFilter] = useUrlParam("actor", "all");
-  const [actionFilter, setActionFilter] = useUrlParam("action", "all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [riskyOnly, setRiskyOnly] = useState(false);
@@ -222,7 +220,6 @@ export function AuditLogs() {
       });
       if (searchQuery.trim()) params.set("keyword", searchQuery.trim());
       if (actorFilter !== "all") params.set("actorId", actorFilter);
-      if (actionFilter !== "all") params.set("action", actionFilter);
       if (from) params.set("from", from);
       if (to) params.set("to", to);
       if (riskyOnly) params.set("riskyOnly", "1");
@@ -255,7 +252,7 @@ export function AuditLogs() {
     }, searchQuery.trim() ? 250 : 0);
     return () => window.clearTimeout(timerId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, searchQuery, actorFilter, actionFilter, from, to, riskyOnly]);
+  }, [page, pageSize, searchQuery, actorFilter, from, to, riskyOnly]);
 
   // 无限滚动：接近最近滚动祖先底部时加载下一页
   useEffect(() => {
@@ -381,7 +378,7 @@ export function AuditLogs() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
-                placeholder="搜索操作人、描述、IP…"
+                placeholder="搜索操作人、操作类型、内容、IP…（支持中文，如「派单」「工单」）"
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -408,25 +405,6 @@ export function AuditLogs() {
                 ))}
               </SelectContent>
             </Select>
-            <Select
-              value={actionFilter}
-              onValueChange={(value) => {
-                setActionFilter(value);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="全部操作" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部操作</SelectItem>
-                {Object.entries(AUDIT_ACTION_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
             <div className="w-[240px]">
               <DateRangePicker
                 start={from}
@@ -439,7 +417,6 @@ export function AuditLogs() {
             <Button variant="outline" onClick={() => {
               setSearchQuery("");
               setActorFilter("all");
-              setActionFilter("all");
               setFrom("");
               setTo("");
               setRiskyOnly(false);
