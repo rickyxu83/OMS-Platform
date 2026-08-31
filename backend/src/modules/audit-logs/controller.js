@@ -1,6 +1,7 @@
 const { query } = require('../../config/db')
 const { badRequest } = require('../../utils/http-error')
 const { buildLikeSearch } = require('../../utils/chinese')
+const { AUDIT_ACTION_LABELS, AUDIT_TARGET_LABELS, codesMatchingKeyword } = require('./labels')
 
 function parseDetailJson(value) {
   if (!value || typeof value !== 'string') return value || null
@@ -74,6 +75,14 @@ async function list(req, res) {
     fromDate,
     toDate,
   }
+  // 中文标签反查：搜索「派单」「工单」等页面展示文案时，命中对应英文 code
+  const matchedActionCodes = codesMatchingKeyword(AUDIT_ACTION_LABELS, keywordSearch.variants)
+  const matchedTargetCodes = codesMatchingKeyword(AUDIT_TARGET_LABELS, keywordSearch.variants)
+  matchedActionCodes.forEach((code, index) => { params[`kwAction${index}`] = code })
+  matchedTargetCodes.forEach((code, index) => { params[`kwTarget${index}`] = code })
+  const inClause = (codes, column, prefix) => (codes.length
+    ? `OR ${column} IN (${codes.map((_, index) => `:${prefix}${index}`).join(', ')})`
+    : '')
   const prefersIdOrdering = sortBy === 'createdAt'
   const effectiveOrderBy = prefersIdOrdering ? 'al.id' : orderBy
   const filters = `
@@ -88,6 +97,8 @@ async function list(req, res) {
          OR ${keywordSearch.sql('u.username')}
          OR ${keywordSearch.sql('al.target_type')}
          OR ${keywordSearch.sql('al.action')}
+         ${inClause(matchedActionCodes, 'al.action', 'kwAction')}
+         ${inClause(matchedTargetCodes, 'al.target_type', 'kwTarget')}
          OR ${keywordSearch.sql('al.detail_json')}
        )
        ${onlyRisky ? `AND (

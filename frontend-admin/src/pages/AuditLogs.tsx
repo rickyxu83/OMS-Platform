@@ -16,7 +16,6 @@ import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { formatCount, formatDateTime } from "@/lib/format";
 import {
-  AUDIT_ACTION_LABELS,
   auditActionLabel,
   auditTargetLabel,
   describeAuditLog,
@@ -88,23 +87,42 @@ function severityOf(log: AuditLog): "danger" | "warn" | "ok" {
   return "ok";
 }
 
+const SEVERITY_MARK: Record<string, { label: string; className: string }> = {
+  danger: { label: "风险", className: "text-destructive" },
+  warn: { label: "注意", className: "text-amber-600" },
+};
+
+const SEVERITY_ROW_CLASS: Record<string, string> = {
+  danger: "bg-destructive/5",
+  warn: "bg-amber-50/60",
+  ok: "",
+};
+
 /** 风险/注意小标记（表格与移动端卡片共用） */
 function SeverityMark({ severity }: { severity: "danger" | "warn" | "ok" }) {
-  if (severity === "danger") {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
-        <AlertTriangle className="w-3.5 h-3.5" />风险
-      </span>
-    );
-  }
-  if (severity === "warn") {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
-        <AlertTriangle className="w-3.5 h-3.5" />注意
-      </span>
-    );
-  }
-  return null;
+  const conf = SEVERITY_MARK[severity];
+  if (!conf) return null;
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium ${conf.className}`}>
+      <AlertTriangle className="w-3.5 h-3.5" />{conf.label}
+    </span>
+  );
+}
+
+/** 操作徽章 + 风险标记（表格与移动端卡片共用） */
+function AuditActionBadge({ log }: { log: AuditLog }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Badge variant={ACTION_VARIANT[log.action || ""] || "secondary"}>
+        {auditActionLabel(log.action)}
+      </Badge>
+      <SeverityMark severity={severityOf(log)} />
+    </span>
+  );
+}
+
+function auditLogKey(log: AuditLog, idx: number) {
+  return log.id || `${log.createdAt}-${idx}`;
 }
 
 /** 折叠明细（无内容不渲染） */
@@ -125,29 +143,28 @@ function AuditDetailCollapse({ log }: { log: AuditLog }) {
   );
 }
 
+/** 状态码文案：4xx/5xx 异常、其余成功、无码显示 - */
+function AuditStatus({ code }: { code: number }) {
+  if (code >= 400) return <span className="text-destructive font-medium">异常 ({code})</span>;
+  if (code > 0) return <span className="text-emerald-600 font-medium">成功 ({code})</span>;
+  return <span>-</span>;
+}
+
 /** 状态码 + 耗时；vertical 用于桌面表格右侧窄列（上下两行） */
 function AuditResultMeta({ log, vertical = false }: { log: AuditLog; vertical?: boolean }) {
   const code = Number(log.detail?.statusCode || 0);
-  const status =
-    code >= 400 ? (
-      <span className="text-destructive font-medium">异常 ({code})</span>
-    ) : code > 0 ? (
-      <span className="text-emerald-600 font-medium">成功 ({code})</span>
-    ) : (
-      <span>-</span>
-    );
   const duration = <span className="tabular-nums">{Number(log.detail?.durationMs || 0)}ms</span>;
   if (vertical) {
     return (
       <span className="flex flex-col items-end gap-0.5 text-xs text-muted-foreground">
-        <span>{status}</span>
-        <span>{duration}</span>
+        <AuditStatus code={code} />
+        {duration}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-4">
-      <span>状态: {status}</span>
+      <span>状态: <AuditStatus code={code} /></span>
       <span>耗时: {duration}</span>
     </span>
   );
@@ -179,7 +196,6 @@ export function AuditLogs() {
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [actorFilter, setActorFilter] = useUrlParam("actor", "all");
-  const [actionFilter, setActionFilter] = useUrlParam("action", "all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [riskyOnly, setRiskyOnly] = useState(false);
@@ -204,7 +220,6 @@ export function AuditLogs() {
       });
       if (searchQuery.trim()) params.set("keyword", searchQuery.trim());
       if (actorFilter !== "all") params.set("actorId", actorFilter);
-      if (actionFilter !== "all") params.set("action", actionFilter);
       if (from) params.set("from", from);
       if (to) params.set("to", to);
       if (riskyOnly) params.set("riskyOnly", "1");
@@ -237,7 +252,7 @@ export function AuditLogs() {
     }, searchQuery.trim() ? 250 : 0);
     return () => window.clearTimeout(timerId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, searchQuery, actorFilter, actionFilter, from, to, riskyOnly]);
+  }, [page, pageSize, searchQuery, actorFilter, from, to, riskyOnly]);
 
   // 无限滚动：接近最近滚动祖先底部时加载下一页
   useEffect(() => {
@@ -363,7 +378,7 @@ export function AuditLogs() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-9"
-                placeholder="搜索操作人、描述、IP…"
+                placeholder="搜索操作人、操作类型、内容、IP…（支持中文，如「派单」「工单」）"
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -390,25 +405,6 @@ export function AuditLogs() {
                 ))}
               </SelectContent>
             </Select>
-            <Select
-              value={actionFilter}
-              onValueChange={(value) => {
-                setActionFilter(value);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="全部操作" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部操作</SelectItem>
-                {Object.entries(AUDIT_ACTION_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
             <div className="w-[240px]">
               <DateRangePicker
                 start={from}
@@ -421,7 +417,6 @@ export function AuditLogs() {
             <Button variant="outline" onClick={() => {
               setSearchQuery("");
               setActorFilter("all");
-              setActionFilter("all");
               setFrom("");
               setTo("");
               setRiskyOnly(false);
@@ -452,7 +447,7 @@ export function AuditLogs() {
               ) : (
                 <ResponsiveList
                   items={filtered}
-                  keyExtractor={(log, idx) => log.id || `${log.createdAt}-${idx}`}
+                  keyExtractor={auditLogKey}
                   renderCard={(log) => (
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -460,10 +455,7 @@ export function AuditLogs() {
                           {formatDateTime(log.createdAt)}
                         </span>
                         <span className="text-sm font-medium">{actorName(log)}</span>
-                        <Badge variant={ACTION_VARIANT[log.action || ""] || "secondary"}>
-                          {auditActionLabel(log.action)}
-                        </Badge>
-                        <SeverityMark severity={severityOf(log)} />
+                        <AuditActionBadge log={log} />
                       </div>
                       <div className="text-sm text-foreground">{describeAuditLog(log)}</div>
                       {log.detail?.message && (
@@ -504,14 +496,8 @@ export function AuditLogs() {
                         const severity = severityOf(log);
                         return (
                           <TableRow
-                            key={log.id || `${log.createdAt}-${idx}`}
-                            className={`list-row-enter align-top ${
-                              severity === "danger"
-                                ? "bg-destructive/5"
-                                : severity === "warn"
-                                ? "bg-amber-50/60"
-                                : ""
-                            }`}
+                            key={auditLogKey(log, idx)}
+                            className={`list-row-enter align-top ${SEVERITY_ROW_CLASS[severity]}`}
                             style={{ animationDelay: `${Math.min(idx * 30, 400)}ms` }}
                           >
                             <TableCell className="whitespace-nowrap py-3 align-top text-xs text-muted-foreground font-mono">
@@ -521,12 +507,7 @@ export function AuditLogs() {
                               <span className="block truncate">{actorName(log)}</span>
                             </TableCell>
                             <TableCell className="py-3 align-top">
-                              <span className="inline-flex items-center gap-1.5">
-                                <Badge variant={ACTION_VARIANT[log.action || ""] || "secondary"}>
-                                  {auditActionLabel(log.action)}
-                                </Badge>
-                                <SeverityMark severity={severity} />
-                              </span>
+                              <AuditActionBadge log={log} />
                             </TableCell>
                             <TableCell className="py-3 align-top">
                               <div className="text-sm text-foreground">{describeAuditLog(log)}</div>
