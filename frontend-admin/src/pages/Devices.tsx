@@ -290,6 +290,7 @@ export function Devices() {
   const [mergePreview, setMergePreview] = useState<{ keep?: Device; target?: Device; counts?: Record<string, number>; migration?: Record<string, number> } | null>(null);
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeError, setMergeError] = useState("");
+  const [showAllMergeOptions, setShowAllMergeOptions] = useState(false);
 
   const [duplicateConfirm, setDuplicateConfirm] = useState<{
     items: Array<{ id: string | number; customerName?: string; model?: string; serialNo?: string; createdByName?: string }>;
@@ -3821,7 +3822,7 @@ export function Devices() {
                   onChange={(event) => { setMergeKeepId(event.target.value); setMergeTargetId((prev) => (prev === event.target.value ? "" : prev)); setMergePreview(null); }}
                 >
                   <option value="">选择保留设备</option>
-                  {devices.map((item) => (
+                  {(showAllMergeOptions ? devices : devices.filter((item) => selectedDeviceIds.slice(0, 2).includes(String(item.id)))).map((item) => (
                     <option key={String(item.id)} value={String(item.id)}>
                       {item.name || item.model || item.serialNo || `#${item.id}`}{item.customerName ? ` · ${item.customerName}` : ""}
                     </option>
@@ -3837,7 +3838,7 @@ export function Devices() {
                   onChange={(event) => { setMergeTargetId(event.target.value); setMergePreview(null); }}
                 >
                   <option value="">选择被合并设备（同客户）</option>
-                  {devices
+                  {(showAllMergeOptions ? devices : devices.filter((item) => selectedDeviceIds.slice(0, 2).includes(String(item.id))))
                     .filter((item) => {
                       const keep = keepDeviceById(mergeKeepId);
                       return keep && String(item.customerId) === String(keep.customerId) && String(item.id) !== String(mergeKeepId);
@@ -3851,7 +3852,16 @@ export function Devices() {
               </div>
             </div>
 
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
+                onClick={() => {
+                  setShowAllMergeOptions((value) => !value);
+                }}
+              >
+                {showAllMergeOptions ? "只显示勾选的两台" : "从全部设备中选择…"}
+              </button>
               <button
                 type="button"
                 className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
