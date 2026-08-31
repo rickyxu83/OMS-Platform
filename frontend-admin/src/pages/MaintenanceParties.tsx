@@ -365,6 +365,13 @@ export function MaintenanceParties() {
     const matched = parties.find((party) => String(party.id) === partyId);
     if (matched) {
       setDetailTarget(matched);
+      // 列表对象没有 devices,同样拉完整详情补全（防'暂无设备'误报）
+      api.get(`/maintenance-parties/${partyId}`)
+        .then((data) => {
+          const item = (data?.item || data) as Party;
+          setDetailTarget((prev) => (prev && String(prev.id) === String(partyId) ? item : prev));
+        })
+        .catch(() => undefined);
       return;
     }
     let cancelled = false;
@@ -385,6 +392,13 @@ export function MaintenanceParties() {
 
   function openPartyDetail(party: Party) {
     setDetailTarget(party);
+    // 拉完整详情（含维保设备列表）：列表点开的对象没有 devices,直接展示会误报'暂无设备'
+    api.get(`/maintenance-parties/${party.id}`)
+      .then((data) => {
+        const item = (data?.item || data) as Party;
+        setDetailTarget((prev) => (prev && String(prev.id) === String(party.id) ? item : prev));
+      })
+      .catch(() => undefined);
     if (searchParams.get("partyId") !== String(party.id)) {
       const next = new URLSearchParams(searchParams);
       next.set("partyId", String(party.id));
