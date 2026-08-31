@@ -15,33 +15,33 @@ export interface AuditLogLike {
   detail?: Record<string, unknown> | null;
 }
 
-/** 动作码 → 中文标签（覆盖中间件 CRUD 与各业务模块的定制动作） */
+/** 动作码 → 中文标签（覆盖中间件 CRUD 与各业务模块的定制动作）。badge 统一两字，精确含义由旁边的一句话摘要兜底 */
 export const AUDIT_ACTION_LABELS: Record<string, string> = {
   read: "查询",
   create: "新建",
   update: "修改",
   delete: "删除",
-  login: "登录成功",
-  login_failed: "登录失败",
+  login: "登录",
+  login_failed: "失败",
   logout: "登出",
   export: "导出",
   assign: "派单",
-  transition: "状态流转",
+  transition: "流转",
   cancel: "作废",
-  self_report_submit: "提交工单填报",
-  self_report_update: "修改工单填报",
-  timesheet_manual_entry_create: "手动补录工时",
-  timesheet_manual_entry_delete: "删除补录工时",
-  customer_signature_request_create: "发起客户签署",
-  customer_signature_signed: "客户完成签署",
-  engineer_signature_signed: "工程师完成签署",
-  inspection_order_confirm: "确认巡检工单",
-  contract_no_fill: "填写合同编号",
-  purchase_submit: "提交采购订单号",
-  purchase_update: "修改采购信息",
-  passkey_register: "注册通行密钥",
-  passkey_rename: "重命名通行密钥",
-  passkey_delete: "删除通行密钥",
+  self_report_submit: "填报",
+  self_report_update: "改报",
+  timesheet_manual_entry_create: "补录",
+  timesheet_manual_entry_delete: "删录",
+  customer_signature_request_create: "请签",
+  customer_signature_signed: "签署",
+  engineer_signature_signed: "签署",
+  inspection_order_confirm: "确认",
+  contract_no_fill: "填写",
+  purchase_submit: "采购",
+  purchase_update: "改采",
+  passkey_register: "注册",
+  passkey_rename: "改名",
+  passkey_delete: "删钥",
 };
 
 /** 资源类型 → 中文标签（中间件取路由首段，业务审计用定制值） */
