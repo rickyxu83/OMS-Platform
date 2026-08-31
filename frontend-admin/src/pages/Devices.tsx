@@ -1772,9 +1772,23 @@ export function Devices() {
                   {modelComparing ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Search className="w-4 h-4 mr-2" />}
                   {modelComparing ? `型号校正 ${modelCompareProgress}%` : "型号校正"}
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => { setMergeOpen(true); setMergeKeepId(""); setMergeTargetId(""); setMergePreview(null); setMergeError(""); }} disabled={loading || !filtered.length}>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    if (!selectedDeviceIds.length || selectedDeviceIds.length < 2) {
+                      toast.warning(selectedDeviceIds.length === 1 ? "合并需两台设备：已选 1 台,请在列表再勾选一台" : "请先在列表勾选两台要合并的设备");
+                      return;
+                    }
+                    const [keep, target] = selectedDeviceIds.slice(0, 2);
+                    setMergeKeepId(String(keep));
+                    setMergeTargetId(String(target));
+                    setMergeOpen(true);
+                    setMergePreview(null);
+                    setMergeError("");
+                  }}
+                  disabled={loading || !filtered.length}
+                >
                   <Merge className="w-4 h-4 mr-2" />
-                  合并重复设备
+                  合并重复设备 {selectedDeviceIds.length ? `(${selectedDeviceIds.length} 台已选)` : ""}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -3828,9 +3842,21 @@ export function Devices() {
 
             {mergePreview ? (
               <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-sm">
-                <div className="font-medium">
-                  将合并：<span className="text-primary">{mergePreview.keep?.name || mergePreview.keep?.model || `#${mergeKeepId}`}</span>{" "}
-                  ← {mergePreview.target?.name || mergePreview.target?.model || `#${mergeTargetId}`}
+                <div className="flex items-center justify-between gap-2 font-medium">
+                  <span>
+                    将合并：<span className="text-primary">{mergePreview.keep?.name || mergePreview.keep?.model || `#${mergeKeepId}`}</span>{" "}
+                    ← {mergePreview.target?.name || mergePreview.target?.model || `#${mergeTargetId}`}
+                  </span>
+                  <button
+                    type="button"
+                    className="shrink-0 text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
+                    onClick={() => {
+                      setMergeKeepId(mergeTargetId);
+                      setMergeTargetId(mergeKeepId);
+                    }}
+                  >
+                    互换保留/被合并
+                  </button>
                 </div>
                 <div className="text-xs text-muted-foreground">
                   引用迁移：工单 {(mergePreview.migration as any)?.service_orders || 0} · 关联 {(mergePreview.migration as any)?.service_order_devices || 0} ·
