@@ -1039,6 +1039,10 @@ export function Devices() {
     return () => { cancelled = true; };
   }, [mergeKeepId, mergeTargetId]);
 
+  // 诊断：合并流程关键对象控制台输出（便于定位 #31）
+  const debugMergeContext = useMemo(() => ({ mergeKeepId, mergeTargetId, mergePreview }), [mergeKeepId, mergeTargetId, mergePreview]);
+  useEffect(() => { if (mergeOpen) console.error("[MERGE-DEBUG]", debugMergeContext); }, [mergeOpen, debugMergeContext]);
+
   async function confirmMergeDevices() {
     if (!mergeKeepId || !mergeTargetId) return;
     setMergeBusy(true);
@@ -3865,12 +3869,12 @@ export function Devices() {
             {mergePreview ? (
               <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-sm">
                 <div className="font-medium">
-                  将合并：<span className="text-primary">{mergePreview.keep?.name || mergePreview.keep?.model || `#${mergeKeepId}`}</span>{" "}
-                  ← {mergePreview.target?.name || mergePreview.target?.model || `#${mergeTargetId}`}
+                  将合并：<span className="text-primary">{String(mergePreview.keep?.name || mergePreview.keep?.model || `#${mergeKeepId}`)}</span>{" "}
+                  ← {String(mergePreview.target?.name || mergePreview.target?.model || `#${mergeTargetId}`)}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  引用迁移：工单 {(mergePreview.migration as any)?.service_orders || 0} · 关联 {(mergePreview.migration as any)?.service_order_devices || 0} ·
-                  巡检 {(mergePreview.migration as any)?.inspection_schedule_devices || 0} · 任务 {(mergePreview.migration as any)?.inspection_schedule_assignments || 0} · 备件 {(mergePreview.migration as any)?.service_parts || 0}
+                  引用迁移：工单 {String((mergePreview.migration as any)?.service_orders ?? 0)} · 关联 {String((mergePreview.migration as any)?.service_order_devices ?? 0)} ·
+                  巡检 {String((mergePreview.migration as any)?.inspection_schedule_devices ?? 0)} · 任务 {String((mergePreview.migration as any)?.inspection_schedule_assignments ?? 0)} · 备件 {String((mergePreview.migration as any)?.service_parts ?? 0)}
                 </div>
                 <div className="text-xs text-muted-foreground">被合并设备删除，历史引用全部迁至保留设备。</div>
               </div>
