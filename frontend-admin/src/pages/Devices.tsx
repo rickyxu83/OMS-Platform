@@ -225,6 +225,11 @@ export function Devices() {
   const [maintenanceFilter, setMaintenanceFilter] = useUrlParam("maintenance", "all");
   const [statusFilter, setStatusFilter] = useUrlParam("status", "all");
   const [page, setPage] = useState(1);
+  const devicesPageRef = useRef(1);
+  const devicesTotalPagesRef = useRef(1);
+  const devicesLoadingRef = useRef(false);
+  useEffect(() => { devicesPageRef.current = page }, [page]);
+  useEffect(() => { devicesLoadingRef.current = loading }, [loading]);
   const pageSize = 50;
   const [deviceTotal, setDeviceTotal] = useState(0);
   const [deviceStats, setDeviceStats] = useState<{ total: number; pendingConfirmation: number; ourMaintenance: number; originalManufacturer: number; noMaintenance: number } | null>(null);
@@ -316,7 +321,7 @@ export function Devices() {
         setLoading(false);
         return;
       }
-      setDevices(items);
+      setDevices((prev) => (page > 1 ? Array.from(new Map([...prev, ...items].map((item) => [String(item.id), item])).values()) : items));
       setDeviceTotal(Number(data?.total || 0));
       setDeviceStats(data?.stats || null);
     } catch (e) {
@@ -327,6 +332,21 @@ export function Devices() {
       setLoading(false);
     }
   }
+
+  // 无限滚动：滚动接近最近滚动祖先底部时加载下一页
+  useEffect(() => {
+    const onScroll = () => {
+      if (devicesLoadingRef.current) return;
+      if (devicesPageRef.current >= devicesTotalPagesRef.current) return;
+      const scroller = document.querySelector('.mobile-admin-content') as HTMLElement | null;
+      const near = scroller
+        ? scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 320
+        : window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 320;
+      if (near) setPage((current) => Math.min(devicesTotalPagesRef.current, current + 1));
+    };
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => window.removeEventListener('scroll', onScroll, { capture: true });
+  }, []);
 
   async function loadCustomers() {
     try {
@@ -506,6 +526,7 @@ export function Devices() {
   }
 
   const totalPages = Math.max(1, Math.ceil(deviceTotal / pageSize));
+  devicesTotalPagesRef.current = totalPages;
   const initialLoading = loading && !loadedOnce;
   const refreshing = loading && loadedOnce;
 
@@ -2123,21 +2144,8 @@ export function Devices() {
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5">
           <div className="text-sm text-muted-foreground">
-            共 {deviceTotal} 台设备 · 第 {page}/{totalPages} 页
-          </div>
-          <div className="flex items-center gap-1">
-            <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page <= 1 || loading}>
-              第一页
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}>
-              上一页
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages || loading}>
-              下一页
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page >= totalPages || loading}>
-              最后一页
-            </Button>
+            共 {deviceTotal} 台设备 · 已加载 {Math.min(page * pageSize, deviceTotal)} 台
+            {page >= totalPages ? <span className="text-xs text-emerald-600"> · 已全部加载</span> : null}
           </div>
         </div>
       </div>
