@@ -450,10 +450,10 @@ export function MrListPage() {
                   </TableCell>
                   <TableCell className="truncate pr-6 text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
                   <TableCell className="truncate">
-                    {/* MR 状态与采购状态上下两行显示,不再并排 */}
-                    <div className="flex flex-col items-start gap-1">
+                    {/* MR 状态与采购状态一行并排,统一 gap 分隔（采购状态字号小一号、灰一点） */}
+                    <div className="flex items-center gap-2">
                       <StatusHoverButton orderStatus={orderStatus} order={order} stepLabel={stepLabel} assigneeName={order.currentAssigneeName} onFilter={() => setStatus(orderStatus)} />
-                      {orderStatus === 'approved' && order.purchaseStatus ? <button type="button" className="ml-0.5 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`按采购状态筛选：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
+                      {orderStatus === 'approved' && order.purchaseStatus ? <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`按采购状态筛选：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
                         {(() => { const conf = PURCHASE_INDICATOR[order.purchaseStatus || '']; const Icon = conf ? conf.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null })()}
                         {PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}
                       </button> : null}
