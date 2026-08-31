@@ -13,6 +13,13 @@ import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { formatCount, formatDateTime } from "@/lib/format";
+import {
+  AUDIT_ACTION_LABELS,
+  auditActionLabel,
+  auditTargetLabel,
+  describeAuditLog,
+  formatAuditDetailLines,
+} from "@/lib/audit-text";
 import { useUrlParam } from "@/lib/use-url-param";
 import { EmptyState } from "@/components/EmptyState";
 
@@ -47,24 +54,20 @@ interface UserOption {
   status?: string;
 }
 
-const ACTION_LABELS: Record<string, string> = {
-  read: "查询",
-  create: "新增",
-  update: "修改",
-  delete: "删除",
-  login: "登录",
-  logout: "登出",
-  export: "导出",
-};
-
 const ACTION_VARIANT: Record<string, "default" | "secondary" | "destructive" | "info" | "warning"> = {
   read: "info",
   create: "default",
   update: "warning",
   delete: "destructive",
+  cancel: "destructive",
   login: "secondary",
+  login_failed: "destructive",
   logout: "secondary",
   export: "secondary",
+  transition: "warning",
+  assign: "default",
+  purchase_update: "warning",
+  passkey_delete: "destructive",
 };
 
 function actorName(log: AuditLog) {
@@ -75,19 +78,11 @@ function userOptionName(user: UserOption) {
   return user.realName || user.name || user.username || `用户 #${user.id}`;
 }
 
-function resourceName(log: AuditLog) {
-  const rt = log.targetType || log.resourceType || "";
-  const rid = log.targetId ?? log.resourceId;
-  if (!rt && !rid) return "-";
-  if (!rid) return rt;
-  return `${rt} #${rid}`;
-}
-
 function severityOf(log: AuditLog): "danger" | "warn" | "ok" {
   const code = Number(log.detail?.statusCode || 0);
   if (code >= 400) return "danger";
-  if (log.action === "delete") return "danger";
-  if (log.action === "update") return "warn";
+  if (["delete", "cancel", "login_failed"].includes(log.action || "")) return "danger";
+  if (["update", "transition", "purchase_update"].includes(log.action || "")) return "warn";
   return "ok";
 }
 
@@ -225,12 +220,13 @@ export function AuditLogs() {
   function exportCsv() {
     if (!filtered.length) return;
     const rows: string[][] = [
-      ["时间", "操作人", "操作类型", "资源", "状态码", "IP", "归属地", "耗时(ms)"],
+      ["时间", "操作人", "操作类型", "资源", "摘要", "状态码", "IP", "归属地", "耗时(ms)"],
       ...filtered.map((log) => [
         formatDateTime(log.createdAt),
         actorName(log),
-        ACTION_LABELS[log.action || ""] || log.action || "-",
-        resourceName(log),
+        auditActionLabel(log.action),
+        auditTargetLabel(log),
+        describeAuditLog(log),
         String(log.detail?.statusCode ?? "-"),
         String(log.detail?.ip || "-"),
         String(log.detail?.location || "-"),
@@ -327,6 +323,25 @@ export function AuditLogs() {
                 ))}
               </SelectContent>
             </Select>
+            <Select
+              value={actionFilter}
+              onValueChange={(value) => {
+                setActionFilter(value);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="全部操作" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部操作</SelectItem>
+                {Object.entries(AUDIT_ACTION_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <div className="w-[240px]">
               <DateRangePicker
                 start={from}
@@ -371,7 +386,9 @@ export function AuditLogs() {
                 <div className="space-y-2">
                 {filtered.map((log, idx) => {
                   const severity = severityOf(log);
-                  const actionLabel = ACTION_LABELS[log.action || ""] || log.action || "-";
+                  const actionLabel = auditActionLabel(log.action);
+                  const summary = describeAuditLog(log);
+                  const detailLines = formatAuditDetailLines(log);
                   const code = Number(log.detail?.statusCode || 0);
                   return (
                     <div
@@ -394,9 +411,6 @@ export function AuditLogs() {
                             <Badge variant={ACTION_VARIANT[log.action || ""] || "secondary"}>
                               {actionLabel}
                             </Badge>
-                            <span className="text-sm text-muted-foreground">
-                              {resourceName(log)}
-                            </span>
                             <span className="ml-auto inline-flex items-center gap-2">
                               {severity === "danger" && (
                                 <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
@@ -410,10 +424,25 @@ export function AuditLogs() {
                               )}
                             </span>
                           </div>
+                          <div className="text-sm mb-1 text-foreground">
+                            {summary}
+                          </div>
                           {log.detail?.message && (
                             <div className="text-sm mb-1 text-foreground/80">
                               {String(log.detail.message)}
                             </div>
+                          )}
+                          {detailLines.length > 0 && (
+                            <details className="mb-1 text-xs text-muted-foreground">
+                              <summary className="cursor-pointer select-none hover:text-foreground">
+                                查看明细（{detailLines.length} 项）
+                              </summary>
+                              <div className="mt-1 space-y-0.5 pl-3 border-l-2 border-border">
+                                {detailLines.map((line, lineIdx) => (
+                                  <div key={lineIdx} className="break-all">{line}</div>
+                                ))}
+                              </div>
+                            </details>
                           )}
                           <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
                             <span>
