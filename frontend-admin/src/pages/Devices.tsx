@@ -225,6 +225,11 @@ export function Devices() {
   const [maintenanceFilter, setMaintenanceFilter] = useUrlParam("maintenance", "all");
   const [statusFilter, setStatusFilter] = useUrlParam("status", "all");
   const [page, setPage] = useState(1);
+  const devicesPageRef = useRef(1);
+  const devicesTotalPagesRef = useRef(1);
+  const devicesLoadingRef = useRef(false);
+  useEffect(() => { devicesPageRef.current = page }, [page]);
+  useEffect(() => { devicesLoadingRef.current = loading }, [loading]);
   const pageSize = 50;
   const [deviceTotal, setDeviceTotal] = useState(0);
   const [deviceStats, setDeviceStats] = useState<{ total: number; pendingConfirmation: number; ourMaintenance: number; originalManufacturer: number; noMaintenance: number } | null>(null);
@@ -283,6 +288,14 @@ export function Devices() {
   const [modelComparing, setModelComparing] = useState(false);
   const [modelCompareProgress, setModelCompareProgress] = useState(0);
   const [normalizationProgress, setNormalizationProgress] = useState<ProgressState | null>(null);
+  // 手动合并设备对话框（devices/merge-preview + merge）
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeKeepId, setMergeKeepId] = useState("");
+  const [mergeTargetIds, setMergeTargetIds] = useState<string[]>([]);
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeError, setMergeError] = useState("");
+  const [showAllMergeOptions, setShowAllMergeOptions] = useState(false);
+
   const [duplicateConfirm, setDuplicateConfirm] = useState<{
     items: Array<{ id: string | number; customerName?: string; model?: string; serialNo?: string; createdByName?: string }>;
     payloads: Record<string, unknown>[];
@@ -316,7 +329,7 @@ export function Devices() {
         setLoading(false);
         return;
       }
-      setDevices(items);
+      setDevices((prev) => (page > 1 ? Array.from(new Map([...prev, ...items].map((item) => [String(item.id), item])).values()) : items));
       setDeviceTotal(Number(data?.total || 0));
       setDeviceStats(data?.stats || null);
     } catch (e) {
@@ -327,6 +340,21 @@ export function Devices() {
       setLoading(false);
     }
   }
+
+  // 无限滚动：滚动接近最近滚动祖先底部时加载下一页
+  useEffect(() => {
+    const onScroll = () => {
+      if (devicesLoadingRef.current) return;
+      if (devicesPageRef.current >= devicesTotalPagesRef.current) return;
+      const scroller = document.querySelector('.mobile-admin-content') as HTMLElement | null;
+      const near = scroller
+        ? scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 320
+        : window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 320;
+      if (near) setPage((current) => Math.min(devicesTotalPagesRef.current, current + 1));
+    };
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => window.removeEventListener('scroll', onScroll, { capture: true });
+  }, []);
 
   async function loadCustomers() {
     try {
@@ -506,6 +534,7 @@ export function Devices() {
   }
 
   const totalPages = Math.max(1, Math.ceil(deviceTotal / pageSize));
+  devicesTotalPagesRef.current = totalPages;
   const initialLoading = loading && !loadedOnce;
   const refreshing = loading && loadedOnce;
 
@@ -1014,6 +1043,34 @@ export function Devices() {
         setError(e instanceof Error ? e.message : "合并预览失败");
         setMergeConfirm(null);
       });
+  }
+
+  // —— 手动合并设备（keep/target 选择 -> 预览 -> 确认）——
+  const keepDeviceById = (id: string) => devices.find((d) => String(d.id) === String(id));
+  const deviceSnLabel = (item: Device) => [item.model || item.name || `#${item.id}`, item.serialNo].filter(Boolean).join(' · ');
+
+
+
+  async function confirmMergeDevices() {
+    const targets = mergeTargetIds.filter((id) => String(id) !== String(mergeKeepId));
+    if (!mergeKeepId || !targets.length) return;
+    setMergeBusy(true);
+    setMergeError("");
+    try {
+      // 多台重复：固定保留设备,逐台合并（引用逐个迁移/删除）
+      for (const targetId of targets) {
+        await api.post("/devices/merge", { keepId: mergeKeepId, mergeId: targetId });
+      }
+      const targetSet = new Set(targets);
+      toast.success(`已合并 ${targets.length} 台设备`);
+      setDevices((prev) => prev.filter((item) => !targetSet.has(String(item.id))));
+      setSelectedDeviceIds((ids) => ids.filter((id) => !targetSet.has(String(id))));
+      setMergeOpen(false);
+    } catch (cause) {
+      setMergeError(cause instanceof Error ? cause.message : "合并失败");
+    } finally {
+      setMergeBusy(false);
+    }
   }
 
   async function confirmMerge() {
@@ -1733,6 +1790,23 @@ export function Devices() {
                   {modelComparing ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Search className="w-4 h-4 mr-2" />}
                   {modelComparing ? `型号校正 ${modelCompareProgress}%` : "型号校正"}
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    if (!selectedDeviceIds.length || selectedDeviceIds.length < 2) {
+                      toast.warning(selectedDeviceIds.length === 1 ? "合并需两台设备：已选 1 台,请在列表再勾选一台" : "请先在列表勾选两台要合并的设备");
+                      return;
+                    }
+                    const [keep, ...rest] = selectedDeviceIds.slice(0, 4);
+                    setMergeKeepId(String(keep));
+                    setMergeTargetIds(rest.map(String));
+                    setMergeOpen(true);
+                    setMergeError("");
+                  }}
+                  disabled={loading || !filtered.length}
+                >
+                  <Merge className="w-4 h-4 mr-2" />
+                  合并重复设备 {selectedDeviceIds.length ? `(${selectedDeviceIds.length} 台已选)` : ""}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
@@ -1900,8 +1974,8 @@ export function Devices() {
         </CardContent>
       </Card>
 
-      <div className="overflow-hidden rounded-xl border bg-card">
-        <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto">
+      <div className="rounded-xl border bg-card">
+        <div>
           {initialLoading ? (
             <div className="p-2">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -1932,7 +2006,7 @@ export function Devices() {
                   <col className="w-[10%]" />
                   {canManageDevices ? <col className="w-[8%]" /> : null}
                 </colgroup>
-                <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+                <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                   <TableRow>
                     {canSelectDevices ? (
                       <TableHead className="w-11 text-center">
@@ -2123,21 +2197,8 @@ export function Devices() {
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5">
           <div className="text-sm text-muted-foreground">
-            共 {deviceTotal} 台设备 · 第 {page}/{totalPages} 页
-          </div>
-          <div className="flex items-center gap-1">
-            <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page <= 1 || loading}>
-              第一页
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}>
-              上一页
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages || loading}>
-              下一页
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page >= totalPages || loading}>
-              最后一页
-            </Button>
+            共 {deviceTotal} 台设备 · 已加载 {Math.min(page * pageSize, deviceTotal)} 台
+            {page >= totalPages ? <span className="text-xs text-emerald-600"> · 已全部加载</span> : null}
           </div>
         </div>
       </div>
@@ -3737,6 +3798,117 @@ export function Devices() {
               关闭
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={mergeOpen} onOpenChange={setMergeOpen}>
+        <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>合并重复设备</DialogTitle>
+            <DialogDescription>
+              支持多台重复一次合并：选择一台保留设备，其余勾选为待合并（可多台），确认后引用全部迁至保留设备、被合并设备删除。序列号多值（如 "S1;S2" 与 "S2;S1"）视为同一台，可先看"疑似重复设备"。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="space-y-1.5">
+              <Label>保留设备（合并后留下的那台）</Label>
+              <select
+                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={mergeKeepId}
+                onChange={(event) => {
+                  const nextKeep = event.target.value;
+                  const previousKeep = mergeKeepId;
+                  setMergeKeepId(nextKeep);
+                  // 换保留设备时上下交换（数量守恒）：新 keep 移出清单,原 keep 必转入待合并
+                  setMergeTargetIds((prev) => {
+                    const withoutNew = prev.filter((id) => String(id) !== String(nextKeep));
+                    if (!previousKeep || String(previousKeep) === String(nextKeep)) return withoutNew;
+                    return Array.from(new Set([...withoutNew, String(previousKeep)]));
+                  });
+                }}
+              >
+                <option value="">选择保留设备</option>
+                {(showAllMergeOptions ? devices : devices.filter((item) => selectedDeviceIds.slice(0, 4).includes(String(item.id)))).map((item) => (
+                  <option key={String(item.id)} value={String(item.id)}>
+                    {deviceSnLabel(item)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label>待合并设备（选择即一并合并）</Label>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
+                  onClick={() => setShowAllMergeOptions((value) => !value)}
+                >
+                  {showAllMergeOptions ? "收起全部设备" : "从全部设备添加…"}
+                </button>
+              </div>
+              {mergeTargetIds.length ? (
+                <div className="space-y-1.5">
+                  {mergeTargetIds
+                    .map((id) => devices.find((item) => String(item.id) === String(id)))
+                    .filter((item): item is Device => Boolean(item))
+                    .map((item) => (
+                      <div key={String(item.id)} className="flex items-center gap-2 rounded-md border bg-primary/5 px-2.5 py-2 text-sm">
+                        <span className="min-w-0 flex-1 truncate">{deviceSnLabel(item)}</span>
+                        <button
+                          type="button"
+                          className="shrink-0 text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-rose-600 hover:underline"
+                          onClick={() => setMergeTargetIds((prev) => prev.filter((id) => id !== String(item.id)))}
+                        >
+                          移除
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="rounded-md border border-dashed px-3 py-2 text-center text-sm text-muted-foreground">
+                  {showAllMergeOptions ? "点击下方设备加入合并清单" : "勾选的设备已自动加入；可点右上角从全部设备添加"}
+                </div>
+              )}
+              {showAllMergeOptions ? (
+                <div className="max-h-[180px] space-y-1 overflow-y-auto rounded-md border p-2">
+                  {devices
+                    .filter((item) => {
+                      const keep = keepDeviceById(mergeKeepId);
+                      return keep && String(item.customerId) === String(keep.customerId) && String(item.id) !== String(mergeKeepId);
+                    })
+                    .filter((item) => !mergeTargetIds.includes(String(item.id)))
+                    .map((item) => (
+                      <button
+                        key={String(item.id)}
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent"
+                        onClick={() => setMergeTargetIds((prev) => Array.from(new Set([...prev, String(item.id)])))}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{deviceSnLabel(item)}</span>
+                        <span className="shrink-0 text-xs text-primary">添加</span>
+                      </button>
+                    ))}
+                  {!mergeKeepId ? <div className="py-2 text-center text-sm text-muted-foreground">请先选择保留设备</div> : null}
+                </div>
+              ) : null}
+            </div>
+
+            {mergeError ? <div className="text-sm text-destructive">{mergeError}</div> : null}
+
+            <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+              <div className="text-xs text-muted-foreground">
+                将合并 <b className="tabular-nums">{mergeTargetIds.length}</b> 台 → 保留 {mergeKeepId ? "设备 #" + mergeKeepId : "（未选择）"}
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={() => setMergeOpen(false)} disabled={mergeBusy}>取消</Button>
+                <Button type="button" onClick={confirmMergeDevices} disabled={!mergeKeepId || !mergeTargetIds.length || mergeBusy}>
+                  {mergeBusy ? <span className="btn-loader mr-2" aria-hidden="true" /> : null}
+                  确认合并{mergeTargetIds.length > 1 ? ` ${mergeTargetIds.length} 台` : ""}
+                </Button>
+              </div>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
