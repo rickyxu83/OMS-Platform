@@ -1974,7 +1974,7 @@ export function Devices() {
         </CardContent>
       </Card>
 
-      <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="rounded-xl border bg-card">
         <div>
           {initialLoading ? (
             <div className="p-2">
