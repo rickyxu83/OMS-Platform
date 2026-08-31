@@ -131,7 +131,7 @@ export function ReportExportDialog({ open, onOpenChange, initialMonth, employees
                           ? [...current, id]
                           : current.filter((item) => item !== id))}
                       />
-                      <span className="min-w-0 flex-1 truncate text-sm">{employee.employeeName || `员工 #${id}`}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm" title={employee.employeeName || `员工 #${id}`}>{employee.employeeName || `员工 #${id}`}</span>
                       <Badge variant={status === "在职" ? "success" : "outline"}>{status}</Badge>
                     </label>
                   );

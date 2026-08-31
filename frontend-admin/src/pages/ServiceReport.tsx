@@ -2383,18 +2383,18 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       >
         {/* 首行：客户名（大字,信息主角）+ 状态 */}
         <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate text-[15px] font-semibold">{order.customerName || "未填写客户"}</span>
+          <span title={order.customerName || "未填写客户"} className="min-w-0 truncate text-[15px] font-semibold">{order.customerName || "未填写客户"}</span>
           <span className="shrink-0">{statusIndicator(workflowStatus, statusLabel)}</span>
         </div>
         {/* 次行：模式胶囊 + 服务内容两行 */}
         <div className="flex items-start gap-2">
           <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{modeLabel}</span>
-          <span className="min-w-0 flex-1 line-clamp-2 break-all text-[13px] leading-5 text-muted-foreground">{reportOrderMainContent(order)}</span>
+          <span title={reportOrderMainContent(order)} className="min-w-0 flex-1 line-clamp-2 break-all text-[13px] leading-5 text-muted-foreground">{reportOrderMainContent(order)}</span>
         </div>
         {/* 末行：工程师 / 服务时间 + 操作菜单 */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-3 text-[12.5px] text-muted-foreground">
-            <span className="min-w-0 truncate"><span className="mr-0.5">🧑‍🔧</span>{reportOrderEngineerText(order)}</span>
+            <span className="min-w-0 truncate" title={reportOrderEngineerText(order)}><span className="mr-0.5">🧑‍🔧</span>{reportOrderEngineerText(order)}</span>
             <span className="shrink-0 text-[12.5px]">{timeRange}</span>
           </div>
           {canExportRecord || canRemoveOrCancelRecord ? (
@@ -2630,16 +2630,16 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
         className="group cursor-pointer space-y-2 select-none active:bg-muted/40"
       >
         <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate text-[15px] font-semibold">{createDraft.customerName || "未填写客户"}</span>
+          <span title={createDraft.customerName || "未填写客户"} className="min-w-0 truncate text-[15px] font-semibold">{createDraft.customerName || "未填写客户"}</span>
           <span className="shrink-0">{indicatorSpan(Pencil, "text-slate-400", "草稿")}</span>
         </div>
         <div className="flex items-start gap-2">
           <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{draftModeLabel}</span>
-          <span className="min-w-0 flex-1 line-clamp-2 break-all text-[13px] leading-5 text-muted-foreground">{compactDraftLabel(createDraft)}</span>
+          <span title={compactDraftLabel(createDraft)} className="min-w-0 flex-1 line-clamp-2 break-all text-[13px] leading-5 text-muted-foreground">{compactDraftLabel(createDraft)}</span>
         </div>
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-3 text-[12.5px] text-muted-foreground">
-            <span className="min-w-0 truncate"><span className="mr-0.5">🧑‍🔧</span>{draftEngineerText}</span>
+            <span className="min-w-0 truncate" title={draftEngineerText}><span className="mr-0.5">🧑‍🔧</span>{draftEngineerText}</span>
             <span className="shrink-0 text-[12.5px]">更新于 {timeShort(updatedText)}</span>
           </div>
           <span className="shrink-0" onClick={(event) => event.stopPropagation()}>
@@ -2762,13 +2762,13 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                           <div className="truncate font-medium" title={compactDraftLabel(createDraft)}>{compactDraftLabel(createDraft)}</div>
                           <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
                             {modeIndicator(draftMode, draftModeLabel)}
-                            <span className="truncate text-xs text-muted-foreground">{draftItemLabels.join("、")}</span>
+                            <span title={draftItemLabels.join("、")} className="truncate text-xs text-muted-foreground">{draftItemLabels.join("、")}</span>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="min-w-0">
                         <div className="min-w-0 text-xs">
-                          <div className="truncate">{draftEngineerText}</div>
+                          <div title={draftEngineerText} className="truncate">{draftEngineerText}</div>
                           <div className="group relative inline-block max-w-full">
                             <div className="cursor-default truncate text-muted-foreground">{(() => {
                               const sd = (draftStart || "").split(" ")[0] || "-";
@@ -2862,8 +2862,8 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                     <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-xs font-semibold text-foreground sm:hidden">{mode.label}</span>
-                    <span className="hidden truncate text-base font-semibold text-foreground sm:block">新建{mode.label}服务记录</span>
+                    <span title={mode.label} className="block truncate text-xs font-semibold text-foreground sm:hidden">{mode.label}</span>
+                    <span className="hidden truncate text-base font-semibold text-foreground sm:block" title={`新建${mode.label}服务记录`}>新建{mode.label}服务记录</span>
                     <span className="mt-1 hidden text-sm leading-5 text-muted-foreground sm:block">{mode.description}</span>
                   </span>
                 </button>
@@ -3284,7 +3284,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
         <Dialog open={Boolean(attachmentPreviewFile)} onOpenChange={(open) => { if (!open) clearAttachmentPreview(); }}>
           <DialogContent className="flex max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[980px]">
             <DialogHeader className="border-b px-5 pb-4 pt-5 pr-12 sm:px-6 sm:pt-6">
-              <DialogTitle className="truncate">{attachmentPreviewFile?.originalName || "附件预览"}</DialogTitle>
+              <DialogTitle title={attachmentPreviewFile?.originalName || "附件预览"} className="truncate">{attachmentPreviewFile?.originalName || "附件预览"}</DialogTitle>
               <DialogDescription>
                 {attachmentPreviewFile
                   ? `${attachmentPreviewFile.mimeType || "附件"} · ${formatFileSize(attachmentPreviewFile.size)}`
@@ -3570,7 +3570,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                         <span className="flex min-w-0 items-center gap-2">
                           <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
                           <span className="shrink-0 text-sm text-muted-foreground">已选人员</span>
-                          <Badge variant="outline" className="min-w-0 shrink truncate">{engineerSummary}</Badge>
+                          <Badge title={engineerSummary} variant="outline" className="min-w-0 shrink truncate">{engineerSummary}</Badge>
                         </span>
                         <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${engineerPanelOpen ? "rotate-180" : ""}`} />
                       </button>
@@ -3598,7 +3598,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                                     });
                                   }}
                                 />
-                                <span className="truncate">{optionLabel(engineer)}</span>
+                                <span title={optionLabel(engineer)} className="truncate">{optionLabel(engineer)}</span>
                               </label>
                             );
                           })}
@@ -3621,12 +3621,12 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                         <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center gap-2">
-                            <span className="truncate text-sm font-semibold text-foreground">{candidate.name || "地图位置"}</span>
+                            <span title={candidate.name || "地图位置"} className="truncate text-sm font-semibold text-foreground">{candidate.name || "地图位置"}</span>
                             <Badge variant={candidate.source === "customer" ? "secondary" : "outline"}>
                               {candidate.source === "customer" ? "系统客户" : "地图候选"}
                             </Badge>
                           </span>
-                          <span className="mt-1 block line-clamp-2 text-xs text-muted-foreground">{geoCandidateMeta(candidate)}</span>
+                          <span title={geoCandidateMeta(candidate)} className="mt-1 block line-clamp-2 text-xs text-muted-foreground">{geoCandidateMeta(candidate)}</span>
                         </span>
                       </button>
                     ))}
@@ -4292,7 +4292,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                               disabled={downloadingFileId === file.id}
                               onClick={() => downloadInspectionDocument(file)}
                             >
-                              <span className="block truncate font-medium">{file.originalName || `文件 #${file.id}`}</span>
+                              <span className="block truncate font-medium" title={file.originalName || `文件 #${file.id}`}>{file.originalName || `文件 #${file.id}`}</span>
                               <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
                             </button>
                             <Button type="button" variant="outline" size="sm" disabled={downloadingFileId === file.id} onClick={() => downloadInspectionDocument(file)}>
@@ -4304,7 +4304,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                         {localFiles.map((file) => (
                           <div key={`${purpose}-${file.name}-${file.size}`} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
                             <span className="min-w-0">
-                              <span className="block truncate font-medium">{file.name}</span>
+                              <span title={file.name} className="block truncate font-medium">{file.name}</span>
                               <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
                             </span>
                             <Badge variant="warning">待提交</Badge>

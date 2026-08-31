@@ -437,8 +437,8 @@ export function MrListPage() {
                 <TableRow key={order.id} className="cursor-pointer hover:relative hover:z-10" onClick={() => navigate(`/mr/${order.id}`)}>
                   <TableCell>
                     <button type="button" className="block max-w-full text-left transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={order.customerName ? `按客户筛选：${order.customerName}` : undefined} onClick={(event) => { event.stopPropagation(); if (order.customerId) { setCustomerFilterId(String(order.customerId)); setCustomerFilterName(order.customerName || '') } else { navigate(`/mr/${order.id}`) } }}>
-                      <span className="block truncate font-medium">{order.customerName || '未选择客户'}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{order.ctrlNo || '未填写 Ctrl.NO'}</span>
+                      <span title={order.customerName || '未选择客户'} className="block truncate font-medium">{order.customerName || '未选择客户'}</span>
+                      <span title={order.ctrlNo || '未填写 Ctrl.NO'} className="block truncate text-xs text-muted-foreground">{order.ctrlNo || '未填写 Ctrl.NO'}</span>
                     </button>
                   </TableCell>
                   <TableCell className="truncate">
@@ -465,9 +465,9 @@ export function MrListPage() {
                       ) : null}
                     </div>
 
-                    {order.assignmentError ? <div className="mt-1 truncate text-xs text-destructive">流程暂停：{order.assignmentError}</div> : null}
+                    {order.assignmentError ? <div className="mt-1 truncate text-xs text-destructive" title={`流程暂停：${order.assignmentError}`}>流程暂停：{order.assignmentError}</div> : null}
                   </TableCell>
-                  <TableCell className="truncate text-sm text-muted-foreground">{shortDate(order.updatedAt)}</TableCell>
+                  <TableCell title={shortDate(order.updatedAt)} className="truncate text-sm text-muted-foreground">{shortDate(order.updatedAt)}</TableCell>
                 </TableRow>
               )
             })}

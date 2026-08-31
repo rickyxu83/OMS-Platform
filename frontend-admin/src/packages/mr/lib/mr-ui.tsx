@@ -367,8 +367,8 @@ export function SmartCombobox({
               onMouseEnter={() => setActiveIndex(index)}
               onPointerDown={(event) => { event.preventDefault(); onChange(option.label); setText(option.label); onSelect?.(option); setOpen(false) }}
             >
-              <span className="truncate font-medium">{option.label}</span>
-              {option.hint ? <span className="truncate text-xs text-muted-foreground">{option.hint}</span> : null}
+              <span title={option.label} className="truncate font-medium">{option.label}</span>
+              {option.hint ? <span title={option.hint} className="truncate text-xs text-muted-foreground">{option.hint}</span> : null}
             </button>
           ))}
         </div>,

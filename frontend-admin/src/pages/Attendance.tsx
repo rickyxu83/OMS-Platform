@@ -1235,7 +1235,7 @@ export function Attendance() {
                         checked={selectedEmployeeIds.has(String(employee.id))}
                         onCheckedChange={(checked) => setEmployeeSelected(index, checked ? "add" : "remove")}
                       />
-                      <span className="truncate">{employee.employeeName || "-"}</span>
+                      <span title={employee.employeeName || "-"} className="truncate">{employee.employeeName || "-"}</span>
                     </span>
                   )}
                   status={<Badge variant={employee.attendanceEnabled === false ? "outline" : "success"}>{employee.attendanceEnabled === false ? "停用" : "启用"}</Badge>}
@@ -1493,7 +1493,7 @@ export function Attendance() {
         <DialogContent className="flex h-[88vh] max-w-[min(96vw,1100px)] flex-col overflow-hidden p-0">
           <DialogHeader className="border-b px-5 py-4">
             <DialogTitle>证明附件预览</DialogTitle>
-            <DialogDescription className="truncate">{proofPreview?.originalName || "-"}</DialogDescription>
+            <DialogDescription title={proofPreview?.originalName || "-"} className="truncate">{proofPreview?.originalName || "-"}</DialogDescription>
           </DialogHeader>
           {proofPreview ? (
             <div className="min-h-0 flex-1 bg-muted/30 p-4">

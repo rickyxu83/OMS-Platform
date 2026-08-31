@@ -623,7 +623,7 @@ export function InspectionSchedules() {
                   updateCustomer(customerId);
                 }}
               >
-                <span className="min-w-0 truncate">{c.name || `客户 #${c.id}`}</span>
+                <span className="min-w-0 truncate" title={c.name || `客户 #${c.id}`}>{c.name || `客户 #${c.id}`}</span>
                 {selected && <Badge variant="outline">已选</Badge>}
               </button>
             );
@@ -1337,7 +1337,7 @@ export function InspectionSchedules() {
                             onChange={() => toggleDevice(deviceId)}
                           />
                           <div className="flex-1 min-w-0">
-                            <div className="truncate text-sm font-medium">{deviceLabel(d)}</div>
+                            <div title={deviceLabel(d)} className="truncate text-sm font-medium">{deviceLabel(d)}</div>
                             <div className="text-xs text-muted-foreground">设备 #{d.id}</div>
                           </div>
                           {checked ? (

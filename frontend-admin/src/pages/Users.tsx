@@ -544,7 +544,7 @@ export function Users() {
                       <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-3">
                         <div>
                           <div className="font-medium">{displayName(user)}</div>
-                          <div className="text-sm text-muted-foreground truncate">{user.email || user.username || "-"}</div>
+                          <div title={user.email || user.username || "-"} className="text-sm text-muted-foreground truncate">{user.email || user.username || "-"}</div>
                           {user.loginAlias ? (
                             <div className="text-xs text-muted-foreground">别名：{user.loginAlias}</div>
                           ) : null}
@@ -557,7 +557,7 @@ export function Users() {
                         <div>
                           <div className="text-sm text-muted-foreground">联系方式</div>
                           <div className="text-sm">{user.phone || "-"}</div>
-                          <div className="text-xs text-muted-foreground truncate">{user.loginAlias ? `可用别名登录：${user.loginAlias}` : "未设置别名"}</div>
+                          <div className="text-xs text-muted-foreground truncate" title={user.loginAlias ? `可用别名登录：${user.loginAlias}` : "未设置别名"}>{user.loginAlias ? `可用别名登录：${user.loginAlias}` : "未设置别名"}</div>
                         </div>
                         <div>
                           <div className="text-sm text-muted-foreground">上次登录时间</div>

@@ -607,7 +607,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   <span className="block truncate text-sm font-bold leading-tight text-sidebar-foreground">
                     {strings.brand.title}
                   </span>
-                  <span className="block truncate text-xs font-semibold uppercase text-muted-foreground">{strings.common.systemName}</span>
+                  <span title={strings.common.systemName} className="block truncate text-xs font-semibold uppercase text-muted-foreground">{strings.common.systemName}</span>
                 </div>
               </div>
               <Button
@@ -680,8 +680,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 >
                   <UserAvatar user={currentUser} className="h-9 w-9 shrink-0" textClassName="text-xs" />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-sidebar-foreground">{currentDisplayName}</div>
-                    <div className="truncate text-xs text-muted-foreground">{currentRoleLabel}</div>
+                    <div title={currentDisplayName} className="truncate text-sm font-medium text-sidebar-foreground">{currentDisplayName}</div>
+                    <div title={currentRoleLabel} className="truncate text-xs text-muted-foreground">{currentRoleLabel}</div>
                   </div>
                   <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </button>
@@ -689,8 +689,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <DropdownMenuContent side="top" align="start" sideOffset={8} className="w-56">
                 <DropdownMenuLabel>
                   <div className="min-w-0">
-                    <div className="truncate">{currentDisplayName}</div>
-                    <div className="truncate text-xs font-normal text-muted-foreground">{currentRoleLabel}</div>
+                    <div title={currentDisplayName} className="truncate">{currentDisplayName}</div>
+                    <div title={currentRoleLabel} className="truncate text-xs font-normal text-muted-foreground">{currentRoleLabel}</div>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -794,7 +794,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                     }`}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{label}</span>
+                    <span title={label} className="truncate">{label}</span>
                   </button>
                 );
               })}

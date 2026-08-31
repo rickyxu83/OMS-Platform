@@ -74,7 +74,7 @@ function Letterhead({ orderNo, signed }: { orderNo?: string; signed?: boolean })
           className="h-11 w-11 rounded-xl border border-primary/15 bg-white object-contain p-1 shadow-sm"
         />
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{COMPANY_NAME}</div>
+          <div title={COMPANY_NAME} className="truncate text-sm font-semibold">{COMPANY_NAME}</div>
           <div className="text-xs text-muted-foreground">OMS Platform · 运维智管</div>
         </div>
       </div>

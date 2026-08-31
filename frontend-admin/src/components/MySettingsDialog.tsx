@@ -349,7 +349,7 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
             <div className="flex items-center gap-3 md:block md:text-center">
               <UserAvatar user={user} className="h-16 w-16" textClassName="text-2xl" />
               <div className="min-w-0 md:mt-3">
-                <div className="truncate text-base font-semibold">{displayName(user)}</div>
+                <div title={displayName(user)} className="truncate text-base font-semibold">{displayName(user)}</div>
                 <div className="mt-1 text-sm text-muted-foreground">{roleLabel || user?.role || "-"}</div>
                 <div className="mt-2 flex flex-wrap gap-1 md:justify-center">
                   <Badge variant={user?.status === "active" ? "success" : "outline"}>
@@ -562,7 +562,7 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
                           ) : (
                             <>
                               <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm font-medium">{item.deviceName}</div>
+                                <div title={item.deviceName} className="truncate text-sm font-medium">{item.deviceName}</div>
                                 <div className="text-xs text-muted-foreground">
                                   登记于 {formatDateTime(item.createdAt) || "-"}
                                   {item.lastUsedAt ? ` · 最近登录 ${formatDateTime(item.lastUsedAt)}` : ""}

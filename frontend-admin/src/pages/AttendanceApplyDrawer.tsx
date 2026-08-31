@@ -827,7 +827,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       <div className="space-y-1">
                         {proofFiles.map((file, index) => (
                           <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-2 rounded-md border bg-background px-2.5 py-1.5 text-xs">
-                            <span className="min-w-0 truncate">{file.name}</span>
+                            <span title={file.name} className="min-w-0 truncate">{file.name}</span>
                             <button type="button" aria-label={`移除 ${file.name}`} className="shrink-0 p-1 text-muted-foreground hover:text-foreground" onClick={() => setProofFiles((current) => current.filter((_, i) => i !== index))}>
                               <X className="size-3.5" />
                             </button>

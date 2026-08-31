@@ -1050,7 +1050,7 @@ export function SystemSettings() {
                       <div key={item.id} className="rounded-lg border bg-white p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="truncate font-semibold">{item.title}</div>
+                            <div title={item.title} className="truncate font-semibold">{item.title}</div>
                             <div className="mt-1 text-xs text-muted-foreground">
                               {item.active ? "启用" : "停用"} · {formatExpiry(item.startsAt)} 至 {formatExpiry(item.endsAt)}
                             </div>

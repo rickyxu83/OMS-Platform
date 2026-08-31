@@ -666,7 +666,7 @@ export function MaintenanceParties() {
                 {p.name}
               </button>
             ) : (
-              <span className="truncate">{t.misc.unknown}</span>
+              <span title={t.misc.unknown} className="truncate">{t.misc.unknown}</span>
             )}
           </span>
         }
@@ -928,7 +928,7 @@ export function MaintenanceParties() {
                                   {p.name}
                                 </button>
                               ) : (
-                                <div className="truncate font-medium">{t.misc.unknown}</div>
+                                <div title={t.misc.unknown} className="truncate font-medium">{t.misc.unknown}</div>
                               )}
                               {p.remark ? (
                                 <div className="mt-0.5 truncate text-xs text-muted-foreground" title={p.remark}>
@@ -1050,7 +1050,7 @@ export function MaintenanceParties() {
                     <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">{t.dialog.phone}</div>
-                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{renderPhoneLink(contacts[0]?.phone || detailTarget.phone)}</div>
+                        <div title={contacts[0]?.phone || detailTarget.phone} className="mt-1 truncate text-sm font-semibold text-slate-900">{renderPhoneLink(contacts[0]?.phone || detailTarget.phone)}</div>
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">{t.dialog.createdAt}</div>

@@ -805,7 +805,7 @@ export function Login() {
               ) : (
                 <>
                   <div className="flex items-center justify-between rounded-[10px] border border-gray-200 bg-gray-50/80 px-3.5 py-2.5">
-                    <span className="truncate text-sm font-medium text-gray-700">{username}</span>
+                    <span title={username} className="truncate text-sm font-medium text-gray-700">{username}</span>
                     <button
                       type="button"
                       onClick={backToIdentifierStep}
