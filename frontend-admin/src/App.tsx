@@ -103,14 +103,16 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { error: Err
       <div className="min-h-screen flex flex-col items-center justify-center gap-3 px-6 text-center text-muted-foreground">
         <div>页面资源已更新，请刷新后继续。</div>
         {this.state.error?.message ? (
-          <pre className="max-w-[640px] whitespace-pre-wrap break-all rounded-md border bg-muted/30 p-3 text-left text-xs text-foreground">
-            {this.state.error.message}
-            {"
-
---- 组件栈 ---
-"}
-            {this.state.stack}
-          </pre>
+          <>
+            <pre className="max-w-[640px] whitespace-pre-wrap break-all rounded-md border bg-muted/30 p-3 text-left text-xs text-foreground">
+              {this.state.error.message}
+            </pre>
+            {this.state.stack ? (
+              <pre className="max-w-[640px] whitespace-pre-wrap break-all rounded-md border bg-muted/30 p-3 text-left text-[11px] text-foreground">
+                {this.state.stack}
+              </pre>
+            ) : null}
+          </>
         ) : null}
         <button className="rounded-md border px-4 py-2 text-sm text-foreground" type="button" onClick={() => window.location.reload()}>
           刷新页面
