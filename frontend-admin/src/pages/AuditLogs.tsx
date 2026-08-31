@@ -88,23 +88,42 @@ function severityOf(log: AuditLog): "danger" | "warn" | "ok" {
   return "ok";
 }
 
+const SEVERITY_MARK: Record<string, { label: string; className: string }> = {
+  danger: { label: "风险", className: "text-destructive" },
+  warn: { label: "注意", className: "text-amber-600" },
+};
+
+const SEVERITY_ROW_CLASS: Record<string, string> = {
+  danger: "bg-destructive/5",
+  warn: "bg-amber-50/60",
+  ok: "",
+};
+
 /** 风险/注意小标记（表格与移动端卡片共用） */
 function SeverityMark({ severity }: { severity: "danger" | "warn" | "ok" }) {
-  if (severity === "danger") {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
-        <AlertTriangle className="w-3.5 h-3.5" />风险
-      </span>
-    );
-  }
-  if (severity === "warn") {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
-        <AlertTriangle className="w-3.5 h-3.5" />注意
-      </span>
-    );
-  }
-  return null;
+  const conf = SEVERITY_MARK[severity];
+  if (!conf) return null;
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium ${conf.className}`}>
+      <AlertTriangle className="w-3.5 h-3.5" />{conf.label}
+    </span>
+  );
+}
+
+/** 操作徽章 + 风险标记（表格与移动端卡片共用） */
+function AuditActionBadge({ log }: { log: AuditLog }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Badge variant={ACTION_VARIANT[log.action || ""] || "secondary"}>
+        {auditActionLabel(log.action)}
+      </Badge>
+      <SeverityMark severity={severityOf(log)} />
+    </span>
+  );
+}
+
+function auditLogKey(log: AuditLog, idx: number) {
+  return log.id || `${log.createdAt}-${idx}`;
 }
 
 /** 折叠明细（无内容不渲染） */
@@ -125,29 +144,28 @@ function AuditDetailCollapse({ log }: { log: AuditLog }) {
   );
 }
 
+/** 状态码文案：4xx/5xx 异常、其余成功、无码显示 - */
+function AuditStatus({ code }: { code: number }) {
+  if (code >= 400) return <span className="text-destructive font-medium">异常 ({code})</span>;
+  if (code > 0) return <span className="text-emerald-600 font-medium">成功 ({code})</span>;
+  return <span>-</span>;
+}
+
 /** 状态码 + 耗时；vertical 用于桌面表格右侧窄列（上下两行） */
 function AuditResultMeta({ log, vertical = false }: { log: AuditLog; vertical?: boolean }) {
   const code = Number(log.detail?.statusCode || 0);
-  const status =
-    code >= 400 ? (
-      <span className="text-destructive font-medium">异常 ({code})</span>
-    ) : code > 0 ? (
-      <span className="text-emerald-600 font-medium">成功 ({code})</span>
-    ) : (
-      <span>-</span>
-    );
   const duration = <span className="tabular-nums">{Number(log.detail?.durationMs || 0)}ms</span>;
   if (vertical) {
     return (
       <span className="flex flex-col items-end gap-0.5 text-xs text-muted-foreground">
-        <span>{status}</span>
-        <span>{duration}</span>
+        <AuditStatus code={code} />
+        {duration}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-4">
-      <span>状态: {status}</span>
+      <span>状态: <AuditStatus code={code} /></span>
       <span>耗时: {duration}</span>
     </span>
   );
@@ -452,7 +470,7 @@ export function AuditLogs() {
               ) : (
                 <ResponsiveList
                   items={filtered}
-                  keyExtractor={(log, idx) => log.id || `${log.createdAt}-${idx}`}
+                  keyExtractor={auditLogKey}
                   renderCard={(log) => (
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -460,10 +478,7 @@ export function AuditLogs() {
                           {formatDateTime(log.createdAt)}
                         </span>
                         <span className="text-sm font-medium">{actorName(log)}</span>
-                        <Badge variant={ACTION_VARIANT[log.action || ""] || "secondary"}>
-                          {auditActionLabel(log.action)}
-                        </Badge>
-                        <SeverityMark severity={severityOf(log)} />
+                        <AuditActionBadge log={log} />
                       </div>
                       <div className="text-sm text-foreground">{describeAuditLog(log)}</div>
                       {log.detail?.message && (
@@ -504,14 +519,8 @@ export function AuditLogs() {
                         const severity = severityOf(log);
                         return (
                           <TableRow
-                            key={log.id || `${log.createdAt}-${idx}`}
-                            className={`list-row-enter align-top ${
-                              severity === "danger"
-                                ? "bg-destructive/5"
-                                : severity === "warn"
-                                ? "bg-amber-50/60"
-                                : ""
-                            }`}
+                            key={auditLogKey(log, idx)}
+                            className={`list-row-enter align-top ${SEVERITY_ROW_CLASS[severity]}`}
                             style={{ animationDelay: `${Math.min(idx * 30, 400)}ms` }}
                           >
                             <TableCell className="whitespace-nowrap py-3 align-top text-xs text-muted-foreground font-mono">
@@ -521,12 +530,7 @@ export function AuditLogs() {
                               <span className="block truncate">{actorName(log)}</span>
                             </TableCell>
                             <TableCell className="py-3 align-top">
-                              <span className="inline-flex items-center gap-1.5">
-                                <Badge variant={ACTION_VARIANT[log.action || ""] || "secondary"}>
-                                  {auditActionLabel(log.action)}
-                                </Badge>
-                                <SeverityMark severity={severity} />
-                              </span>
+                              <AuditActionBadge log={log} />
                             </TableCell>
                             <TableCell className="py-3 align-top">
                               <div className="text-sm text-foreground">{describeAuditLog(log)}</div>
