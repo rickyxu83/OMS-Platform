@@ -101,6 +101,11 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { error: Err
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3 px-6 text-center text-muted-foreground">
         <div>页面资源已更新，请刷新后继续。</div>
+        {this.state.error?.message ? (
+          <pre className="max-w-[640px] whitespace-pre-wrap break-all rounded-md border bg-muted/30 p-3 text-left text-xs text-foreground">
+            {this.state.error.message}
+          </pre>
+        ) : null}
         <button className="rounded-md border px-4 py-2 text-sm text-foreground" type="button" onClick={() => window.location.reload()}>
           刷新页面
         </button>
