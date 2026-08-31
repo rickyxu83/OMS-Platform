@@ -46,6 +46,16 @@ interface Party {
   remark?: string;
   updatedAt?: string;
   createdAt?: string;
+  devices?: Array<{
+    id: string | number;
+    name?: string;
+    model?: string;
+    serialNo?: string;
+    maintenanceType?: string;
+    maintenanceEnd?: string;
+    customerName?: string;
+    inWarranty?: boolean;
+  }>;
 }
 
 const I18N = {
@@ -118,6 +128,12 @@ const I18N = {
       remarkPlaceholder: "补充说明",
       createdAt: "创建时间",
       updatedAt: "最近更新",
+      partyDevices: "维保设备",
+      deviceNone: "该维保方暂无维保设备",
+      inWarranty: "在保",
+      outOfWarranty: "脱保",
+      warrantyEnd: "截止",
+      warrantyNotSet: "未设置",
     },
     errors: {
       loadFailed: "加载失败",
@@ -208,6 +224,12 @@ const I18N = {
       remarkPlaceholder: "補充說明",
       createdAt: "創建時間",
       updatedAt: "最近更新",
+      partyDevices: "維保設備",
+      deviceNone: "該維保方暫無維保設備",
+      inWarranty: "在保",
+      outOfWarranty: "脫保",
+      warrantyEnd: "截止",
+      warrantyNotSet: "未設置",
     },
     errors: {
       loadFailed: "載入失敗",
@@ -1075,6 +1097,46 @@ export function MaintenanceParties() {
                         <div className="rounded-md bg-slate-50 px-3 py-2 text-sm leading-6 text-muted-foreground">{t.misc.unknown}</div>
                       )}
                     </div>
+                  </div>
+
+                  <div className="rounded-lg border p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-medium">{t.dialog.partyDevices}</div>
+                      {detailTarget.devices && detailTarget.devices.length ? (
+                        <span className="text-xs text-muted-foreground">
+                          {detailTarget.devices.filter((d) => d.inWarranty).length} 在保 · {detailTarget.devices.filter((d) => !d.inWarranty).length} 脱保
+                        </span>
+                      ) : null}
+                    </div>
+                    {detailTarget.devices && detailTarget.devices.length ? (
+                      <div className="mt-3 space-y-1.5">
+                        {detailTarget.devices.map((device) => {
+                          const inWarranty = Boolean(device.inWarranty);
+                          return (
+                            <div
+                              key={String(device.id)}
+                              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm leading-6 ${inWarranty ? "bg-slate-50" : "bg-slate-100 text-slate-400"}`}
+                              title={`${device.customerName || ""} ${device.name || device.model || ""} · ${device.serialNo || ""}`}
+                            >
+                              <span className={`inline-flex h-1.5 w-1.5 shrink-0 rounded-full ${inWarranty ? "bg-emerald-500" : "bg-slate-400"}`} />
+                              <span className={`min-w-0 flex-1 truncate ${inWarranty ? "text-slate-900" : ""}`}>
+                                {device.customerName ? `${device.customerName} · ` : ""}{device.name || device.model || t.misc.unknown}
+                              </span>
+                              <span className="shrink-0 text-xs">
+                                {device.maintenanceEnd ? `${t.dialog.warrantyEnd} ${formatDate(device.maintenanceEnd)}` : t.dialog.warrantyNotSet}
+                              </span>
+                              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${inWarranty ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>
+                                {inWarranty ? t.dialog.inWarranty : t.dialog.outOfWarranty}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm leading-6 text-muted-foreground">
+                        {t.dialog.deviceNone}
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
