@@ -217,7 +217,12 @@ export function MrListPage() {
   useEffect(() => { setPage(1) }, [q, status, purchaseStatus, customerFilterId, salesFilterId, dateFrom, dateTo, pendingMine])
   useEffect(() => { if (page > pageCount) setPage(pageCount) }, [page, pageCount])
   // 翻页后表体滚动区回顶部，避免停留在上一页的滚动位置
-  useEffect(() => { tableScrollRef.current?.scrollTo({ top: 0 }) }, [page])
+  useEffect(() => {
+    // 表格改为随页面整体滚动后,翻页回到最近滚动祖先顶部
+    const scroller = document.querySelector('.mobile-admin-content') as HTMLElement | null
+    if (scroller) scroller.scrollTo({ top: 0 })
+    else window.scrollTo({ top: 0 })
+  }, [page])
 
   const resetFilters = () => {
     setQueryInput('')
@@ -392,7 +397,7 @@ export function MrListPage() {
       </Card>
 
       <div className="overflow-hidden rounded-xl border bg-card">
-        <div ref={tableScrollRef} className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto">
+        <div ref={tableScrollRef}>
           <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
                 <col className="w-[280px]" />
@@ -401,7 +406,7 @@ export function MrListPage() {
                 <col className="w-[190px]" />
                 <col className="w-[160px]" />
               </colgroup>
-              <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+              <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
                   <TableHead>客户 / Ctrl.NO</TableHead>
                   <TableHead>负责的销售</TableHead>
