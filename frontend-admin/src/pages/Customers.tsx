@@ -1702,7 +1702,7 @@ export function Customers() {
       </Card>
 
       <div className="overflow-hidden rounded-xl border bg-card">
-        <div className="h-[62vh] min-h-[360px] max-h-[680px] w-full max-w-full overflow-auto overscroll-x-contain">
+        <div className="w-full max-w-full">
           {initialLoading ? (
             <div className="p-2">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -1734,7 +1734,7 @@ export function Customers() {
                   <col className="w-[22%]" />
                   <col className="w-[8%]" />
                 </colgroup>
-                <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+                <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                   <TableRow>
                     {canDeleteCustomer ? (
                       <TableHead className="w-11 text-center">

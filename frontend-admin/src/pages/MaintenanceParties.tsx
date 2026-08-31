@@ -871,7 +871,7 @@ export function MaintenanceParties() {
       </Card>
 
       <div className="overflow-hidden rounded-xl border bg-card">
-        <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto">
+        <div>
           {initialLoading ? (
             <div className="flex h-full items-center justify-center text-muted-foreground">
               <span className="btn-loader mr-2" aria-hidden="true" /> {t.list.loading}
@@ -895,7 +895,7 @@ export function MaintenanceParties() {
                   <col className="w-[17%]" />
                   {canManageParties ? <col className="w-[8%]" /> : null}
                 </colgroup>
-                <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+                <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                   <TableRow>
                     {canDeleteParties ? (
                       <TableHead className="w-11 text-center">

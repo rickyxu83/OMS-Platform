@@ -507,7 +507,7 @@ export function Users() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
+          <div>
             {loading ? (
               <div className="flex h-full items-center justify-center text-muted-foreground">
                 <span className="btn-loader mr-2" aria-hidden="true" /> 正在加载…
