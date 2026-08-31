@@ -3811,13 +3811,11 @@ export function Devices() {
                   const nextKeep = event.target.value;
                   const previousKeep = mergeKeepId;
                   setMergeKeepId(nextKeep);
-                  // 换保留设备时上下交换：新 keep 若曾在待合并清单则移除;若原 keep 因此落空则自动转入待合并
+                  // 换保留设备时上下交换（数量守恒）：新 keep 移出清单,原 keep 必转入待合并
                   setMergeTargetIds((prev) => {
                     const withoutNew = prev.filter((id) => String(id) !== String(nextKeep));
-                    if (!withoutNew.length && previousKeep && String(previousKeep) !== String(nextKeep)) {
-                      return [String(previousKeep)];
-                    }
-                    return withoutNew;
+                    if (!previousKeep || String(previousKeep) === String(nextKeep)) return withoutNew;
+                    return Array.from(new Set([...withoutNew, String(previousKeep)]));
                   });
                 }}
               >
