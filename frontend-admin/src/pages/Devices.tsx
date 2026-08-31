@@ -3808,14 +3808,23 @@ export function Devices() {
                 className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={mergeKeepId}
                 onChange={(event) => {
-                  setMergeKeepId(event.target.value);
-                  setMergeTargetIds((prev) => prev.filter((id) => String(id) !== event.target.value));
+                  const nextKeep = event.target.value;
+                  const previousKeep = mergeKeepId;
+                  setMergeKeepId(nextKeep);
+                  // 换保留设备时上下交换：新 keep 若曾在待合并清单则移除;若原 keep 因此落空则自动转入待合并
+                  setMergeTargetIds((prev) => {
+                    const withoutNew = prev.filter((id) => String(id) !== String(nextKeep));
+                    if (!withoutNew.length && previousKeep && String(previousKeep) !== String(nextKeep)) {
+                      return [String(previousKeep)];
+                    }
+                    return withoutNew;
+                  });
                 }}
               >
                 <option value="">选择保留设备</option>
                 {(showAllMergeOptions ? devices : devices.filter((item) => selectedDeviceIds.slice(0, 4).includes(String(item.id)))).map((item) => (
                   <option key={String(item.id)} value={String(item.id)}>
-                    {deviceSnLabel(item)}{item.model ? ` · ${item.model}` : ""}
+                    {deviceSnLabel(item)}
                   </option>
                 ))}
               </select>
