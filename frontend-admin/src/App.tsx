@@ -81,14 +81,15 @@ function isChunkLoadError(error: unknown) {
   return /Loading chunk|ChunkLoadError|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(text)
 }
 
-class RouteErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  state = { error: null as Error | null }
+class RouteErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null; stack: string }> {
+  state = { error: null as Error | null, stack: "" }
 
   static getDerivedStateFromError(error: Error) {
     return { error }
   }
 
-  componentDidCatch(error: Error, _errorInfo: ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    this.setState({ stack: errorInfo.componentStack || "" })
     const reloadKey = window.location.href
     if (isChunkLoadError(error) && sessionStorage.getItem(CHUNK_RELOAD_KEY) !== reloadKey) {
       sessionStorage.setItem(CHUNK_RELOAD_KEY, reloadKey)
@@ -104,6 +105,11 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { error: Err
         {this.state.error?.message ? (
           <pre className="max-w-[640px] whitespace-pre-wrap break-all rounded-md border bg-muted/30 p-3 text-left text-xs text-foreground">
             {this.state.error.message}
+            {"
+
+--- 组件栈 ---
+"}
+            {this.state.stack}
           </pre>
         ) : null}
         <button className="rounded-md border px-4 py-2 text-sm text-foreground" type="button" onClick={() => window.location.reload()}>
