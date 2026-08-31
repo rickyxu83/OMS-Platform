@@ -3800,21 +3800,91 @@ export function Devices() {
       </Dialog>
 
       <Dialog open={mergeOpen} onOpenChange={setMergeOpen}>
-        <DialogContent className="sm:max-w-[440px]">
+        <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-[560px]">
           <DialogHeader>
             <DialogTitle>合并重复设备</DialogTitle>
-            <DialogDescription>保留 #{mergeKeepId || "?"}，合并 #{mergeTargetId || "?"}（同客户）；引用迁至保留设备。</DialogDescription>
+            <DialogDescription>
+              合并同一客户下的两台设备（如多序列号 "S1;S2" 与 "S2;S1" 实为同一台）：选择保留哪台、合并哪台，确认后引用全部迁至保留设备。
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">保留设备 #{mergeKeepId || "未选择"} ← 合并资源 #{mergeTargetId || "未选择"}</div>
+          <div className="grid gap-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>保留设备</Label>
+                <select
+                  className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={mergeKeepId}
+                  onChange={(event) => { setMergeKeepId(event.target.value); setMergeTargetId((prev) => (prev === event.target.value ? "" : prev)); setMergePreview(null); }}
+                >
+                  <option value="">选择保留设备</option>
+                  {devices.map((item) => (
+                    <option key={String(item.id)} value={String(item.id)}>
+                      {item.name || item.model || item.serialNo || `#${item.id}`}{item.customerName ? ` · ${item.customerName}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>待合并设备</Label>
+                <select
+                  className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={mergeTargetId}
+                  disabled={!mergeKeepId}
+                  onChange={(event) => { setMergeTargetId(event.target.value); setMergePreview(null); }}
+                >
+                  <option value="">选择被合并设备（同客户）</option>
+                  {devices
+                    .filter((item) => {
+                      const keep = keepDeviceById(mergeKeepId);
+                      return keep && String(item.customerId) === String(keep.customerId) && String(item.id) !== String(mergeKeepId);
+                    })
+                    .map((item) => (
+                      <option key={String(item.id)} value={String(item.id)}>
+                        {item.name || item.model || `#${item.id}`} · {item.serialNo || "-"}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
+                onClick={() => {
+                  setMergePreview(null);
+                  setMergeKeepId(mergeTargetId);
+                  setMergeTargetId(mergeKeepId);
+                }}
+                disabled={!mergeKeepId || !mergeTargetId}
+              >
+                互换保留 / 被合并
+              </button>
+            </div>
+
+            {mergePreview ? (
+              <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-sm">
+                <div className="font-medium">
+                  将合并：<span className="text-primary">{mergePreview.keep?.name || mergePreview.keep?.model || `#${mergeKeepId}`}</span>{" "}
+                  ← {mergePreview.target?.name || mergePreview.target?.model || `#${mergeTargetId}`}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  引用迁移：工单 {(mergePreview.migration as any)?.service_orders || 0} · 关联 {(mergePreview.migration as any)?.service_order_devices || 0} ·
+                  巡检 {(mergePreview.migration as any)?.inspection_schedule_devices || 0} · 任务 {(mergePreview.migration as any)?.inspection_schedule_assignments || 0} · 备件 {(mergePreview.migration as any)?.service_parts || 0}
+                </div>
+                <div className="text-xs text-muted-foreground">被合并设备删除，历史引用全部迁至保留设备。</div>
+              </div>
+            ) : null}
+
             {mergeError ? <div className="text-sm text-destructive">{mergeError}</div> : null}
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setMergeOpen(false)} disabled={mergeBusy}>取消</Button>
+              <Button type="button" onClick={confirmMergeDevices} disabled={!mergeKeepId || !mergeTargetId || mergeBusy}>
+                {mergeBusy ? <span className="btn-loader mr-2" aria-hidden="true" /> : "确认合并"}
+              </Button>
+            </DialogFooter>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setMergeOpen(false)} disabled={mergeBusy}>取消</Button>
-            <Button type="button" onClick={confirmMergeDevices} disabled={!mergeKeepId || !mergeTargetId || mergeBusy}>
-              {mergeBusy ? <span className="btn-loader mr-2" aria-hidden="true" /> : "确认合并"}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
