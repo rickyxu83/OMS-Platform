@@ -212,7 +212,12 @@ export function AuditLogs() {
     return [
       { label: "日志总数", value: total },
       { label: "当前页记录", value: loaded },
-      { label: "风险操作", value: warnings },
+      {
+        label: "风险操作",
+        value: warnings,
+        onClick: () => setRiskyOnly((value) => !value),
+        active: riskyOnly,
+      },
       { label: "平均耗时", value: `${avgDuration}ms` },
     ];
   }, [logs, total]);
@@ -257,18 +262,35 @@ export function AuditLogs() {
       <ErrorToast message={error} />
 
       <div className="flex flex-wrap items-center gap-x-8 gap-y-1 text-sm">
-        {stats.map((stat, statIndex) => (
-          <span key={stat.label} className="inline-flex items-baseline gap-1.5 text-muted-foreground">
-            {stat.label}
-            <b className="font-semibold tabular-nums text-foreground">
-              {loading ? (
-                <Skeleton className="inline-block h-4 w-10" />
-              ) : (
-                <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
-              )}
-            </b>
-          </span>
-        ))}
+        {stats.map((stat, statIndex) => {
+          const content = (
+            <>
+              {stat.label}
+              <b className="font-semibold tabular-nums text-foreground">
+                {loading ? (
+                  <Skeleton className="inline-block h-4 w-10" />
+                ) : (
+                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
+                )}
+              </b>
+            </>
+          );
+          return stat.onClick ? (
+            <button
+              key={stat.label}
+              type="button"
+              onClick={stat.onClick}
+              aria-pressed={stat.active}
+              className={`inline-flex cursor-pointer items-baseline gap-1.5 text-sm transition-colors ${stat.active ? "text-primary font-medium" : "text-muted-foreground hover:text-primary"}`}
+            >
+              {content}
+            </button>
+          ) : (
+            <span key={stat.label} className="inline-flex items-baseline gap-1.5 text-sm text-muted-foreground">
+              {content}
+            </span>
+          );
+        })}
       </div>
 
       <Card>
@@ -305,24 +327,6 @@ export function AuditLogs() {
                 ))}
               </SelectContent>
             </Select>
-            <Select
-              value={actionFilter}
-              onValueChange={(value) => {
-                setActionFilter(value);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-[130px]">
-                <SelectValue placeholder="全部动作" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部动作</SelectItem>
-                <SelectItem value="read">查询</SelectItem>
-                <SelectItem value="create">新增</SelectItem>
-                <SelectItem value="update">修改</SelectItem>
-                <SelectItem value="delete">删除</SelectItem>
-              </SelectContent>
-            </Select>
             <div className="w-[240px]">
               <DateRangePicker
                 start={from}
@@ -332,20 +336,6 @@ export function AuditLogs() {
                 ariaLabel="审计日志日期范围"
               />
             </div>
-            <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm">
-              <Switch
-                id="risky-only"
-                checked={riskyOnly}
-                onCheckedChange={(checked) => {
-                  setRiskyOnly(checked);
-                  setPage(1);
-                }}
-              />
-              <span className="inline-flex items-center gap-1">
-                仅看风险
-                <HelpTooltip label={RISKY_AUDIT_HELP} />
-              </span>
-            </label>
             <Button variant="outline" onClick={() => {
               setSearchQuery("");
               setActorFilter("all");
