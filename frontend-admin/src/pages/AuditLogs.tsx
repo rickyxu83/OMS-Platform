@@ -256,122 +256,108 @@ export function AuditLogs() {
 
       <ErrorToast message={error} />
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-1 text-sm">
         {stats.map((stat, statIndex) => (
-          <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-            <CardContent className="pt-6">
-              <div className="text-sm text-muted-foreground">{stat.label}</div>
-              <div className="text-2xl font-bold mt-1">
-                                {loading ? (
-                  <Skeleton className="h-8 w-16" />
-                ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <span key={stat.label} className="inline-flex items-baseline gap-1.5 text-muted-foreground">
+            {stat.label}
+            <b className="font-semibold tabular-nums text-foreground">
+              {loading ? (
+                <Skeleton className="inline-block h-4 w-10" />
+              ) : (
+                <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
+              )}
+            </b>
+          </span>
         ))}
       </div>
 
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col md:flex-row gap-3">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  className="pl-9"
-                  placeholder="搜索操作人、描述、IP…"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setPage(1);
-                  }}
-                />
-              </div>
-              <Select
-                value={actorFilter}
-                onValueChange={(value) => {
-                  setActorFilter(value);
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative min-w-[220px] flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="搜索操作人、描述、IP…"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
                   setPage(1);
                 }}
-              >
-                <SelectTrigger className="w-full md:w-[180px]">
-                  <SelectValue placeholder="全部人员" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部人员</SelectItem>
-                  {users.map((user) => (
-                    <SelectItem key={String(user.id)} value={String(user.id)}>
-                      {userOptionName(user)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={actionFilter}
-                onValueChange={(value) => {
-                  setActionFilter(value);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full md:w-[150px]">
-                  <SelectValue placeholder="全部动作" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部动作</SelectItem>
-                  <SelectItem value="read">查询</SelectItem>
-                  <SelectItem value="create">新增</SelectItem>
-                  <SelectItem value="update">修改</SelectItem>
-                  <SelectItem value="delete">删除</SelectItem>
-                </SelectContent>
-              </Select>
+              />
             </div>
-            <div className="flex flex-col md:flex-row md:items-end gap-3">
-              <div className="space-y-2">
-                <Label>日期范围</Label>
-                <div className="w-[240px]">
-                  <DateRangePicker
-                    start={from}
-                    end={to}
-                    onChange={(s2, e2) => { setFrom(s2); setTo(e2); setPage(1); }}
-                    placeholder="开始日期 ~ 结束日期"
-                    ariaLabel="审计日志日期范围"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-2 px-3 h-9 border border-border rounded-md">
-                <Switch
-                  id="risky-only"
-                  checked={riskyOnly}
-                  onCheckedChange={(checked) => {
-                    setRiskyOnly(checked);
-                    setPage(1);
-                  }}
-                />
-                <Label htmlFor="risky-only" className="cursor-pointer text-sm">
-                  <span className="inline-flex items-center gap-1">
-                    仅看风险操作
-                    <HelpTooltip label={RISKY_AUDIT_HELP} />
-                  </span>
-                </Label>
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSearchQuery("");
-                  setActorFilter("all");
-                  setActionFilter("all");
-                  setFrom("");
-                  setTo("");
-                  setRiskyOnly(false);
+            <Select
+              value={actorFilter}
+              onValueChange={(value) => {
+                setActorFilter(value);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="全部人员" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部人员</SelectItem>
+                {users.map((user) => (
+                  <SelectItem key={String(user.id)} value={String(user.id)}>
+                    {userOptionName(user)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={actionFilter}
+              onValueChange={(value) => {
+                setActionFilter(value);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-[130px]">
+                <SelectValue placeholder="全部动作" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部动作</SelectItem>
+                <SelectItem value="read">查询</SelectItem>
+                <SelectItem value="create">新增</SelectItem>
+                <SelectItem value="update">修改</SelectItem>
+                <SelectItem value="delete">删除</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="w-[240px]">
+              <DateRangePicker
+                start={from}
+                end={to}
+                onChange={(s2, e2) => { setFrom(s2); setTo(e2); setPage(1); }}
+                placeholder="开始日期 ~ 结束日期"
+                ariaLabel="审计日志日期范围"
+              />
+            </div>
+            <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm">
+              <Switch
+                id="risky-only"
+                checked={riskyOnly}
+                onCheckedChange={(checked) => {
+                  setRiskyOnly(checked);
                   setPage(1);
                 }}
-              >
-                <RotateCcw className="w-4 h-4 mr-2" />
-                重置
-              </Button>
-            </div>
+              />
+              <span className="inline-flex items-center gap-1">
+                仅看风险
+                <HelpTooltip label={RISKY_AUDIT_HELP} />
+              </span>
+            </label>
+            <Button variant="outline" onClick={() => {
+              setSearchQuery("");
+              setActorFilter("all");
+              setActionFilter("all");
+              setFrom("");
+              setTo("");
+              setRiskyOnly(false);
+              setPage(1);
+            }}>
+              <RotateCcw className="w-4 h-4 mr-2" />
+              重置
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -421,31 +407,42 @@ export function AuditLogs() {
                             <span className="text-sm text-muted-foreground">
                               {resourceName(log)}
                             </span>
-                            {severity === "danger" && (
-                              <AlertTriangle className="w-4 h-4 text-destructive" />
-                            )}
+                            <span className="ml-auto inline-flex items-center gap-2">
+                              {severity === "danger" && (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
+                                  <AlertTriangle className="w-3.5 h-3.5" />风险
+                                </span>
+                              )}
+                              {severity === "warn" && (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                                  <AlertTriangle className="w-3.5 h-3.5" />注意
+                                </span>
+                              )}
+                            </span>
                           </div>
                           {log.detail?.message && (
                             <div className="text-sm mb-1 text-foreground/80">
                               {String(log.detail.message)}
                             </div>
                           )}
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
                             <span>
                               来源: {String(log.detail?.ip || "-")}
                               {log.detail?.location ? `（${String(log.detail.location)}）` : ""}
                             </span>
-                            <span>
-                              状态:{" "}
-                              {code >= 400 ? (
-                                <span className="text-destructive font-medium">异常 ({code})</span>
-                              ) : code > 0 ? (
-                                <span className="text-emerald-600 font-medium">成功 ({code})</span>
-                              ) : (
-                                <span>-</span>
-                              )}
+                            <span className="inline-flex items-center gap-4">
+                              <span>
+                                状态:{" "}
+                                {code >= 400 ? (
+                                  <span className="text-destructive font-medium">异常 ({code})</span>
+                                ) : code > 0 ? (
+                                  <span className="text-emerald-600 font-medium">成功 ({code})</span>
+                                ) : (
+                                  <span>-</span>
+                                )}
+                              </span>
+                              <span className="tabular-nums">耗时: {Number(log.detail?.durationMs || 0)}ms</span>
                             </span>
-                            <span>耗时: {Number(log.detail?.durationMs || 0)}ms</span>
                           </div>
                         </div>
                       </div>
