@@ -197,7 +197,33 @@ async function detail(req, res) {
     throw notFound('维护方不存在')
   }
 
-  res.json({ item: partyPayload(rows[0]) })
+  // 该维保方的全部维保设备（含在保判定：maintenance_end >= 今天 为在保）
+  const devices = await query(
+    `SELECT d.id, d.name, d.model, d.serial_no, d.maintenance_type, d.maintenance_end,
+            c.name AS customer_name,
+            (d.maintenance_end IS NOT NULL AND d.maintenance_end >= CURDATE()) AS in_warranty
+     FROM devices d
+     LEFT JOIN customers c ON c.id = d.customer_id
+     WHERE d.maintenance_party_id = :id
+     ORDER BY (d.maintenance_end IS NULL), (d.maintenance_end >= CURDATE()) DESC, d.maintenance_end ASC, d.id ASC`,
+    { id: req.params.id },
+  )
+
+  res.json({
+    item: {
+      ...partyPayload(rows[0]),
+      devices: devices.map((row) => ({
+        id: row.id,
+        name: row.name,
+        model: row.model,
+        serialNo: row.serial_no,
+        maintenanceType: row.maintenance_type,
+        maintenanceEnd: row.maintenance_end,
+        customerName: row.customer_name || '',
+        inWarranty: Boolean(row.in_warranty),
+      })),
+    },
+  })
 }
 
 async function update(req, res) {
