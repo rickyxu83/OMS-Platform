@@ -283,6 +283,14 @@ export function Devices() {
   const [modelComparing, setModelComparing] = useState(false);
   const [modelCompareProgress, setModelCompareProgress] = useState(0);
   const [normalizationProgress, setNormalizationProgress] = useState<ProgressState | null>(null);
+  // 手动合并设备对话框（devices/merge-preview + merge）
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeKeepId, setMergeKeepId] = useState("");
+  const [mergeTargetId, setMergeTargetId] = useState("");
+  const [mergePreview, setMergePreview] = useState<{ keep?: Device; target?: Device; counts?: Record<string, number>; migration?: Record<string, number> } | null>(null);
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeError, setMergeError] = useState("");
+
   const [duplicateConfirm, setDuplicateConfirm] = useState<{
     items: Array<{ id: string | number; customerName?: string; model?: string; serialNo?: string; createdByName?: string }>;
     payloads: Record<string, unknown>[];
@@ -1016,6 +1024,37 @@ export function Devices() {
       });
   }
 
+  // —— 手动合并设备（keep/target 选择 -> 预览 -> 确认）——
+  const keepDeviceById = (id: string) => devices.find((d) => String(d.id) === String(id));
+
+  useEffect(() => {
+    if (!mergeKeepId || !mergeTargetId) {
+      setMergePreview(null);
+      return;
+    }
+    let cancelled = false;
+    api.post("/devices/merge-preview", { keepId: mergeKeepId, mergeId: mergeTargetId })
+      .then((data) => { if (!cancelled) { setMergePreview(data); setMergeError(""); } })
+      .catch((cause) => { if (!cancelled) setMergeError(cause instanceof Error ? cause.message : "合并预览失败"); });
+    return () => { cancelled = true; };
+  }, [mergeKeepId, mergeTargetId]);
+
+  async function confirmMergeDevices() {
+    if (!mergeKeepId || !mergeTargetId) return;
+    setMergeBusy(true);
+    setMergeError("");
+    try {
+      await api.post("/devices/merge", { keepId: mergeKeepId, mergeId: mergeTargetId });
+      toast.success("设备已合并");
+      setMergeOpen(false);
+      await load();
+    } catch (cause) {
+      setMergeError(cause instanceof Error ? cause.message : "合并失败");
+    } finally {
+      setMergeBusy(false);
+    }
+  }
+
   async function confirmMerge() {
     if (!mergeConfirm) return;
     const keepId = detailTarget?.id;
@@ -1732,6 +1771,10 @@ export function Devices() {
                 <DropdownMenuItem onSelect={compareExistingDeviceModels} disabled={modelComparing || loading || !filtered.length}>
                   {modelComparing ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Search className="w-4 h-4 mr-2" />}
                   {modelComparing ? `型号校正 ${modelCompareProgress}%` : "型号校正"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => { setMergeOpen(true); setMergeKeepId(""); setMergeTargetId(""); setMergePreview(null); setMergeError(""); }} disabled={loading || !filtered.length}>
+                  <Merge className="w-4 h-4 mr-2" />
+                  合并重复设备
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -3737,6 +3780,76 @@ export function Devices() {
               关闭
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={mergeOpen} onOpenChange={setMergeOpen}>
+        <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>合并重复设备</DialogTitle>
+            <DialogDescription>
+              合并同一客户下的两台设备（如多序列号 "S1;S2" 与 "S2;S1" 实为同一台）：保留一台，引用迁至保留设备，被合并设备删除。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>保留设备</Label>
+                <Select value={mergeKeepId} onValueChange={(value) => { setMergeKeepId(value); setMergeTargetId(""); setMergePreview(null); }}>
+                  <SelectTrigger><SelectValue placeholder="选择保留设备" /></SelectTrigger>
+                  <SelectContent>
+                    {devices.map((item) => (
+                      <SelectItem key={String(item.id)} value={String(item.id)}>
+                        {item.name || item.model || item.serialNo || `#${item.id}`}{item.customerName ? ` · ${item.customerName}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>待合并设备</Label>
+                <Select value={mergeTargetId} onValueChange={(value) => setMergeTargetId(value)} disabled={!mergeKeepId}>
+                  <SelectTrigger><SelectValue placeholder="被合并设备（同客户）" /></SelectTrigger>
+                  <SelectContent>
+                    {devices
+                      .filter((item) => {
+                        const keep = keepDeviceById(mergeKeepId);
+                        return keep && String(item.customerId) === String(keep.customerId) && String(item.id) !== String(mergeKeepId);
+                      })
+                      .map((item) => (
+                        <SelectItem key={String(item.id)} value={String(item.id)}>
+                          {item.name || item.model || `#${item.id}`} · {item.serialNo || "-"}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {mergePreview ? (
+              <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-sm">
+                <div className="font-medium">
+                  将合并：<span className="text-primary">{mergePreview.keep?.name || mergePreview.keep?.model || `#${mergeKeepId}`}</span>{" "}
+                  ← {mergePreview.target?.name || mergePreview.target?.model || `#${mergeTargetId}`}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  引用迁移：工单 {(mergePreview.migration as any)?.service_orders || 0} · 关联 {(mergePreview.migration as any)?.service_order_devices || 0} ·
+                  巡检 {(mergePreview.migration as any)?.inspection_schedule_devices || 0} · 任务 {(mergePreview.migration as any)?.inspection_schedule_assignments || 0} · 备件 {(mergePreview.migration as any)?.service_parts || 0}
+                </div>
+                <div className="text-xs text-muted-foreground">被合并设备删除，历史引用全部迁至保留设备。</div>
+              </div>
+            ) : null}
+
+            {mergeError ? <div className="text-sm text-destructive">{mergeError}</div> : null}
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setMergeOpen(false)} disabled={mergeBusy}>取消</Button>
+              <Button onClick={confirmMergeDevices} disabled={!mergeKeepId || !mergeTargetId || mergeBusy}>
+                {mergeBusy ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Merge className="mr-2 h-4 w-4" />}
+                确认合并
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

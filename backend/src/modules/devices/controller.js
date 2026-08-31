@@ -2261,8 +2261,30 @@ async function similarDevices(req, res) {
 }
 
 // 两台设备是否判定为疑似重复：同客户 + SN 相似（含归一化精确）+ 型号相似
+// 序列号集合等价（顺序无关）：以 ; ， 分隔的多序列号视为集合,S1;S2 与 S2;S1 为同一台。
+// 返回 true/false/null:null 表示任一侧无可拆多值,走原有单值字符级比较
+function serialSetEquivalent(leftRaw, rightRaw) {
+  const split = (value) => {
+    const parts = String(value || '').split(/[;；,，]+/).map((part) => normalizeSerialNo(part)).filter(Boolean)
+    return [...new Set(parts)].sort()
+  }
+  const a = split(leftRaw)
+  const b = split(rightRaw)
+  if (!a.length || !b.length) return null
+  // 两侧都是单值：完全相同直接相似;不同交给原有字符级宽松匹配（尾 0/编辑距离）
+  if (a.length === 1 && b.length === 1) {
+    return a[0] === b[0] ? true : null
+  }
+  // 任一侧为多序列号：按集合判等,顺序无关
+  if (a.length !== b.length) return false
+  return a.every((value, index) => value === b[index]) ? true : false
+}
+
 function devicesSimilar(left, right) {
   if (String(left.customer_id) !== String(right.customer_id)) return false
+  const setEq = serialSetEquivalent(left.serial_no, right.serial_no)
+  if (setEq === true) return similarModels(left.model, right.model)
+  if (setEq === false) return false
   const leftSerial = normalizeSerialNo(left.serial_no)
   if (!leftSerial || !similarSerialNo(leftSerial, right.serial_no)) return false
   return similarModels(left.model, right.model)
