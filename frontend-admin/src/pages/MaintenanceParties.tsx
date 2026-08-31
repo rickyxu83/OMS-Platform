@@ -1133,8 +1133,8 @@ export function MaintenanceParties() {
                               title={`${device.customerName || ""} ${device.name || device.model || ""} · ${device.serialNo || ""}`}
                             >
                               <span className={`inline-flex h-1.5 w-1.5 shrink-0 rounded-full ${inWarranty ? "bg-emerald-500" : "bg-slate-400"}`} />
-                              <span className={`min-w-0 flex-1 truncate ${inWarranty ? "text-slate-900" : ""}`}>
-                                {device.customerName ? `${device.customerName} · ` : ""}{device.name || device.model || t.misc.unknown}
+                              <span className={`min-w-0 flex-1 truncate ${inWarranty ? "text-slate-900" : ""}`} title={`${device.customerName}.${device.model || device.name || t.misc.unknown}${device.serialNo ? ` (${device.serialNo})` : ""}`}>
+                                {device.customerName || t.misc.unknown}.{device.model || device.name || t.misc.unknown}
                               </span>
                               <span className="shrink-0 text-xs">
                                 {device.maintenanceEnd ? `${t.dialog.warrantyEnd} ${formatDate(device.maintenanceEnd)}` : t.dialog.warrantyNotSet}
