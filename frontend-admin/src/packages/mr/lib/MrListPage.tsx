@@ -451,12 +451,12 @@ export function MrListPage() {
                   <TableCell className="truncate pr-6 text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
                   <TableCell className="truncate">
                     {/* MR 状态与采购状态一行并排,统一 gap 分隔（采购状态字号小一号、灰一点） */}
-                    <div className="flex items-center gap-1.5">
+                    <div className="group flex items-center gap-1.5">
                       <StatusHoverButton orderStatus={orderStatus} order={order} stepLabel={stepLabel} assigneeName={order.currentAssigneeName} onFilter={() => setStatus(orderStatus)} />
                       {orderStatus === 'approved' && order.purchaseStatus ? (
                         <>
-                          {/* 流程递进箭头：MR 通过 → 进入采购 */}
-                          <ArrowRight className="h-3 w-3 text-muted-foreground/60" />
+                          {/* 流程递进箭头：悬停/触摸时右滑+琥珀色,呼应采购状态 */}
+                          <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground/60 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-amber-600" />
                           <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`按采购状态筛选：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
                             {(() => { const conf = PURCHASE_INDICATOR[order.purchaseStatus || '']; const Icon = conf ? conf.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null })()}
                             {PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}
