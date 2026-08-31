@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, X, Pencil, Hourglass, CircleCheck, CircleX, CircleSlash, Package, PackageCheck, Minus, FileText, CircleDot, type LucideIcon } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, X, Pencil, Hourglass, CircleCheck, CircleX, CircleSlash, Package, PackageCheck, Minus, FileText, CircleDot, ArrowRight, type LucideIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Button } from '@/components/ui/button'
@@ -170,6 +170,7 @@ export function MrListPage() {
   const [selectedSalesId, setSelectedSalesId] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [page, setPage] = useState(1)
+  const pageCountRef = useRef(1)
   const tableScrollRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
@@ -212,12 +213,26 @@ export function MrListPage() {
   useEffect(() => { void load() }, [load])
 
   const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
-  const pagedItems = useMemo(() => items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [items, page])
+  pageCountRef.current = pageCount
+  // 无限滚动：数据一次拉全,滚动触底把已展示条数扩一档（slice 累积,非翻页替换）
+  const pagedItems = useMemo(() => items.slice(0, page * PAGE_SIZE), [items, page])
   // 筛选/搜索变化时回到第一页；数据变少时收敛页码
   useEffect(() => { setPage(1) }, [q, status, purchaseStatus, customerFilterId, salesFilterId, dateFrom, dateTo, pendingMine])
+  // 无限滚动：接近最近滚动祖先底部时扩展示条数
+  useEffect(() => {
+    if (!items.length) return
+    const onScroll = () => {
+      const scroller = document.querySelector('.mobile-admin-content') as HTMLElement | null
+      const near = scroller
+        ? scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 320
+        : window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 320
+      if (near) setPage((current) => Math.min(pageCountRef.current, current + 1))
+    }
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true })
+    return () => window.removeEventListener('scroll', onScroll, { capture: true })
+  }, [items.length])
   useEffect(() => { if (page > pageCount) setPage(pageCount) }, [page, pageCount])
-  // 翻页后表体滚动区回顶部，避免停留在上一页的滚动位置
-  useEffect(() => { tableScrollRef.current?.scrollTo({ top: 0 }) }, [page])
+
 
   const resetFilters = () => {
     setQueryInput('')
@@ -324,17 +339,35 @@ export function MrListPage() {
             待我签核 <span className="font-bold">{pendingMineCount}</span>
           </button>
         ) : null}
-        <span className="inline-flex items-baseline gap-1.5"><span className="text-muted-foreground">全部</span><span className="text-base font-bold">{items.length}</span></span>
-        {(['draft', 'in_review', 'approved', 'rejected', 'voided'] as MrStatus[]).map((st) => {
-          const count = items.filter((o) => (o.status || 'draft') === st).length
-          const conf = STATUS_INDICATOR[st]
-          const Icon = conf.icon
+        {/* 统计条可点击筛选：全部 + 各状态,点击切换 status 筛选 */}
+        {(
+          [
+            { key: 'all', label: '全部', icon: null as LucideIcon | null },
+            { key: 'draft', label: '草稿', icon: STATUS_INDICATOR.draft.icon },
+            { key: 'in_review', label: '签核中', icon: STATUS_INDICATOR.in_review.icon },
+            { key: 'approved', label: '已通过', icon: STATUS_INDICATOR.approved.icon },
+            { key: 'rejected', label: '已驳回', icon: STATUS_INDICATOR.rejected.icon },
+            { key: 'voided', label: '已作废', icon: STATUS_INDICATOR.voided.icon },
+          ] as Array<{ key: string; label: string; icon: LucideIcon | null }>
+        ).map((item) => {
+          const count = item.key === 'all' ? items.length : items.filter((o) => (o.status || 'draft') === item.key).length
+          const active = status === item.key
+          const Icon = item.icon
+          const color = item.key === 'all' ? '' : STATUS_INDICATOR[item.key as MrStatus].color
           return (
-            <span key={st} className="inline-flex items-baseline gap-1.5">
-              <Icon className={`h-3.5 w-3.5 ${conf.color} translate-y-0.5`} />
-              <span className="text-muted-foreground">{STATUS_LABELS[st]}</span>
-              <span className="text-base font-bold">{count}</span>
-            </span>
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setStatus(item.key)}
+              aria-pressed={active}
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm transition-colors ${
+                active ? 'bg-primary font-medium text-white' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
+              }`}
+            >
+              {Icon ? <Icon className={`h-3.5 w-3.5 ${active ? '' : color}`} /> : null}
+              <span>{item.label}</span>
+              <span className="font-bold tabular-nums">{count}</span>
+            </button>
           )
         })}
       </div>
@@ -374,7 +407,7 @@ export function MrListPage() {
       </Card>
 
       <div className="overflow-hidden rounded-xl border bg-card">
-        <div ref={tableScrollRef} className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto">
+        <div ref={tableScrollRef}>
           <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
                 <col className="w-[280px]" />
@@ -383,7 +416,7 @@ export function MrListPage() {
                 <col className="w-[190px]" />
                 <col className="w-[160px]" />
               </colgroup>
-              <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+              <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
                   <TableHead>客户 / Ctrl.NO</TableHead>
                   <TableHead>负责的销售</TableHead>
@@ -417,11 +450,20 @@ export function MrListPage() {
                   </TableCell>
                   <TableCell className="truncate pr-6 text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
                   <TableCell className="truncate">
-                    <StatusHoverButton orderStatus={orderStatus} order={order} stepLabel={stepLabel} assigneeName={order.currentAssigneeName} onFilter={() => setStatus(orderStatus)} />
-                    {orderStatus === 'approved' && order.purchaseStatus ? <button type="button" className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`按采购状态筛选：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
-                      {(() => { const conf = PURCHASE_INDICATOR[order.purchaseStatus || '']; const Icon = conf ? conf.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null })()}
-                      {PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}
-                    </button> : null}
+                    {/* MR 状态与采购状态一行并排,统一 gap 分隔（采购状态字号小一号、灰一点） */}
+                    <div className="group flex items-center gap-1.5">
+                      <StatusHoverButton orderStatus={orderStatus} order={order} stepLabel={stepLabel} assigneeName={order.currentAssigneeName} onFilter={() => setStatus(orderStatus)} />
+                      {orderStatus === 'approved' && order.purchaseStatus ? (
+                        <>
+                          {/* 流程递进箭头：常驻琥珀色（呼应采购状态色）,无打扰动效 */}
+                          <ArrowRight className="h-3 w-3 shrink-0 text-amber-600/80" />
+                          <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`采购状态：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}${order.updatedAt ? ` · 更新于 ${shortDate(order.updatedAt)}` : ''}（点击按采购状态筛选）`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
+                            {(() => { const conf = PURCHASE_INDICATOR[order.purchaseStatus || '']; const Icon = conf ? conf.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null })()}
+                            {PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
 
                     {order.assignmentError ? <div className="mt-1 truncate text-xs text-destructive">流程暂停：{order.assignmentError}</div> : null}
                   </TableCell>
@@ -434,11 +476,10 @@ export function MrListPage() {
         </div>
         {!loading && items.length > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5 text-sm text-muted-foreground">
-            <span>共 {items.length} 条 · 第 {page} / {pageCount} 页（每页 {PAGE_SIZE} 条）</span>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>上一页</Button>
-              <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>下一页</Button>
-            </div>
+            <span>共 {items.length} 条 · 已加载 {Math.min(page * PAGE_SIZE, items.length)} 条</span>
+            <span className="text-xs text-muted-foreground">
+              {page >= pageCount ? <span className="text-emerald-600">已全部加载</span> : "向下滚动继续加载"}
+            </span>
           </div>
         ) : null}
       </div>
