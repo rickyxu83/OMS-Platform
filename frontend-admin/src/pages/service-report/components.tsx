@@ -585,7 +585,7 @@ export function ReportSection({
             </span>
           ) : null}
           <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold text-foreground">{title}</h2>
+            <h2 title={title} className="truncate text-base font-semibold text-foreground">{title}</h2>
             {tag ? <div className="mt-0.5 hidden text-xs text-muted-foreground sm:block">{tag}</div> : null}
           </div>
         </div>

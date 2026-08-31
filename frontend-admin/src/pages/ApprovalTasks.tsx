@@ -511,10 +511,10 @@ export function ApprovalTasks() {
                         <TableCell className="min-w-0">
                           <div className="min-w-0">
                             <div className="truncate font-medium" title={task.title}>{task.title}</div>
-                            <div className="truncate text-xs text-muted-foreground">{subtitleOf(task)}</div>
+                            <div title={subtitleOf(task)} className="truncate text-xs text-muted-foreground">{subtitleOf(task)}</div>
                           </div>
                         </TableCell>
-                        <TableCell className="min-w-0"><span className="block truncate text-sm">{task.initiatorName || '-'}</span></TableCell>
+                        <TableCell className="min-w-0"><span title={task.initiatorName || '-'} className="block truncate text-sm">{task.initiatorName || '-'}</span></TableCell>
                         <TableCell><TaskStatusHover task={task} /></TableCell>
                         <TableCell className="whitespace-normal">{timeCell(task)}</TableCell>
                         <TableCell onClick={(event) => event.stopPropagation()}>

@@ -112,16 +112,16 @@ export function ResponsiveCard({
       {...interactiveProps}
     >
       <div className="flex min-w-0 items-center justify-between gap-2">
-        <div className="min-w-0 truncate text-sm font-semibold">{title}</div>
+        <div title={typeof title === "string" ? title : undefined} className="min-w-0 truncate text-sm font-semibold">{title}</div>
         {status ? <div className="shrink-0">{status}</div> : null}
       </div>
-      {subtitle ? <div className="min-w-0 truncate text-sm text-muted-foreground">{subtitle}</div> : null}
+      {subtitle ? <div title={typeof subtitle === "string" ? subtitle : undefined} className="min-w-0 truncate text-sm text-muted-foreground">{subtitle}</div> : null}
       {fields?.length ? (
         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
           {fields.map((field, i) => (
             <div key={i} className="min-w-0">
               <div className="text-xs text-muted-foreground">{field.label}</div>
-              <div className="min-w-0 truncate text-sm">{field.value}</div>
+              <div title={typeof field.value === "string" ? field.value : undefined} className="min-w-0 truncate text-sm">{field.value}</div>
             </div>
           ))}
         </div>

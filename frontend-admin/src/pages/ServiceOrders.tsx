@@ -2402,7 +2402,7 @@ export function ServiceOrders() {
               {createFiles.length > 0 && (
                 <div className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
                   {createFiles.map((file) => (
-                    <div key={`${file.name}-${file.size}`} className="truncate">{file.name}</div>
+                    <div title={file.name} key={`${file.name}-${file.size}`} className="truncate">{file.name}</div>
                   ))}
                 </div>
               )}
@@ -2475,7 +2475,7 @@ export function ServiceOrders() {
               {assignFiles.length > 0 && (
                 <div className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
                   {assignFiles.map((file) => (
-                    <div key={`${file.name}-${file.size}`} className="truncate">{file.name}</div>
+                    <div title={file.name} key={`${file.name}-${file.size}`} className="truncate">{file.name}</div>
                   ))}
                 </div>
               )}

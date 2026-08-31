@@ -51,8 +51,8 @@ export function CustomerIndexSuggestions<T extends IndexedCustomer>({
         }}
       >
         <span className="min-w-0">
-          <span className="block truncate text-base font-semibold text-foreground sm:text-sm">{customerName(customer)}</span>
-          <span className="mt-0.5 hidden line-clamp-2 text-xs text-muted-foreground sm:block">{customerMeta(customer)}</span>
+          <span title={customerName(customer)} className="block truncate text-base font-semibold text-foreground sm:text-sm">{customerName(customer)}</span>
+          <span title={customerMeta(customer)} className="mt-0.5 hidden line-clamp-2 text-xs text-muted-foreground sm:block">{customerMeta(customer)}</span>
         </span>
         {badge ? <Badge className="hidden sm:inline-flex" variant="secondary">{badge}</Badge> : selected ? <Badge className="hidden sm:inline-flex" variant="outline">已选择</Badge> : null}
       </button>

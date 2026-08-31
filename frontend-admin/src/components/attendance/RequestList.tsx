@@ -351,7 +351,7 @@ export function RequestList({
       title={(
         <span className="flex min-w-0 flex-wrap items-center gap-1.5">
           {requestTypeIndicator(item.requestType)}
-          {showEmployee ? <span className="truncate">{item.employeeName || "-"}</span> : requestDetailContent(item)}
+          {showEmployee ? <span title={item.employeeName || "-"} className="truncate">{item.employeeName || "-"}</span> : requestDetailContent(item)}
         </span>
       )}
       status={statusIndicator(item.status)}
@@ -371,7 +371,7 @@ export function RequestList({
         title={(
           <span className="flex min-w-0 flex-wrap items-center gap-1.5">
             {requestTypeIndicator("overtime")}
-            {showEmployee ? <span className="truncate">{rep.employeeName || "-"}</span> : <span className="font-medium">工单加班（{group.length} 段同组）</span>}
+            {showEmployee ? <span title={rep.employeeName || "-"} className="truncate">{rep.employeeName || "-"}</span> : <span className="font-medium">工单加班（{group.length} 段同组）</span>}
           </span>
         )}
         status={statusIndicator(rep.status)}
@@ -786,7 +786,7 @@ function requestMetaRow(
   const linkedOrderNo = item.requestType === "overtime" && item.sourceType === "service_order" ? item.serviceOrder?.orderNo : undefined;
   const reasonRedundant = Boolean(item.reason && linkedOrderNo && (item.reason as string).includes(linkedOrderNo));
   if (item.reason && !reasonRedundant) {
-    segs.push(<span key="reason" className="min-w-0 truncate">{item.reason}</span>);
+    segs.push(<span title={item.reason} key="reason" className="min-w-0 truncate">{item.reason}</span>);
     titleParts.push(item.reason);
   }
 

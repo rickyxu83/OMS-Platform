@@ -44,7 +44,7 @@ export function SectionNav({
             } ${active ? 'bg-primary/10 font-medium text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
           >
             <Icon className="size-4 shrink-0" />
-            <span className={vertical ? 'min-w-0 flex-1 truncate' : ''}>{title}</span>
+            <span title={title} className={vertical ? 'min-w-0 flex-1 truncate' : ''}>{title}</span>
             {count === undefined ? null : <span className="shrink-0 text-xs tabular-nums opacity-70">{count}</span>}
             {errors ? (
               <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-destructive text-[10px] font-semibold text-white tabular-nums">
@@ -78,7 +78,7 @@ export function WorkbenchMetrics({ order, animationKey = 0 }: { order: MrOrder; 
       {metrics.map(({ label, value, warning }) => (
         <div key={`${label}-${animationKey}`} className={`min-w-0 bg-card px-4 py-3 sm:px-5 ${animationKey ? 'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-700' : ''}`}>
           <div className="text-xs text-muted-foreground">{label}</div>
-          <div className={`mt-1 truncate text-lg font-semibold tabular-nums ${warning ? 'text-red-600' : ''}`}>{value}</div>
+          <div title={typeof value === "string" ? value : undefined} className={`mt-1 truncate text-lg font-semibold tabular-nums ${warning ? 'text-red-600' : ''}`}>{value}</div>
         </div>
       ))}
     </div>

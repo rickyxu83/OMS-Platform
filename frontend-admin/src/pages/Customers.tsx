@@ -1325,7 +1325,7 @@ export function Customers() {
                 {c.name}
               </button>
             ) : (
-              <span className="truncate">{t.misc.unknown}</span>
+              <span title={t.misc.unknown} className="truncate">{t.misc.unknown}</span>
             )}
           </span>
         }
@@ -1806,10 +1806,10 @@ export function Customers() {
                                   {c.name}
                                 </button>
                               ) : (
-                                <div className="truncate font-medium">{t.misc.unknown}</div>
+                                <div title={t.misc.unknown} className="truncate font-medium">{t.misc.unknown}</div>
                               )}
                               <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                                {c.salesperson ? <span className="truncate">{t.list.salesperson}：{c.salesperson}</span> : null}
+                                {c.salesperson ? <span className="truncate" title={`${t.list.salesperson}：${c.salesperson}`}>{t.list.salesperson}：{c.salesperson}</span> : null}
                                 {c.latitude && c.longitude ? (
                                   <span className="group relative inline-flex">
                                     <MapPin className="h-3 w-3 cursor-default text-emerald-600" />
@@ -1841,7 +1841,7 @@ export function Customers() {
                           </button>
                         </TableCell>
                         <TableCell className="min-w-0">
-                          <span className="block truncate text-muted-foreground">{c.address || t.misc.unknown}</span>
+                          <span title={c.address || t.misc.unknown} className="block truncate text-muted-foreground">{c.address || t.misc.unknown}</span>
                         </TableCell>
                         <TableCell onClick={(event) => event.stopPropagation()}>
                           {canManageCustomer || canDeleteCustomer ? (
@@ -1911,7 +1911,7 @@ export function Customers() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-slate-900">{customer.name || t.misc.unknown}</div>
+                        <div title={customer.name || t.misc.unknown} className="truncate text-sm font-semibold text-slate-900">{customer.name || t.misc.unknown}</div>
                         <div className="mt-1 text-xs text-muted-foreground">{customer.code || `客户 #${customer.id}`}</div>
                       </div>
                       {selected ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
@@ -1919,7 +1919,7 @@ export function Customers() {
                     <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
                       <div>{t.list.salesperson}：{customer.salesperson || t.misc.unknown}</div>
                       <div>{t.dialog.serviceOrderCount}：{Number(customer.serviceOrderCount || 0)}</div>
-                      <div className="truncate">{t.list.address}：{customer.address || t.misc.unknown}</div>
+                      <div className="truncate" title={`${t.list.address}：${customer.address || t.misc.unknown}`}>{t.list.address}：{customer.address || t.misc.unknown}</div>
                     </div>
                   </button>
                 );
@@ -1930,12 +1930,12 @@ export function Customers() {
                 <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
                   <div className="min-w-0">
                     <div className="text-xs text-muted-foreground">{t.dialog.mergeSourceCustomer}</div>
-                    <div className="mt-1 truncate font-semibold text-slate-900">{mergeSource.name || t.misc.unknown}</div>
+                    <div title={mergeSource.name || t.misc.unknown} className="mt-1 truncate font-semibold text-slate-900">{mergeSource.name || t.misc.unknown}</div>
                   </div>
                   <ArrowRightLeft className="hidden h-4 w-4 text-muted-foreground md:block" />
                   <div className="min-w-0">
                     <div className="text-xs text-muted-foreground">{t.dialog.mergeKeepCustomer}</div>
-                    <div className="mt-1 truncate font-semibold text-slate-900">{mergeTarget.name || t.misc.unknown}</div>
+                    <div title={mergeTarget.name || t.misc.unknown} className="mt-1 truncate font-semibold text-slate-900">{mergeTarget.name || t.misc.unknown}</div>
                   </div>
                 </div>
               </div>
@@ -2027,7 +2027,7 @@ export function Customers() {
                     <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">{t.list.salesperson}</div>
-                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.salesperson || t.misc.unknown}</div>
+                        <div title={detailTarget.salesperson || t.misc.unknown} className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.salesperson || t.misc.unknown}</div>
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">{t.dialog.serviceOrderCount}</div>
@@ -2125,7 +2125,7 @@ export function Customers() {
                                 className="block rounded-md bg-slate-50 px-3 py-2 transition-colors hover:bg-slate-100 hover:ring-1 hover:ring-primary/20"
                                 title="点击查看设备详情"
                               >
-                                <div className="truncate text-sm font-medium text-primary">{customerDeviceLabel(device)}</div>
+                                <div title={customerDeviceLabel(device)} className="truncate text-sm font-medium text-primary">{customerDeviceLabel(device)}</div>
                                 <div className="mt-0.5 truncate text-xs text-muted-foreground">
                                   {[device.model, device.serialNo].filter(Boolean).join(" · ") || t.misc.unknown}
                                 </div>
@@ -2376,7 +2376,7 @@ export function Customers() {
                           )}
                         </div>
                         {c.address ? (
-                          <div className="text-xs text-muted-foreground truncate">{c.address}</div>
+                          <div title={c.address} className="text-xs text-muted-foreground truncate">{c.address}</div>
                         ) : null}
                       </div>
                     </button>

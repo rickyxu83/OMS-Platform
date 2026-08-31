@@ -2142,7 +2142,7 @@ export function Devices() {
                             ) : (
                               <div className="truncate text-sm text-muted-foreground">-</div>
                             )}
-                            <div className="truncate text-xs text-muted-foreground">截止 {formatDate(device.maintenanceEnd)}</div>
+                            <div className="truncate text-xs text-muted-foreground" title={`截止 ${formatDate(device.maintenanceEnd)}`}>截止 {formatDate(device.maintenanceEnd)}</div>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -2260,7 +2260,7 @@ export function Devices() {
                       }}
                     >
                       <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1 truncate text-primary hover:underline">{file.originalName || `附件 #${file.id}`}</span>
+                      <span className="min-w-0 flex-1 truncate text-primary hover:underline" title={file.originalName || `附件 #${file.id}`}>{file.originalName || `附件 #${file.id}`}</span>
                       <span className="shrink-0 text-xs text-muted-foreground">{ATTACHMENT_PURPOSE_LABELS[file.purpose || "general"] || "其他"}</span>
                     </button>
                   ))}
@@ -2305,7 +2305,7 @@ export function Devices() {
                     <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">型号</div>
-                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.model || "-"}</div>
+                        <div title={detailTarget.model || "-"} className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.model || "-"}</div>
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">SN</div>
@@ -2324,7 +2324,7 @@ export function Devices() {
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">MR单</div>
-                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.mrNo || "-"}</div>
+                        <div title={detailTarget.mrNo || "-"} className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.mrNo || "-"}</div>
                       </div>
                       <div className="rounded-md bg-white/80 p-3 ring-1 ring-border/70">
                         <div className="text-xs text-muted-foreground">维保方</div>
@@ -2338,7 +2338,7 @@ export function Devices() {
                             {detailTarget.maintenancePartyName || "-"}
                           </button>
                         ) : (
-                          <div className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.maintenancePartyName || "-"}</div>
+                          <div title={detailTarget.maintenancePartyName || "-"} className="mt-1 truncate text-sm font-semibold text-slate-900">{detailTarget.maintenancePartyName || "-"}</div>
                         )}
                       </div>
                     </div>
@@ -3854,7 +3854,7 @@ export function Devices() {
                     .filter((item): item is Device => Boolean(item))
                     .map((item) => (
                       <div key={String(item.id)} className="flex items-center gap-2 rounded-md border bg-primary/5 px-2.5 py-2 text-sm">
-                        <span className="min-w-0 flex-1 truncate">{deviceSnLabel(item)}</span>
+                        <span title={deviceSnLabel(item)} className="min-w-0 flex-1 truncate">{deviceSnLabel(item)}</span>
                         <button
                           type="button"
                           className="shrink-0 text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-rose-600 hover:underline"
@@ -3885,7 +3885,7 @@ export function Devices() {
                         className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent"
                         onClick={() => setMergeTargetIds((prev) => Array.from(new Set([...prev, String(item.id)])))}
                       >
-                        <span className="min-w-0 flex-1 truncate">{deviceSnLabel(item)}</span>
+                        <span title={deviceSnLabel(item)} className="min-w-0 flex-1 truncate">{deviceSnLabel(item)}</span>
                         <span className="shrink-0 text-xs text-primary">添加</span>
                       </button>
                     ))}

@@ -1675,7 +1675,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
       <Dialog open={Boolean(pdfPreview)} onOpenChange={(open) => { if (!open) setPdfPreview(null) }}>
         <DialogContent className="flex max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[980px]">
           <DialogHeader className="border-b px-5 pb-4 pt-5 pr-12 sm:px-6 sm:pt-6">
-            <DialogTitle className="truncate">{pdfPreview?.file.name || '附件预览'}</DialogTitle>
+            <DialogTitle title={pdfPreview?.file.name || '附件预览'} className="truncate">{pdfPreview?.file.name || '附件预览'}</DialogTitle>
             <DialogDescription>
               {pdfPreview ? `PDF 在线预览 · ${fileSizeText(pdfPreview.file.size) || '大小未知'}` : ''}
             </DialogDescription>
@@ -1706,7 +1706,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
       <Dialog open={Boolean(officePreview)} onOpenChange={(open) => { if (!open) setOfficePreview(null) }}>
         <DialogContent className="flex max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[980px]">
           <DialogHeader className="border-b px-5 pb-4 pt-5 pr-12 sm:px-6 sm:pt-6">
-            <DialogTitle className="truncate">{officePreview?.file.name || '附件预览'}</DialogTitle>
+            <DialogTitle title={officePreview?.file.name || '附件预览'} className="truncate">{officePreview?.file.name || '附件预览'}</DialogTitle>
             <DialogDescription>
               {officePreview ? `Word/Excel 在线预览 · ${fileSizeText(officePreview.file.size) || '大小未知'}` : ''}
             </DialogDescription>

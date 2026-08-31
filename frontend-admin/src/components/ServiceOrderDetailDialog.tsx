@@ -240,7 +240,7 @@ function FileList({
             onClick={() => onDownloadFile?.(file)}
           >
             <span className="min-w-0">
-              <span className="block truncate font-medium">{file.originalName || `${title} #${file.id}`}</span>
+              <span className="block truncate font-medium" title={file.originalName || `${title} #${file.id}`}>{file.originalName || `${title} #${file.id}`}</span>
               <span className="text-xs text-muted-foreground">{filePurposeLabel(file.purpose)} · {formatFileSize(file.size)}</span>
             </span>
             <Download className="h-4 w-4 shrink-0 text-muted-foreground" />

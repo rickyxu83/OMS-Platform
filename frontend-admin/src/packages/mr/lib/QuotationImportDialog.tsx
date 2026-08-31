@@ -115,7 +115,7 @@ function FileDropZone({
         <div className="mt-1 space-y-1">
           {files.map((file, index) => (
             <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-2 border bg-background px-2 py-1 text-xs">
-              <span className="min-w-0 truncate">{file.name}</span>
+              <span title={file.name} className="min-w-0 truncate">{file.name}</span>
               <button
                 type="button"
                 aria-label={`移除 ${file.name}`}
@@ -547,7 +547,7 @@ export function QuotationImportDialog({
             <div className="grid gap-2 sm:grid-cols-2">
               {storedFiles.map((file) => (
                 <button key={file.id} type="button" onClick={() => void downloadQuotation(orderId, file.id, file.name)} className="flex min-w-0 items-center justify-between gap-3 border px-3 py-2 text-left hover:bg-muted">
-                  <span className="min-w-0 truncate text-sm">{file.name}</span>
+                  <span title={file.name} className="min-w-0 truncate text-sm">{file.name}</span>
                   <Download className="size-4 shrink-0 text-muted-foreground" />
                 </button>
               ))}
