@@ -170,6 +170,7 @@ export function MrListPage() {
   const [selectedSalesId, setSelectedSalesId] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [page, setPage] = useState(1)
+  const pageCountRef = useRef(1)
   const tableScrollRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
@@ -212,17 +213,26 @@ export function MrListPage() {
   useEffect(() => { void load() }, [load])
 
   const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
-  const pagedItems = useMemo(() => items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [items, page])
+  pageCountRef.current = pageCount
+  // 无限滚动：数据一次拉全,滚动触底把已展示条数扩一档（slice 累积,非翻页替换）
+  const pagedItems = useMemo(() => items.slice(0, page * PAGE_SIZE), [items, page])
   // 筛选/搜索变化时回到第一页；数据变少时收敛页码
   useEffect(() => { setPage(1) }, [q, status, purchaseStatus, customerFilterId, salesFilterId, dateFrom, dateTo, pendingMine])
-  useEffect(() => { if (page > pageCount) setPage(pageCount) }, [page, pageCount])
-  // 翻页后表体滚动区回顶部，避免停留在上一页的滚动位置
+  // 无限滚动：接近最近滚动祖先底部时扩展示条数
   useEffect(() => {
-    // 表格改为随页面整体滚动后,翻页回到最近滚动祖先顶部
-    const scroller = document.querySelector('.mobile-admin-content') as HTMLElement | null
-    if (scroller) scroller.scrollTo({ top: 0 })
-    else window.scrollTo({ top: 0 })
-  }, [page])
+    if (!items.length) return
+    const onScroll = () => {
+      const scroller = document.querySelector('.mobile-admin-content') as HTMLElement | null
+      const near = scroller
+        ? scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 320
+        : window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 320
+      if (near) setPage((current) => Math.min(pageCountRef.current, current + 1))
+    }
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true })
+    return () => window.removeEventListener('scroll', onScroll, { capture: true })
+  }, [items.length])
+  useEffect(() => { if (page > pageCount) setPage(pageCount) }, [page, pageCount])
+
 
   const resetFilters = () => {
     setQueryInput('')
@@ -457,11 +467,10 @@ export function MrListPage() {
         </div>
         {!loading && items.length > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5 text-sm text-muted-foreground">
-            <span>共 {items.length} 条 · 第 {page} / {pageCount} 页（每页 {PAGE_SIZE} 条）</span>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>上一页</Button>
-              <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>下一页</Button>
-            </div>
+            <span>共 {items.length} 条 · 已加载 {Math.min(page * PAGE_SIZE, items.length)} 条</span>
+            <span className="text-xs text-muted-foreground">
+              {page >= pageCount ? <span className="text-emerald-600">已全部加载</span> : "向下滚动继续加载"}
+            </span>
           </div>
         ) : null}
       </div>
