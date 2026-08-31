@@ -908,7 +908,7 @@ export function InspectionSchedules() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
+          <div>
             {loading ? (
               <div className="space-y-3 p-1">
                 {Array.from({ length: 4 }).map((_, i) => (

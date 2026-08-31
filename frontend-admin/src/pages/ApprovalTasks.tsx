@@ -467,7 +467,7 @@ export function ApprovalTasks() {
             />
           </div>
         ) : (
-          <div className="max-h-[62vh] overflow-auto">
+          <div>
             <ResponsiveList items={filteredItems} keyExtractor={(task) => String(task.id)} renderCard={renderTaskCard}>
               <table className="w-full table-fixed caption-bottom text-sm">
                 <colgroup>
@@ -478,7 +478,7 @@ export function ApprovalTasks() {
                   <col className="w-[17%]" />
                   <col className="w-[11%]" />
                 </colgroup>
-                <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+                <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                   <TableRow>
                     <TableHead>业务</TableHead>
                     <TableHead>标题</TableHead>

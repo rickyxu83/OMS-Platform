@@ -2070,7 +2070,7 @@ export function ServiceOrders() {
       </Card>
 
       <div className="overflow-hidden rounded-xl border bg-card">
-        <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-auto">
+        <div>
             {initialLoading ? (
               <div className="p-2">
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -2099,7 +2099,7 @@ export function ServiceOrders() {
                 <col className="w-[12%]" />
                 <col className="w-[12%]" />
               </colgroup>
-              <TableHeader className="text-xs text-muted-foreground [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted/70 [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:backdrop-blur">
+              <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
                   <TableHead className="w-11 text-center">
                     <Checkbox
