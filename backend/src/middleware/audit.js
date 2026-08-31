@@ -45,7 +45,9 @@ function auditTarget(req) {
 function auditLogger(req, res, next) {
   const startedAt = Date.now()
   res.on('finish', () => {
-    if (!req.user || !actionByMethod[req.method]) return
+    if (!req.user || req.method === 'GET' || !actionByMethod[req.method]) return
+    // GET/read 审计降噪：列表/查询每请求一记会在同一时刻产生大量相同 read 记录,
+    // 审计只保留写操作（create/update/delete）与既有业务审计,读操作不再留痕
     if (req.path === '/health') return
 
     const { targetType, targetId } = auditTarget(req)

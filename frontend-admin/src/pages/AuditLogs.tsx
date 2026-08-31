@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, RefreshCw, Download, AlertTriangle, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -123,6 +123,12 @@ export function AuditLogs() {
   const [riskyOnly, setRiskyOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const loadingRef = useRef(false);
+  const pageRef = useRef(1);
+  const totalPagesRef = useRef(1);
+  useEffect(() => { loadingRef.current = loading }, [loading]);
+  useEffect(() => { pageRef.current = page }, [page]);
+  useEffect(() => { totalPagesRef.current = Math.max(1, Math.ceil(total / pageSize)) }, [total, pageSize]);
 
   async function load() {
     setLoading(true);
@@ -141,7 +147,9 @@ export function AuditLogs() {
       if (to) params.set("to", to);
       if (riskyOnly) params.set("riskyOnly", "1");
       const data = await api.get(`/audit-logs?${params.toString()}`);
-      setLogs((data?.items || []) as AuditLog[]);
+      const items = (data?.items || []) as AuditLog[];
+      // 无限滚动：page>1 追加并按 id 去重,page===1 替换
+      setLogs((prev) => (page > 1 ? Array.from(new Map([...prev, ...items].map((item) => [String(item.id), item])).values()) : items));
       setTotal(Number(data?.total || 0));
       const returnedPage = Number(data?.page || page);
       const returnedPageSize = Number(data?.pageSize || pageSize);
@@ -169,6 +177,21 @@ export function AuditLogs() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize, searchQuery, actorFilter, actionFilter, from, to, riskyOnly]);
 
+  // 无限滚动：接近最近滚动祖先底部时加载下一页
+  useEffect(() => {
+    const onScroll = () => {
+      if (loadingRef.current) return;
+      if (pageRef.current >= totalPagesRef.current) return;
+      const scroller = document.querySelector('.mobile-admin-content') as HTMLElement | null;
+      const near = scroller
+        ? scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 320
+        : window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 320;
+      if (near) setPage((current) => Math.min(totalPagesRef.current, current + 1));
+    };
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    return () => window.removeEventListener('scroll', onScroll, { capture: true });
+  }, []);
+
   const filtered = logs;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pageStart = total ? (page - 1) * pageSize + 1 : 0;
@@ -189,7 +212,12 @@ export function AuditLogs() {
     return [
       { label: "日志总数", value: total },
       { label: "当前页记录", value: loaded },
-      { label: "风险操作", value: warnings },
+      {
+        label: "风险操作",
+        value: warnings,
+        onClick: () => setRiskyOnly((value) => !value),
+        active: riskyOnly,
+      },
       { label: "平均耗时", value: `${avgDuration}ms` },
     ];
   }, [logs, total]);
@@ -233,138 +261,107 @@ export function AuditLogs() {
 
       <ErrorToast message={error} />
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {stats.map((stat, statIndex) => (
-          <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-            <CardContent className="pt-6">
-              <div className="text-sm text-muted-foreground">{stat.label}</div>
-              <div className="text-2xl font-bold mt-1">
-                                {loading ? (
-                  <Skeleton className="h-8 w-16" />
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-1 text-sm">
+        {stats.map((stat, statIndex) => {
+          const content = (
+            <>
+              {stat.label}
+              <b className="font-semibold tabular-nums text-foreground">
+                {loading ? (
+                  <Skeleton className="inline-block h-4 w-10" />
                 ) : (
                   <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
                 )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </b>
+            </>
+          );
+          return stat.onClick ? (
+            <button
+              key={stat.label}
+              type="button"
+              onClick={stat.onClick}
+              aria-pressed={stat.active}
+              className={`inline-flex cursor-pointer items-baseline gap-1.5 text-sm transition-colors ${stat.active ? "text-primary font-medium" : "text-muted-foreground hover:text-primary"}`}
+            >
+              {content}
+            </button>
+          ) : (
+            <span key={stat.label} className="inline-flex items-baseline gap-1.5 text-sm text-muted-foreground">
+              {content}
+            </span>
+          );
+        })}
       </div>
 
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col md:flex-row gap-3">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  className="pl-9"
-                  placeholder="搜索操作人、描述、IP…"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setPage(1);
-                  }}
-                />
-              </div>
-              <Select
-                value={actorFilter}
-                onValueChange={(value) => {
-                  setActorFilter(value);
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative min-w-[220px] flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="搜索操作人、描述、IP…"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
                   setPage(1);
                 }}
-              >
-                <SelectTrigger className="w-full md:w-[180px]">
-                  <SelectValue placeholder="全部人员" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部人员</SelectItem>
-                  {users.map((user) => (
-                    <SelectItem key={String(user.id)} value={String(user.id)}>
-                      {userOptionName(user)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={actionFilter}
-                onValueChange={(value) => {
-                  setActionFilter(value);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full md:w-[150px]">
-                  <SelectValue placeholder="全部动作" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部动作</SelectItem>
-                  <SelectItem value="read">查询</SelectItem>
-                  <SelectItem value="create">新增</SelectItem>
-                  <SelectItem value="update">修改</SelectItem>
-                  <SelectItem value="delete">删除</SelectItem>
-                </SelectContent>
-              </Select>
+              />
             </div>
-            <div className="flex flex-col md:flex-row md:items-end gap-3">
-              <div className="space-y-2">
-                <Label>日期范围</Label>
-                <div className="w-[240px]">
-                  <DateRangePicker
-                    start={from}
-                    end={to}
-                    onChange={(s2, e2) => { setFrom(s2); setTo(e2); setPage(1); }}
-                    placeholder="开始日期 ~ 结束日期"
-                    ariaLabel="审计日志日期范围"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-2 px-3 h-9 border border-border rounded-md">
-                <Switch
-                  id="risky-only"
-                  checked={riskyOnly}
-                  onCheckedChange={(checked) => {
-                    setRiskyOnly(checked);
-                    setPage(1);
-                  }}
-                />
-                <Label htmlFor="risky-only" className="cursor-pointer text-sm">
-                  <span className="inline-flex items-center gap-1">
-                    仅看风险操作
-                    <HelpTooltip label={RISKY_AUDIT_HELP} />
-                  </span>
-                </Label>
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSearchQuery("");
-                  setActorFilter("all");
-                  setActionFilter("all");
-                  setFrom("");
-                  setTo("");
-                  setRiskyOnly(false);
-                  setPage(1);
-                }}
-              >
-                <RotateCcw className="w-4 h-4 mr-2" />
-                重置
-              </Button>
+            <Select
+              value={actorFilter}
+              onValueChange={(value) => {
+                setActorFilter(value);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="全部人员" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部人员</SelectItem>
+                {users.map((user) => (
+                  <SelectItem key={String(user.id)} value={String(user.id)}>
+                    {userOptionName(user)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="w-[240px]">
+              <DateRangePicker
+                start={from}
+                end={to}
+                onChange={(s2, e2) => { setFrom(s2); setTo(e2); setPage(1); }}
+                placeholder="开始日期 ~ 结束日期"
+                ariaLabel="审计日志日期范围"
+              />
             </div>
+            <Button variant="outline" onClick={() => {
+              setSearchQuery("");
+              setActorFilter("all");
+              setActionFilter("all");
+              setFrom("");
+              setTo("");
+              setRiskyOnly(false);
+              setPage(1);
+            }}>
+              <RotateCcw className="w-4 h-4 mr-2" />
+              重置
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>审计日志 ({total})</CardTitle>
-            <CardDescription>
-              按时间倒序展示当前筛选范围内的操作记录
-              {total > 0 ? `，当前第 ${pageStart}-${pageEnd} 条` : ""}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[62vh] min-h-[360px] max-h-[680px] overflow-y-auto pr-1">
-              {loading ? (
+      <Card>
+        <CardHeader>
+          <CardTitle>审计日志 ({total})</CardTitle>
+          <CardDescription>
+            按时间倒序展示当前筛选范围内的操作记录{total > 0 ? `，已加载 ${pageEnd} / ${total} 条` : ""}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div>
+            {loading ? (
                 <div className="flex h-full items-center justify-center text-muted-foreground">
                   <span className="btn-loader mr-2" aria-hidden="true" /> 正在加载…
                 </div>
@@ -400,31 +397,42 @@ export function AuditLogs() {
                             <span className="text-sm text-muted-foreground">
                               {resourceName(log)}
                             </span>
-                            {severity === "danger" && (
-                              <AlertTriangle className="w-4 h-4 text-destructive" />
-                            )}
+                            <span className="ml-auto inline-flex items-center gap-2">
+                              {severity === "danger" && (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
+                                  <AlertTriangle className="w-3.5 h-3.5" />风险
+                                </span>
+                              )}
+                              {severity === "warn" && (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                                  <AlertTriangle className="w-3.5 h-3.5" />注意
+                                </span>
+                              )}
+                            </span>
                           </div>
                           {log.detail?.message && (
                             <div className="text-sm mb-1 text-foreground/80">
                               {String(log.detail.message)}
                             </div>
                           )}
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
                             <span>
                               来源: {String(log.detail?.ip || "-")}
                               {log.detail?.location ? `（${String(log.detail.location)}）` : ""}
                             </span>
-                            <span>
-                              状态:{" "}
-                              {code >= 400 ? (
-                                <span className="text-destructive font-medium">异常 ({code})</span>
-                              ) : code > 0 ? (
-                                <span className="text-emerald-600 font-medium">成功 ({code})</span>
-                              ) : (
-                                <span>-</span>
-                              )}
+                            <span className="inline-flex items-center gap-4">
+                              <span>
+                                状态:{" "}
+                                {code >= 400 ? (
+                                  <span className="text-destructive font-medium">异常 ({code})</span>
+                                ) : code > 0 ? (
+                                  <span className="text-emerald-600 font-medium">成功 ({code})</span>
+                                ) : (
+                                  <span>-</span>
+                                )}
+                              </span>
+                              <span className="tabular-nums">耗时: {Number(log.detail?.durationMs || 0)}ms</span>
                             </span>
-                            <span>耗时: {Number(log.detail?.durationMs || 0)}ms</span>
                           </div>
                         </div>
                       </div>
@@ -434,112 +442,20 @@ export function AuditLogs() {
                 </div>
               )}
             </div>
-            <div className="mt-4 flex flex-col gap-3 border-t pt-4 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span>每页</span>
-                <Select
-                  value={String(pageSize)}
-                  onValueChange={(value) => {
-                    setPageSize(Number(value));
-                    setPage(1);
-                  }}
-                >
-                  <SelectTrigger className="h-8 w-[92px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="20">20 条</SelectItem>
-                    <SelectItem value="50">50 条</SelectItem>
-                    <SelectItem value="100">100 条</SelectItem>
-                  </SelectContent>
-                </Select>
-                <span>共 {total} 条</span>
-              </div>
-              <div className="flex items-center justify-between gap-3 md:justify-end">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  disabled={loading || page <= 1}
-                >
-                  上一页
-                </Button>
-                <span className="min-w-[92px] text-center text-sm text-muted-foreground">
-                  {page} / {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-                  disabled={loading || page >= totalPages}
-                >
-                  下一页
-                </Button>
-              </div>
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-4 text-sm text-muted-foreground">
+              <span>共 {total} 条 · 已加载 {pageEnd} 条</span>
+              <span className="text-xs">
+                {page >= totalPages ? (
+                  <span className="text-emerald-600">已全部加载</span>
+                ) : (
+                  "向下滚动继续加载"
+                )}
+              </span>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>审计摘要</CardTitle>
-            <CardDescription>当前筛选条件下的统计</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label className="text-muted-foreground">当前页平均耗时</Label>
-              <div className="text-2xl font-bold mt-1">{stats[3]?.value}</div>
-            </div>
-            <div>
-              <Label className="text-muted-foreground">
-                <span className="inline-flex items-center gap-1">
-                  风险操作占比
-                  <HelpTooltip label={RISKY_AUDIT_HELP} />
-                </span>
-              </Label>
-              <div className="text-2xl font-bold mt-1 text-destructive">
-                {logs.length
-                  ? `${Math.round(
-                      (logs.filter((l) => severityOf(l) !== "ok").length / logs.length) * 100,
-                    )}%`
-                  : "0%"}
-              </div>
-            </div>
-            <div>
-              <Label className="text-muted-foreground">当前筛选动作</Label>
-              <div className="mt-1">
-                <Badge variant="outline">
-                  {actionFilter === "all" ? "全部动作" : ACTION_LABELS[actionFilter] || actionFilter}
-                </Badge>
-              </div>
-            </div>
-            <div>
-              <Label className="text-muted-foreground">当前筛选人员</Label>
-              <div className="mt-1">
-                <Badge variant="outline">
-                  {actorFilter === "all"
-                    ? "全部人员"
-                    : userOptionName(users.find((user) => String(user.id) === actorFilter) || { id: actorFilter })}
-                </Badge>
-              </div>
-            </div>
-            {searchQuery && (
-              <div>
-                <Label className="text-muted-foreground">搜索关键词</Label>
-                <div className="mt-1 text-sm">{searchQuery}</div>
-              </div>
-            )}
-            {(from || to) && (
-              <div>
-                <Label className="text-muted-foreground">日期范围</Label>
-                <div className="mt-1 text-sm">
-                  {from || "起始不限"} 至 {to || "结束不限"}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+
     </div>
   );
 }
