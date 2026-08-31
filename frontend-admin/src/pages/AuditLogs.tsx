@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ResponsiveList } from "@/components/ResponsiveList";
 import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { api } from "@/services/api";
@@ -84,6 +86,71 @@ function severityOf(log: AuditLog): "danger" | "warn" | "ok" {
   if (["delete", "cancel", "login_failed"].includes(log.action || "")) return "danger";
   if (["update", "transition", "purchase_update"].includes(log.action || "")) return "warn";
   return "ok";
+}
+
+/** 风险/注意小标记（表格与移动端卡片共用） */
+function SeverityMark({ severity }: { severity: "danger" | "warn" | "ok" }) {
+  if (severity === "danger") {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
+        <AlertTriangle className="w-3.5 h-3.5" />风险
+      </span>
+    );
+  }
+  if (severity === "warn") {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+        <AlertTriangle className="w-3.5 h-3.5" />注意
+      </span>
+    );
+  }
+  return null;
+}
+
+/** 折叠明细（无内容不渲染） */
+function AuditDetailCollapse({ log }: { log: AuditLog }) {
+  const detailLines = formatAuditDetailLines(log);
+  if (!detailLines.length) return null;
+  return (
+    <details className="mt-1 text-xs text-muted-foreground">
+      <summary className="cursor-pointer select-none hover:text-foreground">
+        查看明细（{detailLines.length} 项）
+      </summary>
+      <div className="mt-1 space-y-0.5 pl-3 border-l-2 border-border">
+        {detailLines.map((line, lineIdx) => (
+          <div key={lineIdx} className="break-all">{line}</div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+/** 状态码 + 耗时；vertical 用于桌面表格右侧窄列（上下两行） */
+function AuditResultMeta({ log, vertical = false }: { log: AuditLog; vertical?: boolean }) {
+  const code = Number(log.detail?.statusCode || 0);
+  const status =
+    code >= 400 ? (
+      <span className="text-destructive font-medium">异常 ({code})</span>
+    ) : code > 0 ? (
+      <span className="text-emerald-600 font-medium">成功 ({code})</span>
+    ) : (
+      <span>-</span>
+    );
+  const duration = <span className="tabular-nums">{Number(log.detail?.durationMs || 0)}ms</span>;
+  if (vertical) {
+    return (
+      <span className="flex flex-col items-end gap-0.5 text-xs text-muted-foreground">
+        <span>{status}</span>
+        <span>{duration}</span>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-4">
+      <span>状态: {status}</span>
+      <span>耗时: {duration}</span>
+    </span>
+  );
 }
 
 function toCsv(rows: string[][]) {
@@ -383,92 +450,106 @@ export function AuditLogs() {
               ) : filtered.length === 0 ? (
                 <EmptyState title="暂无审计记录" description="当前筛选条件下没有操作日志" />
               ) : (
-                <div className="space-y-2">
-                {filtered.map((log, idx) => {
-                  const severity = severityOf(log);
-                  const actionLabel = auditActionLabel(log.action);
-                  const summary = describeAuditLog(log);
-                  const detailLines = formatAuditDetailLines(log);
-                  const code = Number(log.detail?.statusCode || 0);
-                  return (
-                    <div
-                      key={log.id || `${log.createdAt}-${idx}`}
-                      className={`p-4 border rounded-lg ${
-                        severity === "danger"
-                          ? "border-destructive/50 bg-destructive/5"
-                          : severity === "warn"
-                          ? "border-amber-500/50 bg-amber-50"
-                          : "border-border"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3 flex-wrap">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2 flex-wrap">
-                            <span className="text-xs text-muted-foreground font-mono">
-                              {formatDateTime(log.createdAt)}
-                            </span>
-                            <span className="text-sm font-medium">{actorName(log)}</span>
-                            <Badge variant={ACTION_VARIANT[log.action || ""] || "secondary"}>
-                              {actionLabel}
-                            </Badge>
-                            <span className="ml-auto inline-flex items-center gap-2">
-                              {severity === "danger" && (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
-                                  <AlertTriangle className="w-3.5 h-3.5" />风险
-                                </span>
-                              )}
-                              {severity === "warn" && (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
-                                  <AlertTriangle className="w-3.5 h-3.5" />注意
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                          <div className="text-sm mb-1 text-foreground">
-                            {summary}
-                          </div>
-                          {log.detail?.message && (
-                            <div className="text-sm mb-1 text-foreground/80">
-                              {String(log.detail.message)}
-                            </div>
-                          )}
-                          {detailLines.length > 0 && (
-                            <details className="mb-1 text-xs text-muted-foreground">
-                              <summary className="cursor-pointer select-none hover:text-foreground">
-                                查看明细（{detailLines.length} 项）
-                              </summary>
-                              <div className="mt-1 space-y-0.5 pl-3 border-l-2 border-border">
-                                {detailLines.map((line, lineIdx) => (
-                                  <div key={lineIdx} className="break-all">{line}</div>
-                                ))}
-                              </div>
-                            </details>
-                          )}
-                          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-                            <span>
-                              来源: {String(log.detail?.ip || "-")}
-                              {log.detail?.location ? `（${String(log.detail.location)}）` : ""}
-                            </span>
-                            <span className="inline-flex items-center gap-4">
-                              <span>
-                                状态:{" "}
-                                {code >= 400 ? (
-                                  <span className="text-destructive font-medium">异常 ({code})</span>
-                                ) : code > 0 ? (
-                                  <span className="text-emerald-600 font-medium">成功 ({code})</span>
-                                ) : (
-                                  <span>-</span>
-                                )}
-                              </span>
-                              <span className="tabular-nums">耗时: {Number(log.detail?.durationMs || 0)}ms</span>
-                            </span>
-                          </div>
-                        </div>
+                <ResponsiveList
+                  items={filtered}
+                  keyExtractor={(log, idx) => log.id || `${log.createdAt}-${idx}`}
+                  renderCard={(log) => (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {formatDateTime(log.createdAt)}
+                        </span>
+                        <span className="text-sm font-medium">{actorName(log)}</span>
+                        <Badge variant={ACTION_VARIANT[log.action || ""] || "secondary"}>
+                          {auditActionLabel(log.action)}
+                        </Badge>
+                        <SeverityMark severity={severityOf(log)} />
+                      </div>
+                      <div className="text-sm text-foreground">{describeAuditLog(log)}</div>
+                      {log.detail?.message && (
+                        <div className="text-sm text-foreground/80">{String(log.detail.message)}</div>
+                      )}
+                      <AuditDetailCollapse log={log} />
+                      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+                        <span>
+                          来源: {String(log.detail?.ip || "-")}
+                          {log.detail?.location ? `（${String(log.detail.location)}）` : ""}
+                        </span>
+                        <AuditResultMeta log={log} />
                       </div>
                     </div>
-                  );
-                })}
-                </div>
+                  )}
+                >
+                  <table className="w-full table-fixed caption-bottom text-sm">
+                    <colgroup>
+                      <col className="w-[150px]" />
+                      <col className="w-[110px]" />
+                      <col className="w-[130px]" />
+                      <col />
+                      <col className="w-[150px]" />
+                      <col className="w-[110px]" />
+                    </colgroup>
+                    <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
+                      <TableRow>
+                        <TableHead>时间</TableHead>
+                        <TableHead>操作人</TableHead>
+                        <TableHead>操作</TableHead>
+                        <TableHead>内容</TableHead>
+                        <TableHead>来源</TableHead>
+                        <TableHead className="text-right">结果</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filtered.map((log, idx) => {
+                        const severity = severityOf(log);
+                        return (
+                          <TableRow
+                            key={log.id || `${log.createdAt}-${idx}`}
+                            className={`list-row-enter align-top ${
+                              severity === "danger"
+                                ? "bg-destructive/5"
+                                : severity === "warn"
+                                ? "bg-amber-50/60"
+                                : ""
+                            }`}
+                            style={{ animationDelay: `${Math.min(idx * 30, 400)}ms` }}
+                          >
+                            <TableCell className="whitespace-nowrap py-3 align-top text-xs text-muted-foreground font-mono">
+                              {formatDateTime(log.createdAt)}
+                            </TableCell>
+                            <TableCell className="py-3 align-top text-sm font-medium">
+                              <span className="block truncate">{actorName(log)}</span>
+                            </TableCell>
+                            <TableCell className="py-3 align-top">
+                              <span className="inline-flex items-center gap-1.5">
+                                <Badge variant={ACTION_VARIANT[log.action || ""] || "secondary"}>
+                                  {auditActionLabel(log.action)}
+                                </Badge>
+                                <SeverityMark severity={severity} />
+                              </span>
+                            </TableCell>
+                            <TableCell className="py-3 align-top">
+                              <div className="text-sm text-foreground">{describeAuditLog(log)}</div>
+                              {log.detail?.message && (
+                                <div className="mt-0.5 text-sm text-foreground/80">
+                                  {String(log.detail.message)}
+                                </div>
+                              )}
+                              <AuditDetailCollapse log={log} />
+                            </TableCell>
+                            <TableCell className="py-3 align-top text-xs text-muted-foreground">
+                              <div className="break-all">{String(log.detail?.ip || "-")}</div>
+                              {log.detail?.location ? <div>{String(log.detail.location)}</div> : null}
+                            </TableCell>
+                            <TableCell className="py-3 align-top text-right">
+                              <AuditResultMeta log={log} vertical />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </table>
+                </ResponsiveList>
               )}
             </div>
                         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-4 text-sm text-muted-foreground">
