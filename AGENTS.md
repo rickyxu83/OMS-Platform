@@ -1,3 +1,7 @@
+# OMS（运维智管 / OMS-Platform）
+
+单仓全栈项目：`backend/`（Node.js + Express + MySQL，Docker 隌署）、`frontend-admin/`（React 管理端，唯一前端入口）、`ocr/`、`scripts/`（部署与 seed 脚本）、`docs/`（部署与 agent 协作文档）、`specs/`（历史功能规格存档，spec-kit 已卸载）。
+
 # 部署
 
 ## 隐私约定
@@ -36,18 +40,50 @@
 
 本项目为单人 + AI 开发：佬只看效果不看代码，全部 git/GitHub 操作由 AI 执行。**main 是唯一长期分支**；不再设集成分支或其它长期并行分支。核心原则：**佬在测试服验收的东西 = 最终发布的东西**。
 
+`main` 已开启 GitHub 分支保护：**禁止直接 push、禁止 force push**（含管理员）。所有变更必须走 PR，任何提交都不能直接落在 main 上。
+
 **一次发布的完整流程**：
 1. 开发：改完提交到**短命分支**（`feat/<描述>` / `fix/<描述>` / `hotfix/<描述>`）；需要并行开发时开 worktree（`.worktrees/<feat>`），用完合回并清理
 2. 验证：后端 `npm test` + `npm run check`；前端对应端 `npm run build`；admin 端 `npx tsc --noEmit`（保持 0 错误）
 3. **先部署测试服**：`bash scripts/deploy.sh rn <target>`（部署源固定 main，见上）→ 佬在测试服验收
-4. 验收通过后**合 main**：短命分支 → PR 合 main（main 有分支保护，一律走 PR，`gh pr merge --merge --delete-branch`）→ `git pull --ff-only`
+4. 验收通过后**合 main**：短命分支 → PR 合 main（一律走 PR，`gh pr merge --merge --delete-branch`）→ `git pull --ff-only`
 5. **再部署生产**：`bash scripts/deploy.sh tencent <target>` → 健康检查
 
+**合 main 的唯一闸门**：① 佬在测试服验收通过 ② 全量验证绿——二者缺一不可，AI 不得自行合 main。
+
+**命令速查**：
+
+```bash
+# 1. 从 main 切新分支
+git checkout main && git pull --ff-only origin main
+git checkout -b fix/简短描述
+
+# 2. 提交（中文，按下方提交规范）
+git add <文件> && git commit -m "主题：要点"
+
+# 3. 推送并建 PR（title/body 用中文）
+git push -u origin <分支名>
+gh pr create --base main --head <分支名> --title "主题" --body "说明"
+
+# 4. 合并（--merge 生成合并提交，--delete-branch 删分支；gh 会自动切回原分支）
+gh pr merge --merge --delete-branch
+
+# 5. 回 main 同步，最后才执行部署（deploy.sh 会先 push main，此时为空操作）
+git checkout main && git pull --ff-only origin main
+bash scripts/deploy.sh <profile> <target>
+```
+
+**注意事项：**
 - 每次工作结束推送分支到 origin（**推送即备份**）；短命分支合完即删，不留长期分支
 - 可见变更照旧升版本号（见提交规范）
-- **合 main 的唯一闸门**：① 佬在测试服验收通过 ② 全量验证绿——二者缺一不可，AI 不得自行合 main
-- **生产热修**：从 main 切 `hotfix/<描述>` → 修复 → PR 合 main → 部署生产（可跳过测试服，但事后把修复在测试服验证一遍）
-- **提前上线部分功能**：由 AI 评估拆分或权限暗启动方案，报佬决定后执行
+- 不要在 main 上直接 commit 再 push：分支保护会拒绝，deploy.sh 也会因 push 失败中止
+- `gh pr create` 报 GraphQL 错误多为 GitHub 服务短暂抽风，稍后重试；**务必确认 PR 已合并（`gh pr view <编号> --json state,mergedAt`）再继续部署**
+- 分支合并后本地记得删掉已合并的本地分支（`git branch -d <分支名>`，远端已被 --delete-branch 删除）
+- 部署前 `git status` 确认工作区干净（含 `.playwright-cli/` 等临时目录，需要先清理）
+
+**生产热修**：从 main 切 `hotfix/<描述>` → 修复 → PR 合 main → 部署生产（可跳过测试服，但事后把修复在测试服验证一遍）。
+
+**提前上线部分功能**：由 AI 评估拆分或权限暗启动方案，报佬决定后执行。
 
 ## 一键部署
 
@@ -75,39 +111,6 @@ bash scripts/deploy.sh <profile> admin
 - 按逻辑单元拆分提交（安全修复 / 性能优化 / 死代码清理分开），不要混在一个大提交里
 - 部署即发布：推送到 `origin/main` 的内容会被部署脚本带上生产，不要推半成品
 - 每次可见功能、页面展示、交互或发布内容变更，都必须同步提升管理端版本号。至少更新 `frontend-admin/package.json`、`frontend-admin/package-lock.json` 顶层版本，以及 `frontend-admin/src/config/app.ts` 中 `APP_VERSION` 的 fallback，确保登录页和左下角"系统版本"会变化。仅文档、注释、部署脚本或后端内部不可见修复可不提升前端版本；如后端包本身发布语义变化，再同步更新 `backend/package.json` 与 `backend/package-lock.json`。
-
-## 提交与发布流程（main 已开启分支保护）
-
-`main` 已开启 GitHub 分支保护：**禁止直接 push、禁止 force push**（含管理员）。所有变更必须走 PR，任何提交都不能直接落在 main 上。
-
-```bash
-# 1. 从 main 切新分支
-git checkout main && git pull --ff-only origin main
-git checkout -b fix/简短描述
-
-# 2. 提交（中文，按上方提交规范）
-git add <文件> && git commit -m "主题：要点"
-
-# 3. 推送并建 PR（title/body 用中文）
-git push -u origin <分支名>
-gh pr create --base main --head <分支名> --title "主题" --body "说明"
-
-# 4. 合并（--merge 生成合并提交，--delete-branch 删分支）
-gh pr merge --merge --delete-branch
-
-# 5. 回到 main 同步
-# gh pr merge 会自动切回原分支；若在分支上则手动切回：
-git checkout main && git pull --ff-only origin main
-
-# 6. 最后才执行部署（deploy.sh 会先 push main，此时为空操作，正常通过）
-bash scripts/deploy.sh <profile> <target>
-```
-
-**注意：**
-- 不要在 main 上直接 commit 再 push：分支保护会拒绝，deploy.sh 也会因 push 失败中止
-- `gh pr create` 报 GraphQL 错误多为 GitHub 服务短暂抽风，稍后重试；**务必确认 PR 已合并（`gh pr view <编号> --json state,mergedAt`）再继续部署**
-- 分支合并后本地记得删掉已合并的本地分支（`git branch -d <分支名>`，远端已被 --delete-branch 删除）
-- 部署前 `git status` 确认工作区干净（含 `.playwright-cli/` 等临时目录，需要先清理）
 
 ## 部署前后检查（AI 执行部署时必做）
 
@@ -174,9 +177,5 @@ Use a single-context domain documentation layout. See `docs/agents/domain.md`.
    - `executor` 仅在主会话是付费模型（如 k3）且想把重复性 grunt work 甩给免费子代理时才派。
    - `vision` 仅在主会话无视觉且必须看图时才派，一次调用合并所有问题。
    - `reviewer` 仅在涉及部署/打印/计费等高风险改动、且主会话是付费模型时才派。
-4. **工具调用连续失败熔断（2026-08-23 起，基于 47 连跪教训）**：
-   - 同一个工具调用（尤其带结构化参数，如 `task_evidence` 的 `quality` 嵌套字段）连续失败 **2~3 次就停止原样重试**——换话术忏悔（"这次真写上"、"丢人了我"）不会改变模型生成结构化参数的能力，只会烧 token。
-   - 错误信息里的 `do_not_retry_same_call: true` 是明确指令，意思是"不要重复同一个调用"，不是"换个说法再发一次"。
-   - 结构性错误要用**结构性解法**：先停手，把上一次实际发出的参数 JSON 与工具要求/正确示例逐字段对比，找出真正缺失或写错的键，改完再发；对比后发现是模型能力缺陷（如屡次漏掉嵌套字段）时，**直接换策略**：换工具类型（如证据改挂 `review`/`file` 类型）、换工作流，或提醒佬换模型。
-   - 每次失败后在复盘说明中附上**实际发出的 JSON 片段**，证明看到的是真实输出而非空谈。
+4. **工具调用连续失败熔断（2026-08-23 起，基于 47 连跪教训）**：遵循全局 `~/.pi/agent/AGENTS.md` 的熔断铁律（2026-08-24 实锤版，唯一权威版本）——同一工具调用连续失败 2~3 次停止原样重试；`do_not_retry_same_call: true` 是指令不是话术提示；结构性错误逐字段对比实际 JSON 与工具要求后再改发，确认是模型能力缺陷时直接换策略（换工具类型/换工作流）或提醒佬换模型。每次失败后在复盘说明中附上**实际发出的 JSON 片段**，证明看到的是真实输出而非空谈。
 
