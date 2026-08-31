@@ -1046,8 +1046,10 @@ export function Devices() {
     try {
       await api.post("/devices/merge", { keepId: mergeKeepId, mergeId: mergeTargetId });
       toast.success("设备已合并");
+      // 本地更新,不触发整页刷新：移除被合并设备、清勾选,保留设备保持
+      setDevices((prev) => prev.filter((item) => String(item.id) !== String(mergeTargetId)));
+      setSelectedDeviceIds((ids) => ids.filter((id) => String(id) !== String(mergeTargetId)));
       setMergeOpen(false);
-      await load();
     } catch (cause) {
       setMergeError(cause instanceof Error ? cause.message : "合并失败");
     } finally {
@@ -3870,7 +3872,7 @@ export function Devices() {
 
             <DialogFooter>
               <Button variant="outline" onClick={() => setMergeOpen(false)} disabled={mergeBusy}>取消</Button>
-              <Button onClick={confirmMergeDevices} disabled={!mergeKeepId || !mergeTargetId || mergeBusy}>
+              <Button type="button" onClick={confirmMergeDevices} disabled={!mergeKeepId || !mergeTargetId || mergeBusy}>
                 {mergeBusy ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Merge className="mr-2 h-4 w-4" />}
                 确认合并
               </Button>
