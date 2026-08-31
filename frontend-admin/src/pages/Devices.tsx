@@ -3800,84 +3800,21 @@ export function Devices() {
       </Dialog>
 
       <Dialog open={mergeOpen} onOpenChange={setMergeOpen}>
-        <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-[560px]">
+        <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
             <DialogTitle>合并重复设备</DialogTitle>
-            <DialogDescription>
-              合并同一客户下的两台设备（如多序列号 "S1;S2" 与 "S2;S1" 实为同一台）：保留一台，引用迁至保留设备，被合并设备删除。
-            </DialogDescription>
+            <DialogDescription>保留 #{mergeKeepId || "?"}，合并 #{mergeTargetId || "?"}（同客户）；引用迁至保留设备。</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>保留设备</Label>
-                <Select value={mergeKeepId} onValueChange={(value) => { setMergeKeepId(value); setMergeTargetId(""); setMergePreview(null); }}>
-                  <SelectTrigger><SelectValue placeholder="选择保留设备" /></SelectTrigger>
-                  <SelectContent>
-                    {devices.map((item) => (
-                      <SelectItem key={String(item.id)} value={String(item.id)}>
-                        {item.name || item.model || item.serialNo || `#${item.id}`}{item.customerName ? ` · ${item.customerName}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>待合并设备</Label>
-                <Select value={mergeTargetId} onValueChange={(value) => setMergeTargetId(value)} disabled={!mergeKeepId}>
-                  <SelectTrigger><SelectValue placeholder="被合并设备（同客户）" /></SelectTrigger>
-                  <SelectContent>
-                    {devices
-                      .filter((item) => {
-                        const keep = keepDeviceById(mergeKeepId);
-                        return keep && String(item.customerId) === String(keep.customerId) && String(item.id) !== String(mergeKeepId);
-                      })
-                      .map((item) => (
-                        <SelectItem key={String(item.id)} value={String(item.id)}>
-                          {item.name || item.model || `#${item.id}`} · {item.serialNo || "-"}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {mergePreview ? (
-              <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-sm">
-                <div className="flex items-center justify-between gap-2 font-medium">
-                  <span>
-                    将合并：<span className="text-primary">{mergePreview.keep?.name || mergePreview.keep?.model || `#${mergeKeepId}`}</span>{" "}
-                    ← {mergePreview.target?.name || mergePreview.target?.model || `#${mergeTargetId}`}
-                  </span>
-                  <button
-                    type="button"
-                    className="shrink-0 text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
-                    onClick={() => {
-                      setMergeKeepId(mergeTargetId);
-                      setMergeTargetId(mergeKeepId);
-                    }}
-                  >
-                    互换保留/被合并
-                  </button>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  引用迁移：工单 {(mergePreview.migration as any)?.service_orders || 0} · 关联 {(mergePreview.migration as any)?.service_order_devices || 0} ·
-                  巡检 {(mergePreview.migration as any)?.inspection_schedule_devices || 0} · 任务 {(mergePreview.migration as any)?.inspection_schedule_assignments || 0} · 备件 {(mergePreview.migration as any)?.service_parts || 0}
-                </div>
-                <div className="text-xs text-muted-foreground">被合并设备删除，历史引用全部迁至保留设备。</div>
-              </div>
-            ) : null}
-
+          <div className="space-y-3">
+            <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">保留设备 #{mergeKeepId || "未选择"} ← 合并资源 #{mergeTargetId || "未选择"}</div>
             {mergeError ? <div className="text-sm text-destructive">{mergeError}</div> : null}
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setMergeOpen(false)} disabled={mergeBusy}>取消</Button>
-              <Button type="button" onClick={confirmMergeDevices} disabled={!mergeKeepId || !mergeTargetId || mergeBusy}>
-                {mergeBusy ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Merge className="mr-2 h-4 w-4" />}
-                确认合并
-              </Button>
-            </DialogFooter>
           </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setMergeOpen(false)} disabled={mergeBusy}>取消</Button>
+            <Button type="button" onClick={confirmMergeDevices} disabled={!mergeKeepId || !mergeTargetId || mergeBusy}>
+              {mergeBusy ? <span className="btn-loader mr-2" aria-hidden="true" /> : "确认合并"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
