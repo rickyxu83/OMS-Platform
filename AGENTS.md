@@ -32,11 +32,11 @@
 ## 部署目标约定
 
 - **正式服务（生产）部署固定部署到腾讯云生产服务器**（部署脚本 profile 为 `tencent`），除用户明确指示外，不得部署到其他环境
-- **测试服（profile 为 `rn`）部署源固定为 main**（本地私有 `scripts/deploy.local.env` 中 `DEPLOY_RN_BRANCH=main`）：测试服与生产跑同一份代码，验收的是 main 上的构建物
+- **测试服（profile 为 `rn`）部署源为当前 feature 分支**（`deploy.sh` 默认部署当前分支）：佬验收的就是待合并的那份代码；验收通过后尽快合 main，不在测试服长期挂未合并代码，下一次 rn 部署会自然覆盖
 - 执行任何部署前，必须依次确认：① 目标 profile ② 目标环境当前运行版本，两者匹配后才可执行
-- 不允许用 feature/实验分支直接覆盖生产或测试服；测试服与生产始终来自 main
+- 不允许用 feature/实验分支直接覆盖**生产**：`deploy.sh` 对 `tencent` profile 有硬检查——当前分支必须是 main 且与 origin/main 同步，否则拒绝部署（可用 `DEPLOY_REQUIRE_MAIN=1` 给其他 profile 加同样检查）
 
-## 发布工作流（2026-08-30 起：main 唯一主力 + 小 PR 直合，单人 vibecoding 模式）
+## 发布工作流（2026-09-01 修订：验收闸门下移到生产部署，测试服从 feature 分支部署）
 
 本项目为单人 + AI 开发：佬只看效果不看代码，全部 git/GitHub 操作由 AI 执行。**main 是唯一长期分支**；不再设集成分支或其它长期并行分支。核心原则：**佬在测试服验收的东西 = 最终发布的东西**。
 
@@ -45,11 +45,11 @@
 **一次发布的完整流程**：
 1. 开发：改完提交到**短命分支**（`feat/<描述>` / `fix/<描述>` / `hotfix/<描述>`）；需要并行开发时开 worktree（`.worktrees/<feat>`），用完合回并清理
 2. 验证：后端 `npm test` + `npm run check`；前端对应端 `npm run build`；admin 端 `npx tsc --noEmit`（保持 0 错误）
-3. **先部署测试服**：`bash scripts/deploy.sh rn <target>`（部署源固定 main，见上）→ 佬在测试服验收
+3. **先部署测试服**：在 feature 分支上直接 `bash scripts/deploy.sh rn <target>` → 佬在测试服验收；验收不通过就在原分支继续修、修完重新部署 rn
 4. 验收通过后**合 main**：短命分支 → PR 合 main（一律走 PR，`gh pr merge --merge --delete-branch`）→ `git pull --ff-only`
-5. **再部署生产**：`bash scripts/deploy.sh tencent <target>` → 健康检查
+5. **再部署生产**：回 main 同步后 `bash scripts/deploy.sh tencent <target>`（脚本硬检查必须在 main）→ 健康检查
 
-**合 main 的唯一闸门**：① 佬在测试服验收通过 ② 全量验证绿——二者缺一不可，AI 不得自行合 main。
+**唯一验收闸门在生产部署**：佬在测试服验收通过 + 全量验证绿，二者缺一不可；AI 不得自行合 main，更不得自行部署生产。
 
 **命令速查**：
 
@@ -61,16 +61,19 @@ git checkout -b fix/简短描述
 # 2. 提交（中文，按下方提交规范）
 git add <文件> && git commit -m "主题：要点"
 
-# 3. 推送并建 PR（title/body 用中文）
+# 3. 部署测试服给佬验收（在 feature 分支上执行，deploy.sh 会推送当前分支）
+bash scripts/deploy.sh rn <target>
+
+# 4. 验收通过：推送并建 PR（title/body 用中文）
 git push -u origin <分支名>
 gh pr create --base main --head <分支名> --title "主题" --body "说明"
 
-# 4. 合并（--merge 生成合并提交，--delete-branch 删分支；gh 会自动切回原分支）
+# 5. 合并（--merge 生成合并提交，--delete-branch 删分支；gh 会自动切回原分支）
 gh pr merge --merge --delete-branch
 
-# 5. 回 main 同步，最后才执行部署（deploy.sh 会先 push main，此时为空操作）
+# 6. 回 main 同步后部署生产（tencent profile 有 main 分支硬检查）
 git checkout main && git pull --ff-only origin main
-bash scripts/deploy.sh <profile> <target>
+bash scripts/deploy.sh tencent <target>
 ```
 
 **注意事项：**
