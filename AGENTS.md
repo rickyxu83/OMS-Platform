@@ -17,15 +17,15 @@
 
 部署脚本从环境变量或 `scripts/deploy.local.env` 读取真实配置。
 
-| 变量 | 说明 |
-|---|---|
-| `DEPLOY_SSH_TARGET` | SSH 主机别名或目标 |
-| `DEPLOY_REMOTE_ROOT` | 远程项目根目录 |
-| `DEPLOY_BACKEND_RELATIVE` | 后端目录相对远程根目录的位置，默认 `app/backend` |
-| `DEPLOY_SITE_RELATIVE` | 前端站点目录相对远程根目录的位置，默认 `app/site` |
-| `DEPLOY_BACKEND_CONTAINER` | 后端容器名，仅 `deploy-seed.sh` 需要 |
-| `CORS_ALLOWED_ORIGINS` | 后端允许的前端 Origin，逗号分隔 |
-| `SESSION_COOKIE_DOMAIN` | 需要跨子域共享登录态时配置 |
+| 变量                       | 说明                                              |
+| -------------------------- | ------------------------------------------------- |
+| `DEPLOY_SSH_TARGET`        | SSH 主机别名或目标                                |
+| `DEPLOY_REMOTE_ROOT`       | 远程项目根目录                                    |
+| `DEPLOY_BACKEND_RELATIVE`  | 后端目录相对远程根目录的位置，默认 `app/backend`  |
+| `DEPLOY_SITE_RELATIVE`     | 前端站点目录相对远程根目录的位置，默认 `app/site` |
+| `DEPLOY_BACKEND_CONTAINER` | 后端容器名，仅 `deploy-seed.sh` 需要              |
+| `CORS_ALLOWED_ORIGINS`     | 后端允许的前端 Origin，逗号分隔                   |
+| `SESSION_COOKIE_DOMAIN`    | 需要跨子域共享登录态时配置                        |
 
 如需多套环境，可在 `scripts/deploy.local.env` 中定义 `DEPLOY_<PROFILE>_*` 变量，然后使用 `bash scripts/deploy.sh <profile> <target>`。
 
@@ -43,6 +43,7 @@
 `main` 已开启 GitHub 分支保护：**禁止直接 push、禁止 force push**（含管理员）。所有变更必须走 PR，任何提交都不能直接落在 main 上。
 
 **一次发布的完整流程**：
+
 1. 开发：改完提交到**短命分支**（`feat/<描述>` / `fix/<描述>` / `hotfix/<描述>`）；需要并行开发时开 worktree（`.worktrees/<feat>`），用完合回并清理
 2. 验证：后端 `npm test` + `npm run check`；前端对应端 `npm run build`；admin 端 `npx tsc --noEmit`（保持 0 错误）
 3. **先部署测试服**：在 feature 分支上直接 `bash scripts/deploy.sh rn <target>` → 佬在测试服验收；验收不通过就在原分支继续修、修完重新部署 rn
@@ -77,6 +78,7 @@ bash scripts/deploy.sh tencent <target>
 ```
 
 **注意事项：**
+
 - 每次工作结束推送分支到 origin（**推送即备份**）；短命分支合完即删，不留长期分支
 - 可见变更照旧升版本号（见提交规范）
 - 不要在 main 上直接 commit 再 push：分支保护会拒绝，deploy.sh 也会因 push 失败中止
@@ -147,13 +149,13 @@ docker exec <backend容器名> wget -qO- http://127.0.0.1:3000/api/v1/health    
 
 ## 权限说明
 
-| 角色 | 管理端 |
-|---|---|
-| `engineer`（工程师） | 使用工单填写入口，接口按本人过滤；可删除派给自己的 draft/assigned/rejected 工单、可作废本人已结案工单（产品裁决 2026-07-22：有意设计，勿当越权修复） |
-| `engineering_supervisor`（工程主管） | 可使用工单填写入口；派单管理可见全部工单 |
-| `operations_director`（运营负责人） | 可见全部工单 |
-| `administrative_supervisor`（行政主管） | 管理端业务数据只读，不可派单/审批/编辑/删除/改设置 |
-| `admin`（管理员） | 全部权限 |
+| 角色                                    | 管理端                                                                                                                                               |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `engineer`（工程师）                    | 使用工单填写入口，接口按本人过滤；可删除派给自己的 draft/assigned/rejected 工单、可作废本人已结案工单（产品裁决 2026-07-22：有意设计，勿当越权修复） |
+| `engineering_supervisor`（工程主管）    | 可使用工单填写入口；派单管理可见全部工单                                                                                                             |
+| `operations_director`（运营负责人）     | 可见全部工单                                                                                                                                         |
+| `administrative_supervisor`（行政主管） | 管理端业务数据只读，不可派单/审批/编辑/删除/改设置                                                                                                   |
+| `admin`（管理员）                       | 全部权限                                                                                                                                             |
 
 工单填写入口请求本人相关数据时带 `?mine=1`，后端据此过滤 `effectiveEngineerId`。
 
@@ -182,4 +184,3 @@ Use a single-context domain documentation layout. See `docs/agents/domain.md`.
    - `reviewer` 仅在涉及部署/打印/计费等高风险改动、且主会话是付费模型时才派。
 4. **工具调用连续失败熔断（2026-08-23 起，基于 47 连跪教训）**：遵循全局 `~/.pi/agent/AGENTS.md` 的熔断铁律（2026-08-24 实锤版，唯一权威版本）——同一工具调用连续失败 2~3 次停止原样重试；`do_not_retry_same_call: true` 是指令不是话术提示；结构性错误逐字段对比实际 JSON 与工具要求后再改发，确认是模型能力缺陷时直接换策略（换工具类型/换工作流）或提醒佬换模型。每次失败后在复盘说明中附上**实际发出的 JSON 片段**，证明看到的是真实输出而非空谈。
 5. **大功能先写轻量 spec（2026-08-31 起）**：满足任一"难回退"标准的改动——动数据表结构、动认证/权限、动计费或对外承诺的行为、跨三个以上模块、做错要回滚代价高——动手前先写轻量规格存到 `specs/<编号>-<名称>/`（至少 `spec.md`，涉及数据结构时加 `data-model.md`），经佬确认后再写代码；小/中型改动按现有流程直接做，不做 spec。
-
