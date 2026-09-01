@@ -54,6 +54,7 @@ usage() {
   echo "  DEPLOY_SITE_RELATIVE    前端站点目录相对远程根目录的位置（默认：app/site）"
   echo "  DEPLOY_PROJECT_SLUG     临时归档名前缀（默认：oms-platform）"
   echo "  DEPLOY_BRANCH           Git 目标分支（默认：当前分支）"
+  echo "  DEPLOY_REQUIRE_MAIN     设为 1 时要求当前分支为 main 且与 origin/main 一致（tencent profile 默认开启）"
   echo ""
 }
 
@@ -63,7 +64,7 @@ apply_profile() {
   profile_key="$(printf '%s' "$profile" | tr '[:lower:]-' '[:upper:]_')"
 
   local suffix source_var
-  for suffix in SSH_TARGET REMOTE_ROOT BACKEND_RELATIVE SITE_RELATIVE PROJECT_SLUG BRANCH; do
+  for suffix in SSH_TARGET REMOTE_ROOT BACKEND_RELATIVE SITE_RELATIVE PROJECT_SLUG BRANCH REQUIRE_MAIN; do
     source_var="DEPLOY_${profile_key}_${suffix}"
     if [ -n "${!source_var:-}" ]; then
       export "DEPLOY_${suffix}=${!source_var}"
@@ -140,6 +141,35 @@ if ! is_deploy_target "$DEPLOY_TARGET"; then
 fi
 
 require_deploy_config
+
+# 生产闸门：tencent profile（或 DEPLOY_REQUIRE_MAIN=1）要求当前分支为 main 且与 origin/main 同步，
+# 防止 feature/实验分支或未推送的本地提交直接覆盖生产。验收闸门在下 deploy 前由人把控，这里兜底分支来源。
+enforce_main_for_production() {
+  local require_main="${DEPLOY_REQUIRE_MAIN:-}"
+  if [ -z "$require_main" ] && [ "$DEPLOY_PROFILE" = "tencent" ]; then
+    require_main="1"
+  fi
+  [ "$require_main" = "1" ] || return 0
+
+  local branch
+  branch="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  if [ "$branch" != "main" ]; then
+    err "生产部署（profile: ${DEPLOY_PROFILE:-默认}）必须从 main 分支执行，当前分支：${branch:-未知}"
+    echo "  请先合 PR → git checkout main && git pull --ff-only origin main 后再部署。" >&2
+    exit 1
+  fi
+  git -C "$ROOT_DIR" fetch origin main --quiet
+  local local_head remote_head
+  local_head="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+  remote_head="$(git -C "$ROOT_DIR" rev-parse origin/main 2>/dev/null || true)"
+  if [ -z "$remote_head" ] || [ "$local_head" != "$remote_head" ]; then
+    err "本地 main 与 origin/main 不一致（local: ${local_head:0:8}, remote: ${remote_head:0:8}），请先同步后再部署生产。"
+    exit 1
+  fi
+  ok "生产闸门：当前为 main 且与 origin/main 一致"
+}
+
+enforce_main_for_production
 
 if [ -n "$DEPLOY_PROFILE" ]; then
   skip "使用部署 profile：$DEPLOY_PROFILE"

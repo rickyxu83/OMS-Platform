@@ -17,39 +17,40 @@
 
 部署脚本从环境变量或 `scripts/deploy.local.env` 读取真实配置。
 
-| 变量 | 说明 |
-|---|---|
-| `DEPLOY_SSH_TARGET` | SSH 主机别名或目标 |
-| `DEPLOY_REMOTE_ROOT` | 远程项目根目录 |
-| `DEPLOY_BACKEND_RELATIVE` | 后端目录相对远程根目录的位置，默认 `app/backend` |
-| `DEPLOY_SITE_RELATIVE` | 前端站点目录相对远程根目录的位置，默认 `app/site` |
-| `DEPLOY_BACKEND_CONTAINER` | 后端容器名，仅 `deploy-seed.sh` 需要 |
-| `CORS_ALLOWED_ORIGINS` | 后端允许的前端 Origin，逗号分隔 |
-| `SESSION_COOKIE_DOMAIN` | 需要跨子域共享登录态时配置 |
+| 变量                       | 说明                                              |
+| -------------------------- | ------------------------------------------------- |
+| `DEPLOY_SSH_TARGET`        | SSH 主机别名或目标                                |
+| `DEPLOY_REMOTE_ROOT`       | 远程项目根目录                                    |
+| `DEPLOY_BACKEND_RELATIVE`  | 后端目录相对远程根目录的位置，默认 `app/backend`  |
+| `DEPLOY_SITE_RELATIVE`     | 前端站点目录相对远程根目录的位置，默认 `app/site` |
+| `DEPLOY_BACKEND_CONTAINER` | 后端容器名，仅 `deploy-seed.sh` 需要              |
+| `CORS_ALLOWED_ORIGINS`     | 后端允许的前端 Origin，逗号分隔                   |
+| `SESSION_COOKIE_DOMAIN`    | 需要跨子域共享登录态时配置                        |
 
 如需多套环境，可在 `scripts/deploy.local.env` 中定义 `DEPLOY_<PROFILE>_*` 变量，然后使用 `bash scripts/deploy.sh <profile> <target>`。
 
 ## 部署目标约定
 
 - **正式服务（生产）部署固定部署到腾讯云生产服务器**（部署脚本 profile 为 `tencent`），除用户明确指示外，不得部署到其他环境
-- **测试服（profile 为 `rn`）部署源固定为 main**（本地私有 `scripts/deploy.local.env` 中 `DEPLOY_RN_BRANCH=main`）：测试服与生产跑同一份代码，验收的是 main 上的构建物
+- **测试服（profile 为 `rn`）部署源为当前 feature 分支**（`deploy.sh` 默认部署当前分支）：佬验收的就是待合并的那份代码；验收通过后尽快合 main，不在测试服长期挂未合并代码，下一次 rn 部署会自然覆盖
 - 执行任何部署前，必须依次确认：① 目标 profile ② 目标环境当前运行版本，两者匹配后才可执行
-- 不允许用 feature/实验分支直接覆盖生产或测试服；测试服与生产始终来自 main
+- 不允许用 feature/实验分支直接覆盖**生产**：`deploy.sh` 对 `tencent` profile 有硬检查——当前分支必须是 main 且与 origin/main 同步，否则拒绝部署（可用 `DEPLOY_REQUIRE_MAIN=1` 给其他 profile 加同样检查）
 
-## 发布工作流（2026-08-30 起：main 唯一主力 + 小 PR 直合，单人 vibecoding 模式）
+## 发布工作流（2026-09-01 修订：验收闸门下移到生产部署，测试服从 feature 分支部署）
 
 本项目为单人 + AI 开发：佬只看效果不看代码，全部 git/GitHub 操作由 AI 执行。**main 是唯一长期分支**；不再设集成分支或其它长期并行分支。核心原则：**佬在测试服验收的东西 = 最终发布的东西**。
 
 `main` 已开启 GitHub 分支保护：**禁止直接 push、禁止 force push**（含管理员）。所有变更必须走 PR，任何提交都不能直接落在 main 上。
 
 **一次发布的完整流程**：
+
 1. 开发：改完提交到**短命分支**（`feat/<描述>` / `fix/<描述>` / `hotfix/<描述>`）；需要并行开发时开 worktree（`.worktrees/<feat>`），用完合回并清理
 2. 验证：后端 `npm test` + `npm run check`；前端对应端 `npm run build`；admin 端 `npx tsc --noEmit`（保持 0 错误）
-3. **先部署测试服**：`bash scripts/deploy.sh rn <target>`（部署源固定 main，见上）→ 佬在测试服验收
+3. **先部署测试服**：在 feature 分支上直接 `bash scripts/deploy.sh rn <target>` → 佬在测试服验收；验收不通过就在原分支继续修、修完重新部署 rn
 4. 验收通过后**合 main**：短命分支 → PR 合 main（一律走 PR，`gh pr merge --merge --delete-branch`）→ `git pull --ff-only`
-5. **再部署生产**：`bash scripts/deploy.sh tencent <target>` → 健康检查
+5. **再部署生产**：回 main 同步后 `bash scripts/deploy.sh tencent <target>`（脚本硬检查必须在 main）→ 健康检查
 
-**合 main 的唯一闸门**：① 佬在测试服验收通过 ② 全量验证绿——二者缺一不可，AI 不得自行合 main。
+**唯一验收闸门在生产部署**：佬在测试服验收通过 + 全量验证绿，二者缺一不可；AI 不得自行合 main，更不得自行部署生产。
 
 **命令速查**：
 
@@ -61,19 +62,23 @@ git checkout -b fix/简短描述
 # 2. 提交（中文，按下方提交规范）
 git add <文件> && git commit -m "主题：要点"
 
-# 3. 推送并建 PR（title/body 用中文）
+# 3. 部署测试服给佬验收（在 feature 分支上执行，deploy.sh 会推送当前分支）
+bash scripts/deploy.sh rn <target>
+
+# 4. 验收通过：推送并建 PR（title/body 用中文）
 git push -u origin <分支名>
 gh pr create --base main --head <分支名> --title "主题" --body "说明"
 
-# 4. 合并（--merge 生成合并提交，--delete-branch 删分支；gh 会自动切回原分支）
+# 5. 合并（--merge 生成合并提交，--delete-branch 删分支；gh 会自动切回原分支）
 gh pr merge --merge --delete-branch
 
-# 5. 回 main 同步，最后才执行部署（deploy.sh 会先 push main，此时为空操作）
+# 6. 回 main 同步后部署生产（tencent profile 有 main 分支硬检查）
 git checkout main && git pull --ff-only origin main
-bash scripts/deploy.sh <profile> <target>
+bash scripts/deploy.sh tencent <target>
 ```
 
 **注意事项：**
+
 - 每次工作结束推送分支到 origin（**推送即备份**）；短命分支合完即删，不留长期分支
 - 可见变更照旧升版本号（见提交规范）
 - 不要在 main 上直接 commit 再 push：分支保护会拒绝，deploy.sh 也会因 push 失败中止
@@ -144,13 +149,13 @@ docker exec <backend容器名> wget -qO- http://127.0.0.1:3000/api/v1/health    
 
 ## 权限说明
 
-| 角色 | 管理端 |
-|---|---|
-| `engineer`（工程师） | 使用工单填写入口，接口按本人过滤；可删除派给自己的 draft/assigned/rejected 工单、可作废本人已结案工单（产品裁决 2026-07-22：有意设计，勿当越权修复） |
-| `engineering_supervisor`（工程主管） | 可使用工单填写入口；派单管理可见全部工单 |
-| `operations_director`（运营负责人） | 可见全部工单 |
-| `administrative_supervisor`（行政主管） | 管理端业务数据只读，不可派单/审批/编辑/删除/改设置 |
-| `admin`（管理员） | 全部权限 |
+| 角色                                    | 管理端                                                                                                                                               |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `engineer`（工程师）                    | 使用工单填写入口，接口按本人过滤；可删除派给自己的 draft/assigned/rejected 工单、可作废本人已结案工单（产品裁决 2026-07-22：有意设计，勿当越权修复） |
+| `engineering_supervisor`（工程主管）    | 可使用工单填写入口；派单管理可见全部工单                                                                                                             |
+| `operations_director`（运营负责人）     | 可见全部工单                                                                                                                                         |
+| `administrative_supervisor`（行政主管） | 管理端业务数据只读，不可派单/审批/编辑/删除/改设置                                                                                                   |
+| `admin`（管理员）                       | 全部权限                                                                                                                                             |
 
 工单填写入口请求本人相关数据时带 `?mine=1`，后端据此过滤 `effectiveEngineerId`。
 
@@ -179,4 +184,3 @@ Use a single-context domain documentation layout. See `docs/agents/domain.md`.
    - `reviewer` 仅在涉及部署/打印/计费等高风险改动、且主会话是付费模型时才派。
 4. **工具调用连续失败熔断（2026-08-23 起，基于 47 连跪教训）**：遵循全局 `~/.pi/agent/AGENTS.md` 的熔断铁律（2026-08-24 实锤版，唯一权威版本）——同一工具调用连续失败 2~3 次停止原样重试；`do_not_retry_same_call: true` 是指令不是话术提示；结构性错误逐字段对比实际 JSON 与工具要求后再改发，确认是模型能力缺陷时直接换策略（换工具类型/换工作流）或提醒佬换模型。每次失败后在复盘说明中附上**实际发出的 JSON 片段**，证明看到的是真实输出而非空谈。
 5. **大功能先写轻量 spec（2026-08-31 起）**：满足任一"难回退"标准的改动——动数据表结构、动认证/权限、动计费或对外承诺的行为、跨三个以上模块、做错要回滚代价高——动手前先写轻量规格存到 `specs/<编号>-<名称>/`（至少 `spec.md`，涉及数据结构时加 `data-model.md`），经佬确认后再写代码；小/中型改动按现有流程直接做，不做 spec。
-
