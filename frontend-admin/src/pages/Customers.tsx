@@ -1305,8 +1305,9 @@ export function Customers() {
         title={
           <span className="flex min-w-0 items-center gap-2">
             {canDeleteCustomer ? (
-              <span className="inline-flex" onClick={(event) => event.stopPropagation()}>
+              <span className="inline-flex p-1.5 -m-1.5" onClick={(event) => event.stopPropagation()}>
                 <Checkbox
+                  className="size-5"
                   checked={selected}
                   onCheckedChange={(checked) => toggleCustomerSelection(c.id, checked)}
                   disabled={deleting}
@@ -1318,8 +1319,8 @@ export function Customers() {
             {c.name ? (
               <button
                 type="button"
-                className="min-w-0 truncate text-left hover:text-primary hover:underline"
-                title={c.name}
+                className="min-w-0 truncate py-1 -my-1 text-left font-semibold text-primary/90 underline decoration-dotted underline-offset-4 hover:text-primary"
+                title={`${c.name}（点击筛选）`}
                 onClick={(event) => filterByCustomerName(event, c.name)}
               >
                 {c.name}
@@ -1366,7 +1367,7 @@ export function Customers() {
               <Button
                 size="sm"
                 variant="ghost"
-                className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                className="h-10 bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
                 onClick={(event) => {
                   event.stopPropagation();
                   openEdit(c);
@@ -1380,7 +1381,7 @@ export function Customers() {
               <Button
                 size="sm"
                 variant="ghost"
-                className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700"
+                className="h-10 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700"
                 onClick={(event) => {
                   event.stopPropagation();
                   openDelete(c);
@@ -1573,10 +1574,10 @@ export function Customers() {
   }
 
   return (
-    <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden p-6">
+    <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden p-4 sm:p-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold">{t.title}</h1>
+          <h1 className="text-2xl font-semibold sm:text-3xl">{t.title}</h1>
           <p className="text-muted-foreground mt-1">{t.subtitle}</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -1634,7 +1635,7 @@ export function Customers() {
             <div className="relative min-w-0 flex-1 basis-[260px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                className="pl-9"
+                className="h-10 pl-9 sm:h-9"
                 placeholder={t.list.searchPlaceholder}
                 aria-label={t.list.searchPlaceholder}
                 value={searchQuery}
@@ -1810,14 +1811,6 @@ export function Customers() {
                               )}
                               <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                                 {c.salesperson ? <span className="truncate" title={`${t.list.salesperson}：${c.salesperson}`}>{t.list.salesperson}：{c.salesperson}</span> : null}
-                                {c.latitude && c.longitude ? (
-                                  <span className="group relative inline-flex">
-                                    <MapPin className="h-3 w-3 cursor-default text-emerald-600" />
-                                    <span className="pointer-events-none absolute left-0 top-full z-50 mt-1 hidden whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2 py-1 shadow-lg group-hover:block dark:border-slate-700 dark:bg-slate-900">
-                                      {Number(c.latitude).toFixed(4)}, {Number(c.longitude).toFixed(4)}
-                                    </span>
-                                  </span>
-                                ) : null}
                               </div>
                             </div>
                           </div>
@@ -1849,7 +1842,7 @@ export function Customers() {
                               <DropdownMenuTrigger asChild>
                                 <button
                                   type="button"
-                                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                                   title={t.list.actionsMenu}
                                   aria-label={t.list.actionsMenu}
                                 >
@@ -1959,7 +1952,7 @@ export function Customers() {
 
       <Dialog open={Boolean(detailTarget)} onOpenChange={(open) => { if (!open) setDetailTarget(null); }}>
         <DialogContent className="max-h-[92vh] max-w-[calc(100vw-1rem)] overflow-hidden p-0 sm:max-w-[960px] lg:max-w-[1000px]">
-          <DialogHeader className="px-6 pt-6 pr-12">
+          <DialogHeader className="px-4 pt-4 pr-10 sm:px-6 sm:pt-6 sm:pr-12">
             <DialogTitle>{t.dialog.detailTitle}</DialogTitle>
             <DialogDescription>{t.dialog.detailDescription}</DialogDescription>
           </DialogHeader>
@@ -2011,7 +2004,7 @@ export function Customers() {
               return `/service-orders?${params.toString()}`;
             };
             return (
-              <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-6 pb-2">
+              <div className="max-h-[calc(92vh-9rem)] overflow-y-auto px-4 pb-2 sm:px-6">
                 <div className="space-y-5 py-2">
                   <div className="rounded-lg border bg-slate-50/60 p-5">
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -2256,7 +2249,7 @@ export function Customers() {
               </div>
             )
           })() : null}
-          <DialogFooter className="flex-row justify-end border-t bg-background px-6 py-4">
+          <DialogFooter className="flex-row justify-end border-t bg-background px-4 py-4 sm:px-6">
             <Button variant="outline" onClick={() => setDetailTarget(null)}>
               {t.actions.close}
             </Button>
@@ -2275,7 +2268,7 @@ export function Customers() {
       </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-sm:top-0 max-sm:left-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:p-4 max-sm:gap-3 sm:max-w-[900px] sm:max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId != null ? t.dialog.editTitle : t.dialog.title}</DialogTitle>
             <DialogDescription>
@@ -2516,7 +2509,7 @@ export function Customers() {
               </div>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="sticky bottom-0 -mx-4 -mb-4 mt-2 border-t bg-background px-4 py-3 sm:-mx-6 sm:-mb-6 sm:px-6 sm:py-4">
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>
               {t.actions.cancel}
             </Button>
