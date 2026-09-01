@@ -1350,38 +1350,6 @@ export function Customers() {
           { label: t.list.phone, value: renderPhoneLink(c.contactPhone || c.phone, true) },
           { label: t.list.address, value: c.address || t.misc.unknown, span: 2, wrap: true },
         ]}
-        actions={(
-          <>
-            {canManageCustomer ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-10 bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openEdit(c);
-                }}
-              >
-                <Pencil className="w-4 h-4 mr-1" />
-                {t.actions.edit}
-              </Button>
-            ) : null}
-            {canDeleteCustomer ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-10 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openDelete(c);
-                }}
-              >
-                <Trash2 className="w-4 h-4" />
-                {t.actions.delete}
-              </Button>
-            ) : null}
-          </>
-        )}
       />
     );
   }
@@ -1713,7 +1681,20 @@ export function Customers() {
               />
             </div>
           ) : (
-            <ResponsiveList items={filtered} keyExtractor={(c) => c.id} renderCard={renderCustomerCard}>
+            <ResponsiveList
+              items={filtered}
+              keyExtractor={(c) => c.id}
+              renderCard={renderCustomerCard}
+              swipeAction={canDeleteCustomer ? (c) => ({
+                label: (
+                  <>
+                    <Trash2 className="h-5 w-5" />
+                    {t.actions.delete}
+                  </>
+                ),
+                onTrigger: () => openDelete(c),
+              }) : undefined}
+            >
               <table className="w-full table-fixed caption-bottom text-sm">
                 <colgroup>
                   {canDeleteCustomer ? <col className="w-11" /> : null}

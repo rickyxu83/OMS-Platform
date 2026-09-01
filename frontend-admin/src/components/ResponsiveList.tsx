@@ -1,7 +1,15 @@
-import { type Key, type ReactNode } from "react";
+import { useRef, useState, type Key, type ReactNode } from "react";
 
 /** 断点：与 tailwind 默认一致，md=768px、lg=1024px。宽表（min-w≥1100px）建议用 lg */
 export type ResponsiveListBreakpoint = "md" | "lg";
+
+/** 移动端卡片左滑露出的操作（如删除） */
+export interface ResponsiveSwipeAction {
+  /** 露出区内容（图标+文字） */
+  label: ReactNode;
+  /** 点击露出按钮触发 */
+  onTrigger: () => void;
+}
 
 interface ResponsiveListProps<T> {
   /** 列表数据（与桌面表格同一份，loading/empty 由页面层先行处理） */
@@ -17,6 +25,8 @@ interface ResponsiveListProps<T> {
   cardClassName?: string;
   /** 卡片入场动画（默认 true，与桌面行 list-row-enter 一致，封顶 400ms） */
   animateRows?: boolean;
+  /** 移动端卡片左滑露出的操作（触摸端常见交互）；返回 null/undefined 则该行无手势 */
+  swipeAction?: (item: T, index: number) => ResponsiveSwipeAction | null | undefined;
 }
 
 const BP_CLASSES: Record<ResponsiveListBreakpoint, { desktop: string; mobile: string }> = {
@@ -37,6 +47,7 @@ export function ResponsiveList<T>({
   breakpoint = "lg",
   cardClassName = "",
   animateRows = true,
+  swipeAction,
 }: ResponsiveListProps<T>) {
   const bp = BP_CLASSES[breakpoint];
   return (
@@ -46,14 +57,115 @@ export function ResponsiveList<T>({
         {items.map((item, index) => (
           <div
             key={keyExtractor(item, index)}
-            className={`border-b p-4 last:border-b-0 ${animateRows ? "list-row-enter" : ""} ${cardClassName}`}
+            className={`border-b last:border-b-0 ${animateRows ? "list-row-enter" : ""} ${cardClassName}`}
             style={animateRows ? { animationDelay: `${Math.min(index * 30, 400)}ms` } : undefined}
           >
-            {renderCard(item, index)}
+            <SwipeableRow action={swipeAction?.(item, index) ?? null}>
+              {renderCard(item, index)}
+            </SwipeableRow>
           </div>
         ))}
       </div>
     </>
+  );
+}
+
+const REVEAL_WIDTH = 88;
+
+interface SwipeGesture {
+  startX: number;
+  startY: number;
+  base: number;
+  horizontal: boolean | null;
+  moved: boolean;
+}
+
+/**
+ * 左滑露出操作按钮的行容器（触摸端常见交互，如 iOS 邮件滑动删除）。
+ * - 内容层 touch-action: pan-y：垂直滚动不受影响，横向手势由本组件接管
+ * - 滑动超过一半宽度松手 → 吸附展开；否则回弹
+ * - 展开后点击内容区 → 收起（吞掉这次点击，不触发卡片自身点击）
+ * - 无 action 时退化为普通容器，不挂任何手势
+ */
+function SwipeableRow({ action, children }: { action: ResponsiveSwipeAction | null; children: ReactNode }) {
+  const [offset, setOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const gesture = useRef<SwipeGesture | null>(null);
+  const suppressClick = useRef(false);
+
+  if (!action) return <div className="p-4">{children}</div>;
+
+  const close = () => setOffset(0);
+
+  return (
+    <div className="relative overflow-hidden">
+      {/* 底层操作区：右側红色按钮，内容左滑后露出 */}
+      <div className="absolute inset-y-0 right-0 flex" style={{ width: REVEAL_WIDTH }}>
+        <button
+          type="button"
+          className="flex w-full flex-col items-center justify-center gap-1 bg-red-500 text-xs font-medium text-white active:bg-red-600"
+          onClick={(event) => {
+            event.stopPropagation();
+            close();
+            action.onTrigger();
+          }}
+        >
+          {action.label}
+        </button>
+      </div>
+      {/* 滑动内容层 */}
+      <div
+        className={`relative bg-card p-4 ${dragging ? "" : "transition-transform duration-150 ease-out"}`}
+        style={{ transform: offset ? `translateX(${offset}px)` : undefined, touchAction: "pan-y" }}
+        onTouchStart={(event) => {
+          const touch = event.touches[0];
+          gesture.current = { startX: touch.clientX, startY: touch.clientY, base: offset, horizontal: null, moved: false };
+          suppressClick.current = false;
+        }}
+        onTouchMove={(event) => {
+          const g = gesture.current;
+          if (!g) return;
+          const touch = event.touches[0];
+          const dx = touch.clientX - g.startX;
+          const dy = touch.clientY - g.startY;
+          // 8px 死区内不判方向，避免轻触抖动误触发
+          if (g.horizontal === null) {
+            if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+            g.horizontal = Math.abs(dx) > Math.abs(dy);
+          }
+          if (!g.horizontal) return;
+          g.moved = true;
+          setDragging(true);
+          // 只允许向左滑出（负方向），已展开时允许向右回滑
+          setOffset(Math.min(0, Math.max(-REVEAL_WIDTH, g.base + dx)));
+        }}
+        onTouchEnd={() => {
+          const g = gesture.current;
+          gesture.current = null;
+          setDragging(false);
+          if (!g?.moved) return;
+          suppressClick.current = true;
+          setOffset((current) => (current < -REVEAL_WIDTH / 2 ? -REVEAL_WIDTH : 0));
+        }}
+        onClickCapture={(event) => {
+          // 刚结束滑动手势的残留点击：吞掉，不触发卡片点击
+          if (suppressClick.current) {
+            suppressClick.current = false;
+            event.stopPropagation();
+            event.preventDefault();
+            return;
+          }
+          // 展开状态下点击内容区：收起并吞掉点击
+          if (offset !== 0) {
+            event.stopPropagation();
+            event.preventDefault();
+            close();
+          }
+        }}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
 
