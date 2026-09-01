@@ -61,6 +61,10 @@ interface ResponsiveCardField {
   /** 字段小标签（如 SN / 工程师），对应 Devices 雏形的 md:hidden 小标签 */
   label: ReactNode;
   value: ReactNode;
+  /** 占整行（默认一格），用于地址等长文本 */
+  span?: 1 | 2;
+  /** 允许换行显示全（默认单行 truncate），长文本配合 span: 2 使用 */
+  wrap?: boolean;
 }
 
 interface ResponsiveCardProps {
@@ -119,9 +123,9 @@ export function ResponsiveCard({
       {fields?.length ? (
         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
           {fields.map((field, i) => (
-            <div key={i} className="min-w-0">
+            <div key={i} className={`min-w-0 ${field.span === 2 ? "col-span-2" : ""}`}>
               <div className="text-xs text-muted-foreground">{field.label}</div>
-              <div title={typeof field.value === "string" ? field.value : undefined} className="min-w-0 truncate text-sm">{field.value}</div>
+              <div title={typeof field.value === "string" ? field.value : undefined} className={`min-w-0 text-sm ${field.wrap ? "break-words" : "truncate"}`}>{field.value}</div>
             </div>
           ))}
         </div>

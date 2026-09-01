@@ -1348,18 +1348,7 @@ export function Customers() {
         fields={[
           { label: t.list.contact, value: c.contactName || t.misc.unknown },
           { label: t.list.phone, value: renderPhoneLink(c.contactPhone || c.phone, true) },
-          { label: t.list.address, value: c.address || t.misc.unknown },
-          ...(c.latitude && c.longitude
-            ? [{
-                label: t.list.coordsLabel,
-                value: (
-                  <span className="inline-flex items-center gap-1 text-emerald-600">
-                    <MapPin className="h-3 w-3" />
-                    {Number(c.latitude).toFixed(4)}, {Number(c.longitude).toFixed(4)}
-                  </span>
-                ),
-              }]
-            : []),
+          { label: t.list.address, value: c.address || t.misc.unknown, span: 2, wrap: true },
         ]}
         actions={(
           <>
