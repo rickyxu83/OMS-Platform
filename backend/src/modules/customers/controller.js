@@ -9,6 +9,7 @@ const {
   buildSalesCustomerScope,
 } = require('../../permissions/sales-scope')
 const { deleteSalesNotificationsForOrderIds } = require('../../services/sales-notifications')
+const { deleteInstallSupervisorNotificationsForOrderIds } = require('../../services/install-supervisor-notifications')
 const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('./internal')
 
 const CUSTOMER_LEVELS = new Set(['key', 'normal', 'potential', 'vip'])
@@ -706,6 +707,7 @@ async function deleteServiceOrders(connection, orderIds) {
   await connection.execute(`DELETE FROM service_parts WHERE service_order_id IN (${list})`, params)
   await connection.execute(`DELETE FROM self_report_drafts WHERE service_order_id IN (${list})`, params)
   await deleteSalesNotificationsForOrderIds(connection, orderIds)
+  await deleteInstallSupervisorNotificationsForOrderIds(connection, orderIds)
   const deletedFilePaths = await deleteFileRowsForOrderIds(connection, orderIds)
   await connection.execute(`DELETE FROM service_reports WHERE service_order_id IN (${list})`, params)
   await connection.execute(`DELETE FROM service_order_engineers WHERE service_order_id IN (${list})`, params)

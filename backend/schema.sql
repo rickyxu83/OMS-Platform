@@ -306,6 +306,20 @@ CREATE TABLE service_order_sales_notifications (
   CONSTRAINT fk_service_order_sales_notifications_order_id FOREIGN KEY (service_order_id) REFERENCES service_orders (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE service_order_install_supervisor_notifications (
+  service_order_id BIGINT UNSIGNED NOT NULL,
+  due_at DATETIME NOT NULL,
+  status ENUM('pending', 'sending', 'sent', 'skipped', 'failed') NOT NULL DEFAULT 'pending',
+  attempts INT NOT NULL DEFAULT 0,
+  sent_at DATETIME NULL,
+  last_error VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (service_order_id),
+  KEY idx_install_supervisor_notifications_due (status, due_at),
+  CONSTRAINT fk_install_supervisor_notifications_order_id FOREIGN KEY (service_order_id) REFERENCES service_orders (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE service_order_customer_signature_requests (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   service_order_id BIGINT UNSIGNED NOT NULL,

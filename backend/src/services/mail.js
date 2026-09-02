@@ -845,6 +845,97 @@ async function sendSalesServiceOrderMail(order, recipients = [], detailUrl = '')
   return { sent: true, to }
 }
 
+function installFieldStatusText(filled, count, unit) {
+  return filled ? `已填写 ${count} ${unit}` : '未填写'
+}
+
+function installFieldStatusStyle(filled) {
+  return filled ? 'color:#15803d;font-weight:600' : 'color:#b91c1c;font-weight:600'
+}
+
+async function sendInstallSupervisorMail(order, installDevices = [], installParts = [], recipients = [], detailUrl = '') {
+  const settings = await effectiveSettings()
+  const mail = settings.mail
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
+
+  const to = recipientEmails(recipients)
+  if (!to.length) {
+    return {
+      skipped: true,
+      reason: 'no_recipient_email',
+      recipientIds: recipients.map((recipient) => recipient.id).filter(Boolean),
+    }
+  }
+
+  const transporter = mailTransporter(mail)
+  const orderNo = order.order_no || order.orderNo || order.id
+  const customerName = order.customer_name || order.customerName || '-'
+  const devicesFilled = installDevices.length > 0
+  const partsFilled = installParts.length > 0
+  const devicesText = installFieldStatusText(devicesFilled, installDevices.length, '台')
+  const partsText = installFieldStatusText(partsFilled, installParts.length, '项')
+  const subject = `安装工单提交：${orderNo} / ${customerName}（安装设备${devicesFilled ? '已填' : '未填'}、配件${partsFilled ? '已填' : '未填'}）`
+  const linkBlock = detailUrl
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(detailUrl)}" style="${MAIL_BUTTON_STYLE}">查看 OMS 工单详情</a></p>`
+    : '<p style="color:#64748b">请登录 OMS 管理端查看工单详情。</p>'
+  const deviceRows = devicesFilled
+    ? installDevices
+        .map(
+          (device) =>
+            `<tr><td style="padding:4px 8px;border:1px solid #e2e8f0">${htmlEscape(device.name || '-')}</td><td style="padding:4px 8px;border:1px solid #e2e8f0">${htmlEscape(device.model || '-')}</td><td style="padding:4px 8px;border:1px solid #e2e8f0">${htmlEscape(device.pn || '-')}</td><td style="padding:4px 8px;border:1px solid #e2e8f0">${htmlEscape(device.serial_no || '-')}</td></tr>`,
+        )
+        .join('')
+    : ''
+  const deviceSection = devicesFilled
+    ? `<h3 style="margin:20px 0 8px">安装设备明细</h3>
+       <table style="border-collapse:collapse;width:100%;max-width:760px">
+         <tr style="background:#f8fafc"><th style="padding:4px 8px;border:1px solid #e2e8f0;text-align:left">名称</th><th style="padding:4px 8px;border:1px solid #e2e8f0;text-align:left">型号</th><th style="padding:4px 8px;border:1px solid #e2e8f0;text-align:left">PN</th><th style="padding:4px 8px;border:1px solid #e2e8f0;text-align:left">序列号</th></tr>
+         ${deviceRows}
+       </table>`
+    : ''
+  const partRows = partsFilled
+    ? installParts
+        .map(
+          (part) =>
+            `<tr><td style="padding:4px 8px;border:1px solid #e2e8f0">${htmlEscape(part.part_name || '-')}</td><td style="padding:4px 8px;border:1px solid #e2e8f0">${htmlEscape(part.part_no || '-')}</td><td style="padding:4px 8px;border:1px solid #e2e8f0">${htmlEscape(`${part.quantity ?? 1}${part.unit || ''}`)}</td><td style="padding:4px 8px;border:1px solid #e2e8f0">${htmlEscape(part.remark || '-')}</td></tr>`,
+        )
+        .join('')
+    : ''
+  const partSection = partsFilled
+    ? `<h3 style="margin:20px 0 8px">安装配件明细</h3>
+       <table style="border-collapse:collapse;width:100%;max-width:760px">
+         <tr style="background:#f8fafc"><th style="padding:4px 8px;border:1px solid #e2e8f0;text-align:left">配件名称</th><th style="padding:4px 8px;border:1px solid #e2e8f0;text-align:left">料号</th><th style="padding:4px 8px;border:1px solid #e2e8f0;text-align:left">数量</th><th style="padding:4px 8px;border:1px solid #e2e8f0;text-align:left">备注</th></tr>
+         ${partRows}
+       </table>`
+    : ''
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
+      <h2 style="margin:0 0 12px">现场安装工单已提交</h2>
+      <p>工程师提交了一张现场安装工单，请核对「安装设备」与「安装配件」栏位的填写情况${!devicesFilled || !partsFilled ? '，<strong style="color:#b91c1c">存在未填写项</strong>' : ''}。</p>
+      ${linkBlock}
+      <table style="border-collapse:collapse;width:100%;max-width:760px">
+        <tr><td style="padding:6px 0;color:#64748b;width:96px">Case ID</td><td>${htmlEscape(orderNo)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">客户</td><td>${htmlEscape(customerName)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">工程师</td><td>${htmlEscape(order.engineer_name || '-')}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">提交时间</td><td>${htmlEscape(formatTime(order.submitted_at || order.updated_at))}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">安装设备栏位</td><td style="${installFieldStatusStyle(devicesFilled)}">${htmlEscape(devicesText)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b">安装配件栏位</td><td style="${installFieldStatusStyle(partsFilled)}">${htmlEscape(partsText)}</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;vertical-align:top">问题/事项</td><td>${htmlEscape(order.issue_description || '-')}</td></tr>
+      </table>
+      ${deviceSection}
+      ${partSection}
+      <p style="margin-top:16px;color:#64748b;font-size:13px">该邮件延迟发送，用于合并工程师提交后的连续修改，反映的是最终填写状态。</p>
+      ${mailFooter()}
+    </div>
+  `
+
+  await transporter.sendMail({ from: mail.from, to, subject, html })
+  return { sent: true, to }
+}
+
 async function sendCustomerSignatureRequestMail(order, recipientEmail, signUrl, expiresAt) {
   const settings = await effectiveSettings()
   const mail = settings.mail
@@ -1182,6 +1273,7 @@ module.exports = {
   sendInspectionOverdueMail,
   sendMonthlyOperationsSummaryMail,
   sendSalesServiceOrderMail,
+  sendInstallSupervisorMail,
   sendCustomerSignatureRequestMail,
   sendAttendanceNotificationMail,
   sendMrApprovalMail,

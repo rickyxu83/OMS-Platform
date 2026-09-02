@@ -16,6 +16,7 @@ const {
   sendHolidaySyncMail,
 } = require('./mail')
 const { processDueSalesServiceOrderNotifications } = require('./sales-notifications')
+const { processDueInstallSupervisorNotifications } = require('./install-supervisor-notifications')
 const { processDueAttendanceEmailNotifications } = require('./attendance-notifications')
 const { processMrNotifications } = require('./mr-notifications')
 const { processMrArchives } = require('../modules/mr/archive')
@@ -1087,6 +1088,18 @@ function startScheduler() {
       }
     } catch (error) {
       console.error('[scheduler] Sales service-order notification check failed', error?.message)
+    }
+  })
+
+  scheduleCron('*/5 * * * *', async () => {
+    try {
+      const result = await processDueInstallSupervisorNotifications(20)
+      if (result?.skipped) return
+      if (result?.processed) {
+        console.log(`[scheduler] Install supervisor notifications processed: sent=${result.sent}, skipped=${result.skipped}, failed=${result.failed}`)
+      }
+    } catch (error) {
+      console.error('[scheduler] Install supervisor notification check failed', error?.message)
     }
   })
 
