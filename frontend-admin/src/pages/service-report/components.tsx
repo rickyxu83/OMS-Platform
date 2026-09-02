@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MarkdownContent } from "@/lib/markdown";
 import type { MarkdownAction } from "./types";
 import { MARKDOWN_TOOLS } from "./constants";
-import { openNativePicker, openPickerOnMouse, splitInputDateTime, displayText, inputToday } from "./utils";
+import { openPickerOnClick, splitInputDateTime, displayText, inputToday } from "./utils";
 
 export interface TimeInputProps {
   label: string;
@@ -29,7 +29,7 @@ export function NativeTimeInput({ label, time, onTimeChange }: TimeInputProps) {
       step={300}
       value={time}
       onChange={(event) => onTimeChange(event.target.value)}
-      onPointerDown={openPickerOnMouse}
+      onClick={openPickerOnClick}
       className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
     />
   );
@@ -533,7 +533,7 @@ export function DateTimeFieldControl({
         type="date"
         value={draftDate}
         onChange={(event) => setDate(event.target.value)}
-        onPointerDown={openPickerOnMouse}
+        onClick={openPickerOnClick}
         className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
       />
       <NativeTimeInput label={label} time={time} onTimeChange={setTime} />

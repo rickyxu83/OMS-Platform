@@ -112,7 +112,7 @@ import {
   installDeviceTitle, isCompressibleImage, isDispatchOrder, isFilledServiceOrder, isServiceModuleId,
   loadImageFile, mergeAttachmentFiles, normalizeDeviceSearchText, normalizeInstallDeviceDraft,
   normalizeLoadedForm, normalizeMode, normalizeResult, normalizeServiceModules, normalizeTargetDeviceDraft,
-  numberOrNull, openNativePicker, openPickerOnMouse, optionLabel, optionText, orderMatchesKeyword,
+  numberOrNull, optionLabel, optionText, orderMatchesKeyword,
   orderStatusLabel, partActionFor, payloadFromOrder, previewBlob, reportIssuePreviewLabel,
   reportOrderDisplayId, reportOrderEngineerText, reportOrderMainContent, reportOrderPreviewSummary,
   reportOrderServiceTime, reportWorkContentPreviewLabel, safeFilenamePart, samePreviewText,
