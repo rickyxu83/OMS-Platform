@@ -16,6 +16,7 @@ const {
   sendHolidaySyncMail,
 } = require('./mail')
 const { processDueSalesServiceOrderNotifications } = require('./sales-notifications')
+const { processDueInstallSupervisorNotifications } = require('./install-supervisor-notifications')
 const { processDueAttendanceEmailNotifications } = require('./attendance-notifications')
 const { processMrNotifications } = require('./mr-notifications')
 const { processMrArchives } = require('../modules/mr/archive')
@@ -1090,6 +1091,18 @@ function startScheduler() {
     }
   })
 
+  scheduleCron('*/5 * * * *', async () => {
+    try {
+      const result = await processDueInstallSupervisorNotifications(20)
+      if (result?.skipped) return
+      if (result?.processed) {
+        console.log(`[scheduler] Install supervisor notifications processed: sent=${result.sent}, skipped=${result.skipped}, failed=${result.failed}`)
+      }
+    } catch (error) {
+      console.error('[scheduler] Install supervisor notification check failed', error?.message)
+    }
+  })
+
   // 暗启动：MR/考勤模块被禁用时不注册对应定时任务（生产不建表、不刷错误日志）
   if (!env.featureModulesDisabled.has('attendance')) {
     scheduleCron('* * * * *', async () => {
@@ -1171,6 +1184,7 @@ function startScheduler() {
     'overdue inspection (08:10)',
     'monthly operations summary (08:20 on day 1)',
     'sales service-order notifications (every 5 minutes)',
+    'install supervisor notifications (every 5 minutes)',
   ]
   if (!env.featureModulesDisabled.has('attendance')) startedTasks.push('attendance notifications (every minute)', 'holiday auto-sync (09:15, Nov-Dec)', 'duty monthly auto-submit (08:21 on day 1)')
   if (!env.featureModulesDisabled.has('mr')) startedTasks.push('MR approval notifications (1m)', 'MR PDF archive retry (2m)')
