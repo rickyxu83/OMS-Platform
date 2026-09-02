@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Bell, MapPinned, Pencil, Plus, RefreshCw, Save, Send, Trash2, WandSparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -220,25 +221,36 @@ function formatExpiry(value?: string) {
   return value ? formatDateTime(value) : "长期";
 }
 
-function SettingsGroupHeader({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
-      <p className="text-sm text-muted-foreground">{description}</p>
-    </div>
-  );
+type SettingsTab = "integrations" | "notifications" | "announcements";
+type NotificationTab = "maintenance" | "customer" | "inspection" | "operations";
+
+const settingsTabs: { key: SettingsTab; label: string }[] = [
+  { key: "integrations", label: "集成与密钥" },
+  { key: "notifications", label: "自动提醒" },
+  { key: "announcements", label: "登录公告" },
+];
+
+const notificationTabs: { key: NotificationTab; label: string }[] = [
+  { key: "maintenance", label: "设备与维保" },
+  { key: "customer", label: "客户资料" },
+  { key: "inspection", label: "巡检" },
+  { key: "operations", label: "工单与营运" },
+];
+
+function parseSettingsTab(value: string | null): SettingsTab {
+  return settingsTabs.some((tab) => tab.key === value) ? (value as SettingsTab) : "integrations";
 }
 
-function SettingsNavLink({ href, title, description }: { href: string; title: string; description: string }) {
-  return (
-    <a
-      href={href}
-      className="rounded-lg border bg-card px-4 py-3 text-sm shadow-sm transition-colors hover:border-primary hover:bg-accent/40"
-    >
-      <span className="block font-semibold text-foreground">{title}</span>
-      <span className="mt-1 block text-xs leading-5 text-muted-foreground">{description}</span>
-    </a>
-  );
+function parseNotificationTab(value: string | null): NotificationTab {
+  return notificationTabs.some((tab) => tab.key === value) ? (value as NotificationTab) : "maintenance";
+}
+
+function tabButtonClass(active: boolean) {
+  return `-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 pb-2 pt-2.5 text-[13px] font-medium transition-colors sm:gap-2 sm:px-4 sm:pb-2.5 sm:pt-3 sm:text-sm ${
+    active
+      ? "border-primary text-primary"
+      : "border-transparent text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+  }`;
 }
 
 function NotificationGroup({ title, description, children }: { title: string; description: string; children: ReactNode }) {
@@ -421,8 +433,11 @@ function RecipientPicker({
 
 export function SystemSettings() {
   const { hasPermission } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const canEditSettings = hasPermission("settings.edit");
   const canManageAnnouncements = hasPermission("announcement.manage");
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => parseSettingsTab(searchParams.get("tab")));
+  const [notifyTab, setNotifyTab] = useState<NotificationTab>(() => parseNotificationTab(searchParams.get("sub")));
   const [form, setForm] = useState<SettingsForm>(emptyForm);
   const [announcementForm, setAnnouncementForm] = useState<AnnouncementForm>(emptyAnnouncementForm);
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
@@ -537,6 +552,14 @@ export function SystemSettings() {
       setLoading(false);
     }
   }
+
+  // 页签与子页签写入 URL，刷新后保持当前位置（?tab= / ?sub= 支持深链）
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (activeTab === "integrations") next.delete("tab"); else next.set("tab", activeTab);
+    if (activeTab !== "notifications" || notifyTab === "maintenance") next.delete("sub"); else next.set("sub", notifyTab);
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [activeTab, notifyTab, searchParams, setSearchParams]);
 
   useEffect(() => {
     load();
@@ -677,17 +700,29 @@ export function SystemSettings() {
       <div>
         <div>
           <h1 className="text-3xl font-semibold">系统设置</h1>
-          <p className="mt-1 text-muted-foreground">配置 AI 总结、地图服务和派单邮件通知</p>
+          <p className="mt-1 text-muted-foreground">集成密钥、自动提醒与登录公告的集中配置入口</p>
         </div>
       </div>
 
       <ErrorToast message={error} />
 
       {!loading && (
-        <div className="grid gap-3 md:grid-cols-3">
-          <SettingsNavLink href="#settings-integrations" title="集成与密钥" description="AI API、SMTP 邮件、高德地图 Key" />
-          <SettingsNavLink href="#settings-notifications" title="自动提醒" description="维保、巡检、销售服务单通知" />
-          <SettingsNavLink href="#settings-announcements" title="登录公告" description="登录弹窗、目标角色、有效时间" />
+        <div className="-mx-2 flex items-end gap-1 overflow-x-auto border-b border-border px-2 sm:mx-0 sm:px-1" role="tablist" aria-label="系统设置分组">
+          {settingsTabs.map((tab) => {
+            const active = tab.key === activeTab;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                className={tabButtonClass(active)}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                <span className="whitespace-nowrap">{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -700,8 +735,8 @@ export function SystemSettings() {
         </Card>
       ) : (
         <div className="space-y-8">
-          <section id="settings-integrations" className="scroll-mt-6 space-y-4">
-            <SettingsGroupHeader title="集成与密钥" description="集中管理外部服务连接信息。密钥保存后仍以星号展示，保留原来的后端保护逻辑。" />
+          {activeTab === "integrations" ? (
+          <section className="space-y-4">
             <div className="grid gap-6 xl:grid-cols-2">
           <Card>
             <CardHeader>
@@ -901,9 +936,10 @@ export function SystemSettings() {
           </Card>
             </div>
           </section>
+          ) : null}
 
-          <section id="settings-announcements" className="scroll-mt-6 space-y-4">
-            <SettingsGroupHeader title="登录公告" description="集中维护登录弹窗公告、目标角色和展示时间，公告内容支持 Markdown。" />
+          {activeTab === "announcements" ? (
+          <section className="space-y-4">
           <Card>
             <CardHeader>
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -1084,14 +1120,33 @@ export function SystemSettings() {
           </Card>
 
           </section>
+          ) : null}
 
-          <section id="settings-notifications" className="scroll-mt-6 space-y-4">
-            <SettingsGroupHeader title="自动提醒" description="维护周期性邮件提醒和销售服务单延迟通知，不改变 SMTP 本身的账号配置。" />
-          <Card>
-            <CardHeader>
-              <CardTitle>通知规则</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5">
+          {activeTab === "notifications" ? (
+          <section className="space-y-4">
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="自动提醒分组">
+              {notificationTabs.map((tab) => {
+                const active = tab.key === notifyTab;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={`whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                      active
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                    }`}
+                    onClick={() => setNotifyTab(tab.key)}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {notifyTab === "maintenance" ? (
               <NotificationGroup title="设备与维保" description="围绕设备维保状态和资料完整性的提醒，主要面向客户关联销售。">
                 <NotificationRule
                   title="维保到期预警"
@@ -1127,7 +1182,9 @@ export function SystemSettings() {
                   onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, noMaintenanceReminderEnabled: c } })}
                 />
               </NotificationGroup>
+            ) : null}
 
+            {notifyTab === "customer" ? (
               <NotificationGroup title="客户资料" description="用于补齐客户主数据，避免后续通知无法匹配到负责人。">
                 <NotificationRule
                   title="客户缺少销售提醒"
@@ -1146,7 +1203,9 @@ export function SystemSettings() {
                   </div>
                 </NotificationRule>
               </NotificationGroup>
+            ) : null}
 
+            {notifyTab === "inspection" ? (
               <NotificationGroup title="巡检" description="巡检计划、执行提醒、确认和逾期跟进集中放在这里。">
                 <NotificationRule
                   title="自动生成巡检工单"
@@ -1243,7 +1302,9 @@ export function SystemSettings() {
                   </div>
                 </NotificationRule>
               </NotificationGroup>
+            ) : null}
 
+            {notifyTab === "operations" ? (
               <NotificationGroup title="工单与营运" description="服务单流转和周期性经营信息汇总。">
                 <NotificationRule
                   title="销售服务单通知"
@@ -1325,18 +1386,17 @@ export function SystemSettings() {
                   </div>
                 </NotificationRule>
               </NotificationGroup>
+            ) : null}
 
-              <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-                系统每天 07:00 检查巡检执行，08:00 检查维保到期，08:10 检查逾期巡检；每周一 08:30 检查维保信息待完善设备，08:35 检查客户缺少销售，08:40 检查巡检日期待完善；每月 1 号 08:20 发送月度总结；销售服务单通知每 5 分钟检查一次到期队列。考勤模块启用时，每年 11~12 月每天 09:15 自动同步来年法定节假日，成功或失败都会邮件通知管理员（失败每周一提醒，12 月 15 日起每天提醒）。
-              </div>
-            </CardContent>
-          </Card>
-
+            <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+              系统每天 07:00 检查巡检执行，08:00 检查维保到期，08:10 检查逾期巡检；每周一 08:30 检查维保信息待完善设备，08:35 检查客户缺少销售，08:40 检查巡检日期待完善；每月 1 号 08:20 发送月度总结；销售服务单通知每 5 分钟检查一次到期队列。考勤模块启用时，每年 11~12 月每天 09:15 自动同步来年法定节假日，成功或失败都会邮件通知管理员（失败每周一提醒，12 月 15 日起每天提醒）。
+            </div>
           </section>
+          ) : null}
         </div>
       )}
 
-      {!loading && (
+      {!loading && activeTab !== "announcements" && (
         <div className="fixed bottom-[calc(4.25rem+env(safe-area-inset-bottom))] left-0 right-0 z-40 border-t bg-background/95 px-4 shadow-[0_-8px_22px_rgba(15,23,42,0.07)] backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:bottom-0 lg:left-[var(--admin-sidebar-width)]">
           <div className="mx-auto flex min-h-11 max-w-screen-2xl flex-col gap-1.5 py-1.5 sm:flex-row sm:items-center sm:justify-between lg:h-11 lg:py-0">
             <div className="text-xs text-muted-foreground">
