@@ -1161,7 +1161,7 @@ export function Attendance() {
                     <TableHead>事假</TableHead>
                     <TableHead>其他假</TableHead>
                     <TableHead>加班·转调休</TableHead>
-                    <TableHead><span className="inline-flex items-center gap-1">加班·付费 <HelpTooltip label="按加班审批结果记录的付费时长；三倍工资日的加班会标记「3倍」角标，具体加班费由行政线下核计。" /></span></TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">加班·付费 <HelpTooltip label="按加班审批结果记录的付费时长；付费加班按日类型标记倍率角标（工作日 1.5 倍、周末 2 倍、法定节假日 3 倍），具体加班费由行政线下核计。" /></span></TableHead>
                     <TableHead>调休使用</TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">特休余额 <HelpTooltip label={ANNUAL_LEAVE_HELP} /></span></TableHead>
                     <TableHead>调休余额</TableHead>
