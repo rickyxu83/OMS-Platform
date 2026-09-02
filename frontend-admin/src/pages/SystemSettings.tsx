@@ -1121,7 +1121,7 @@ export function SystemSettings() {
 
           {activeTab === "notifications" ? (
           <section className="space-y-4">
-            <div className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-lg border bg-muted/40 p-1" role="tablist" aria-label="自动提醒分组">
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="自动提醒分组">
               {notificationTabs.map((tab) => {
                 const active = tab.key === notifyTab;
                 return (
@@ -1130,10 +1130,10 @@ export function SystemSettings() {
                     type="button"
                     role="tab"
                     aria-selected={active}
-                    className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    className={`whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
                       active
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                     }`}
                     onClick={() => setNotifyTab(tab.key)}
                   >
