@@ -1184,6 +1184,7 @@ function startScheduler() {
     'overdue inspection (08:10)',
     'monthly operations summary (08:20 on day 1)',
     'sales service-order notifications (every 5 minutes)',
+    'install supervisor notifications (every 5 minutes)',
   ]
   if (!env.featureModulesDisabled.has('attendance')) startedTasks.push('attendance notifications (every minute)', 'holiday auto-sync (09:15, Nov-Dec)', 'duty monthly auto-submit (08:21 on day 1)')
   if (!env.featureModulesDisabled.has('mr')) startedTasks.push('MR approval notifications (1m)', 'MR PDF archive retry (2m)')
