@@ -38,10 +38,16 @@ export function NativeTimeInput({ label, time, onTimeChange }: TimeInputProps) {
   const currentTime = time.slice(0, 5);
 
   // Safari 桌面版的 time 输入框没有原生时间选择弹层（date 有日历、time 只有分段键盘输入，
-  // showPicker() 对 time 是静默空操作），所以桌面鼠标点击统一走自绘下拉；
-  // 触屏/手写笔（iPad）不拦，保留系统原生滚轮选择器。
+  // showPicker() 对 time 是静默空操作）；iPad 上 Apple Pencil 点时间框原生滚轮也不弹（实测反馈）。
+  // 因此鼠标/手写笔点击统一走自绘下拉；手指触摸（iPhone）保留系统原生滚轮选择器。
   function handlePointerDown(event: React.PointerEvent<HTMLInputElement>) {
-    if (event.pointerType !== "mouse") return;
+    if (event.pointerType === "touch") return;
+    // 阻止 Chrome 时钟图标的原生弹层，以及 iPad Pencil 点击的原生聚焦行为，避免双弹层
+    event.preventDefault();
+    if (event.pointerType === "mouse") {
+      // 桌面保留键盘输入能力；Pencil 场景不能手动 focus（iPad 上 focus 会触发原生控件/随手写）
+      event.currentTarget.focus({ preventScroll: true });
+    }
     setOpen(true);
   }
 
