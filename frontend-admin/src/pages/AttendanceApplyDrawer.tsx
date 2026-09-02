@@ -746,19 +746,28 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <Label>理由（选填）</Label>
-                      <button
-                        type="button"
-                        className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors ${(form.reason || "").includes("返台") ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent"}`}
-                        onClick={() => setForm((current) => ({ ...current, reason: "返台" }))}
-                      >
-                        返台
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors ${(form.reason || "").includes("返台") ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent"}`}
+                          onClick={() => setForm((current) => ({ ...current, reason: "返台" }))}
+                        >
+                          返台
+                        </button>
+                        <button
+                          type="button"
+                          className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors ${(form.reason || "").includes("返澳") ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent"}`}
+                          onClick={() => setForm((current) => ({ ...current, reason: "返澳" }))}
+                        >
+                          返澳
+                        </button>
+                      </div>
                     </div>
                     <Textarea
                       rows={2}
                       className="resize-none"
                       value={form.reason || ""}
-                      placeholder="选填；返台请点右上角“返台”或自行注明"
+                      placeholder="选填；返台/返澳请点右上角按钮或自行注明"
                       onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
                     />
                   </div>
