@@ -28,6 +28,7 @@ import {
   hours,
   nowLocalValue,
   overtimePayLabel,
+  overtimeDayMultiplier,
   overtimeRows,
   parseLocalDateTime,
   previewOvertimeHours,
@@ -209,15 +210,15 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
 
   const naturalDayLeave = form.requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
   const annualPreview = form.requestType === "leave" ? workingLeaveSummary(form, holidayDates, naturalDayLeave) : null;
-  // 调休按小时申请（0.5h 步进，产品裁决 2026-08-28）：不走半天槽，独立三个字段
+  // 调休按整小时申请（最小单位 1 小时，产品裁决 2026-09-02）：不走半天槽，独立三个字段
   const [compDate, setCompDate] = useState(() => dateValue());
   const [compStartTime, setCompStartTime] = useState("09:00");
   const [compHours, setCompHours] = useState("1");
   const compHoursNum = Number(compHours);
   const compTimeValid = Boolean(
     compDate && compStartTime
-    && Number.isFinite(compHoursNum) && compHoursNum > 0
-    && Math.abs(compHoursNum * 2 - Math.round(compHoursNum * 2)) <= 0.0001,
+    && Number.isFinite(compHoursNum) && compHoursNum >= 1
+    && Math.abs(compHoursNum - Math.round(compHoursNum)) <= 0.0001,
   );
   const compPreview = compTimeValid
     ? { startAt: `${compDate} ${compStartTime}`, endAt: compTimeEndAtValue(`${compDate} ${compStartTime}`, compHoursNum), hours: compHoursNum }
@@ -290,7 +291,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
       if (!compDate) return "请选择调休日期";
       const startMinutes = Number(compStartTime.slice(0, 2)) * 60 + Number(compStartTime.slice(3, 5) || 0);
       if (startMinutes >= 12 * 60 && startMinutes < 13 * 60) return "调休开始时间不能在 12:00-13:00 午休时段内";
-      if (!compTimeValid) return "调休时长必须以 0.5 小时为单位（最小 0.5 小时）";
+      if (!compTimeValid) return "调休时长必须以 1 小时为单位（最小 1 小时）";
     }
     if (form.requestType === "leave" && form.leaveType === "personal" && !String(form.reason || "").trim()) return "请填写事假事由";
     if (proofRequired && proofFiles.length === 0) {
@@ -327,7 +328,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
         let payloadHours: number;
         if (requestType === "comp_time") {
           // 调休按小时申请：开始日期+时间+时长（0.5h 步进），结束时间按时长推算
-          if (!compPreview) throw new Error("请选择调休日期、开始时间并填写 0.5 小时步进的时长");
+          if (!compPreview) throw new Error("请选择调休日期、开始时间并填写整小时的时长");
           payloadStartAt = compPreview.startAt;
           payloadEndAt = compPreview.endAt;
           payloadHours = compPreview.hours;
@@ -510,7 +511,11 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                           return (
                             <div key={segment.key} className="rounded-md border bg-background p-3 text-left text-sm">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="font-medium">{segment.label}{segment.allowedResults?.includes("pay") && segment.triplePayDates?.length ? <Badge variant="rose" className="ml-1.5 align-middle font-semibold">3倍</Badge> : null}</span>
+                                <span className="font-medium">{segment.label}{segment.allowedResults?.includes("pay") && (segment.triplePayDates?.length || overtimeDayMultiplier(segment.dayType)) ? (
+                                  <Badge variant={segment.triplePayDates?.length ? "rose" : segment.dayType === "rest_day" ? "warning" : "info"} className="ml-1.5 align-middle font-semibold">
+                                    {segment.triplePayDates?.length ? "3倍" : `${overtimeDayMultiplier(segment.dayType)}倍`}
+                                  </Badge>
+                                ) : null}</span>
                                 <Check className="h-4 w-4 shrink-0 text-primary" />
                               </div>
                               <div className="mt-1 text-xs text-muted-foreground">
@@ -718,13 +723,13 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       <Input type="time" step="1800" className="h-11" value={compStartTime} onChange={(event) => setCompStartTime(event.target.value)} />
                     </div>
                     <div className="space-y-2">
-                      <Label>时长（小时，0.5 步进）</Label>
-                      <Input type="number" min="0.5" max="24" step="0.5" className="h-11" value={compHours} onChange={(event) => setCompHours(event.target.value)} />
+                      <Label>时长（小时，整小时）</Label>
+                      <Input type="number" min="1" max="24" step="1" className="h-11" value={compHours} onChange={(event) => setCompHours(event.target.value)} />
                     </div>
                     <div className="text-xs text-muted-foreground sm:col-span-3">
                       {compPreview
                         ? `结束于 ${compPreview.endAt} · 时长 ${compPreview.hours} 小时（已扣除 12:00-13:00 午休，可用余额 ${hours(compBalance)} 小时）`
-                        : "选择日期、开始时间并填写 0.5 小时步进的时长（12:00-13:00 午休不计入）"}
+                        : "选择日期、开始时间并填写整小时的时长（12:00-13:00 午休不计入）"}
                     </div>
                   </div>
                 ) : null}

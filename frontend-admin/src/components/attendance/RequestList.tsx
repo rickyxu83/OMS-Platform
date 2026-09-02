@@ -14,6 +14,7 @@ import {
   REQUEST_TYPE_LABELS,
   days,
   hours,
+  overtimeDayMultiplier,
   serviceOrderTypeLabel,
   approvalStepLabel,
   approvalStepStatus,
@@ -55,6 +56,8 @@ function requestDetailContent(item: AttendanceRequest) {
         ) : null}
         {item.isTriplePay ? (
           <span className="inline-flex animate-pulse items-center gap-0.5 text-[11px] font-semibold text-rose-600"><Zap className="h-3 w-3" />3倍</span>
+        ) : item.overtimeResult === "pay" && overtimeDayMultiplier(item.overtimeDayType) ? (
+          <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${item.overtimeDayType === "rest_day" ? "text-amber-600" : "text-sky-600"}`}><Zap className="h-3 w-3" />{overtimeDayMultiplier(item.overtimeDayType)}倍</span>
         ) : null}
         {item.overtimeDayType && DayTypeIcon ? (
           <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
@@ -421,6 +424,13 @@ export function RequestList({
     const totalHours = group.reduce((sum, item) => sum + Number(item.hours || 0), 0);
     const kindsText = group.map((item) => overtimeKindLabel(item)).join(" + ");
     const anyTriple = group.some((item) => item.isTriplePay);
+    const groupPayMultiplier = anyTriple
+      ? null
+      : group.reduce<number | null>((max, item) => {
+          if (item.overtimeResult !== "pay") return max;
+          const multiplier = overtimeDayMultiplier(item.overtimeDayType);
+          return multiplier && (!max || multiplier > max) ? multiplier : max;
+        }, null);
     const pendingItem = group.find((item) => (item.status || "").startsWith("pending"));
     const groupStatus = pendingItem?.status || rep.status || "";
     const startDate = String(rep.startAt || "").slice(0, 10);
@@ -440,6 +450,8 @@ export function RequestList({
             <SegmentsHoverCard group={group} />
             {anyTriple ? (
               <span className="inline-flex shrink-0 animate-pulse items-center gap-0.5 text-[11px] font-semibold text-rose-600"><Zap className="h-3 w-3" />3倍</span>
+            ) : groupPayMultiplier ? (
+              <span className={`inline-flex shrink-0 items-center gap-0.5 text-[11px] font-semibold ${groupPayMultiplier === 2 ? "text-amber-600" : "text-sky-600"}`}><Zap className="h-3 w-3" />{groupPayMultiplier}倍</span>
             ) : null}
           </div>
           <div className="mt-0.5 truncate text-xs text-muted-foreground" title={kindsText}>{kindsText}</div>

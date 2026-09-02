@@ -1307,12 +1307,8 @@ function normalizeRequestInput(body) {
   }
 
   let hours = positiveNumber(body?.hours, '申请小时数')
-  if (requestType === 'comp_time') {
-    // 调休按小时申请，最小单位 0.5 小时（产品裁决 2026-08-28）
-    if (Math.abs(Number(hours) * 2 - Math.round(Number(hours) * 2)) > 0.0001) throw badRequest('调休时长必须以 0.5 小时为单位')
-  } else {
-    assertWholeHour(hours, '申请小时数')
-  }
+  // 调休最小单位 1 小时（产品裁决 2026-09-02，取代 2026-08-28 的 0.5 小时步进），与其他类型统一整小时校验
+  assertWholeHour(hours, requestType === 'comp_time' ? '调休时长' : '申请小时数')
   let startAt = text(body?.startAt).replace('T', ' ')
   let endAt = text(body?.endAt).replace('T', ' ')
   if (!startAt || !endAt) throw badRequest('开始和结束时间不能为空')

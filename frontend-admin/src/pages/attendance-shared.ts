@@ -281,8 +281,17 @@ export function previewOvertimeHours(startAt: string, endAt: string, dayType?: s
   return total > 0 ? total : 0;
 }
 
+// 法定加班倍率（仅角标展示，不改变统计与核算口径；产品裁决 2026-09-02：工作日 1.5 / 周末 2 / 法定节假日 3）
+export function overtimeDayMultiplier(dayType?: string | null): number | null {
+  if (dayType === "workday") return 1.5;
+  if (dayType === "rest_day") return 2;
+  if (dayType === "legal_holiday") return 3;
+  return null;
+}
+
 export function overtimePayLabel(segment?: Pick<OvertimeSegment, "payMultiplier" | "dayType"> | null) {
-  const multiplier = Number(segment?.payMultiplier || 1);
+  const stored = Number(segment?.payMultiplier || 1);
+  const multiplier = stored > 1 ? stored : overtimeDayMultiplier(segment?.dayType) || 1;
   return multiplier > 1 ? `加班费（${hours(multiplier)}倍）` : "加班费";
 }
 
