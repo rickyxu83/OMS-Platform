@@ -50,6 +50,7 @@ const settingKeys = [
   'notification.serviceOrderSalesNotifyEnabled',
   'notification.serviceOrderSalesDelayMinutes',
   'notification.serviceOrderAdminBaseUrl',
+  'notification.serviceOrderInstallSupervisorNotifyEnabled',
 ]
 
 function boolText(value, fallback = false) {
@@ -115,6 +116,7 @@ async function effectiveSettings() {
       serviceOrderSalesNotifyEnabled: boolText(saved['notification.serviceOrderSalesNotifyEnabled'], false),
       serviceOrderSalesDelayMinutes: saved['notification.serviceOrderSalesDelayMinutes'] || '60',
       serviceOrderAdminBaseUrl: saved['notification.serviceOrderAdminBaseUrl'] || '',
+      serviceOrderInstallSupervisorNotifyEnabled: boolText(saved['notification.serviceOrderInstallSupervisorNotifyEnabled'], true),
     },
   }
 }
@@ -273,6 +275,7 @@ async function update(req, res) {
     next['notification.serviceOrderSalesNotifyEnabled'] = String(n.serviceOrderSalesNotifyEnabled === true || n.serviceOrderSalesNotifyEnabled === 'true')
     next['notification.serviceOrderSalesDelayMinutes'] = String(Math.max(5, Math.min(1440, Number(n.serviceOrderSalesDelayMinutes || 60))))
     next['notification.serviceOrderAdminBaseUrl'] = String(n.serviceOrderAdminBaseUrl || '').trim().replace(/\/+$/, '')
+    next['notification.serviceOrderInstallSupervisorNotifyEnabled'] = String(n.serviceOrderInstallSupervisorNotifyEnabled === true || n.serviceOrderInstallSupervisorNotifyEnabled === 'true')
   }
 
   await setSettings(next, req.user.id)

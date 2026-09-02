@@ -62,6 +62,7 @@ interface SettingsForm {
     serviceOrderSalesNotifyEnabled: boolean;
     serviceOrderSalesDelayMinutes: string;
     serviceOrderAdminBaseUrl: string;
+    serviceOrderInstallSupervisorNotifyEnabled: boolean;
   };
   map: {
     amapRestKey: string;
@@ -139,6 +140,7 @@ const emptyForm: SettingsForm = {
     serviceOrderSalesNotifyEnabled: false,
     serviceOrderSalesDelayMinutes: "60",
     serviceOrderAdminBaseUrl: "",
+    serviceOrderInstallSupervisorNotifyEnabled: true,
   },
   map: {
     amapRestKey: "",
@@ -517,6 +519,7 @@ export function SystemSettings() {
           serviceOrderSalesNotifyEnabled: toBool(n.serviceOrderSalesNotifyEnabled),
           serviceOrderSalesDelayMinutes: String(n.serviceOrderSalesDelayMinutes || "60"),
           serviceOrderAdminBaseUrl: n.serviceOrderAdminBaseUrl || "",
+          serviceOrderInstallSupervisorNotifyEnabled: toBool(n.serviceOrderInstallSupervisorNotifyEnabled ?? true),
         },
         map: {
           amapRestKey: item.map?.amapRestKey || "",
@@ -1273,6 +1276,13 @@ export function SystemSettings() {
                     </div>
                   </div>
                 </NotificationRule>
+
+                <NotificationRule
+                  title="安装工单主管通知"
+                  description="工程师提交流转方式为「现场」且服务类别为「安装」的服务单后，延迟发送邮件给全部工程主管，告知「安装设备」与「安装配件」栏位是否已填写。延迟分钟数与上方销售服务单通知共用。"
+                  checked={form.notification.serviceOrderInstallSupervisorNotifyEnabled}
+                  onCheckedChange={(c) => setForm({ ...form, notification: { ...form.notification, serviceOrderInstallSupervisorNotifyEnabled: c } })}
+                />
 
                 <NotificationRule
                   title="月度营运总结"

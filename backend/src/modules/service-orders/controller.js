@@ -9,6 +9,7 @@ const { buildLikeSearch, customerNameKey, toSimplified, toTraditional } = requir
 const { normalizePhoneNumber } = require('../../utils/phone')
 const { sendAssignmentMail, sendCustomerSignatureRequestMail } = require('../../services/mail')
 const { queueSalesServiceOrderNotification, deleteSalesNotificationsForOrderIds } = require('../../services/sales-notifications')
+const { queueInstallSupervisorNotification, deleteInstallSupervisorNotificationsForOrderIds } = require('../../services/install-supervisor-notifications')
 const { generateTimesheetWorkSummary } = require('./work-summary')
 const { buildServiceRecordPdf, buildServiceRecordsPdf, serviceRecordPdfFilename } = require('./service-record-pdf')
 const { nextCustomerCode } = require('../customers/controller')
@@ -1542,6 +1543,20 @@ async function queueSalesServiceOrderNotificationSafely(orderId) {
   }
 }
 
+async function queueInstallSupervisorNotificationSafely(orderId) {
+  try {
+    const result = await queueInstallSupervisorNotification(orderId)
+    if (result?.skipped && !['install_supervisor_notify_disabled', 'not_install_onsite', 'order_cancelled'].includes(result.reason)) {
+      console.warn('[mail] install supervisor notification queue skipped', {
+        orderId,
+        reason: result.reason || 'unknown',
+      })
+    }
+  } catch (error) {
+    console.error('[mail] install supervisor notification queue failed', { orderId, message: error?.message })
+  }
+}
+
 async function latestCustomerSignatureRequest(orderId) {
   await ensureCustomerSignatureRequestsTable()
   const rows = await query(
@@ -2906,6 +2921,7 @@ async function createSelfReport(req, res) {
 
   if (created.status === 'submitted') {
     await queueSalesServiceOrderNotificationSafely(created.id)
+    await queueInstallSupervisorNotificationSafely(created.id)
   }
   res.status(201).json(created)
 }
@@ -3351,6 +3367,7 @@ async function submitCustomerSignatureRequest(req, res) {
   })
 
   await queueSalesServiceOrderNotificationSafely(signed.orderId)
+  await queueInstallSupervisorNotificationSafely(signed.orderId)
   res.json({ ok: true, serviceOrderId: signed.orderId })
 }
 
@@ -4072,6 +4089,7 @@ async function updateSelfReport(req, res) {
 
   if (!useElectronicCustomerSignature) {
     await queueSalesServiceOrderNotificationSafely(req.params.id)
+    await queueInstallSupervisorNotificationSafely(req.params.id)
   }
   res.status(204).end()
 }
@@ -4443,6 +4461,7 @@ async function remove(req, res) {
     await connection.execute('DELETE FROM service_parts WHERE service_order_id = :id', { id: req.params.id })
     await connection.execute('DELETE FROM service_order_customer_signature_requests WHERE service_order_id = :id', { id: req.params.id })
     await deleteSalesNotificationsForOrderIds(connection, [req.params.id])
+    await deleteInstallSupervisorNotificationsForOrderIds(connection, [req.params.id])
     const deletedFilePaths = await deleteFileRowsForOrderIds(connection, [req.params.id])
     await connection.execute('DELETE FROM service_reports WHERE service_order_id = :id', { id: req.params.id })
     await connection.execute('DELETE FROM service_order_engineers WHERE service_order_id = :id', { id: req.params.id })
@@ -4504,6 +4523,7 @@ async function bulkDelete(req, res) {
     await connection.execute(`DELETE FROM service_parts WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_order_customer_signature_requests WHERE service_order_id IN (${found.placeholders})`, found.params)
     await deleteSalesNotificationsForOrderIds(connection, foundIds)
+    await deleteInstallSupervisorNotificationsForOrderIds(connection, foundIds)
     const deletedFilePaths = await deleteFileRowsForOrderIds(connection, foundIds)
     await connection.execute(`DELETE FROM service_reports WHERE service_order_id IN (${found.placeholders})`, found.params)
     await connection.execute(`DELETE FROM service_order_engineers WHERE service_order_id IN (${found.placeholders})`, found.params)
