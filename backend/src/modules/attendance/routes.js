@@ -47,8 +47,10 @@ router.post('/requests/:id/approve', requirePermission('attendance.approve', 'at
 router.post('/requests/:id/approve-admin', requirePermission('attendance.admin.approve'), controller.approveAdmin)
 router.post('/requests/:id/reject', requirePermission('attendance.approve', 'attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.rejectRequest)
 router.post('/requests/:id/withdraw', requirePermission('attendance.apply'), controller.withdrawRequest)
+router.post('/requests/:id/remind', requirePermission('attendance.apply'), controller.remindRequest)
 router.post('/requests/:id/void', requirePermission('attendance.admin.approve'), controller.voidRequest)
 
+router.get('/team-calendar', requirePermission('attendance.apply', 'attendance.approve', 'attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.teamCalendar)
 router.get('/reports/monthly', requirePermission('attendance.view', 'attendance.admin.approve', 'attendance.manage'), controller.monthlyReport)
 router.get('/reports/export', requirePermission('attendance.report.export'), report.exportReport)
 
