@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Eye, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Eye, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X, BellRing } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,13 +26,14 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { ReasonConfirmDialog } from "@/components/ReasonConfirmDialog";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 import { RequestList, requestTypeLabel } from "@/components/attendance/RequestList";
+import { TeamCalendar } from "@/components/attendance/TeamCalendar";
 import { HolidayPanel } from "@/components/attendance/HolidayPanel";
 import { SettingsHolidays, type HolidayDraft, type HolidaySyncPreview } from "@/components/attendance/SettingsHolidays";
 import { ReportExportDialog } from "@/components/attendance/ReportExportDialog";
 import { AdjustBalanceDialog, BatchBalanceDialog, EmployeeEditDialog } from "@/components/attendance/EmployeeDialogs";
 
 // 法定节假日说明文案已迁 SettingsHolidays；审批链规则说明保留在本页（设置-审批流程视图使用）
-const APPROVAL_RULE_HELP = "审批链按固定模型自动推导，无需逐级配置：普通员工 = 直属主管 → 行政主管；工程/销售主管 = 行政主管 → 运营负责人；行政主管本人 = 运营负责人；请假满 3 天自动追加运营负责人终审。直属主管映射为「行政主管」时等同无直属主管步骤（自动去重）。管理员与行政主管拥有全部考勤权限，可审批任意环节。";
+const APPROVAL_RULE_HELP = "审批链按固定模型自动推导，无需逐级配置：普通员工 = 直属主管 → 行政主管；工程/销售主管 = 行政主管 → 运营负责人；行政主管本人 = 运营负责人；请假满 3 天自动追加运营负责人终审。直属主管映射为「行政主管」时等同无直属主管步骤（自动去重）。管理员与行政主管拥有全部假勤权限，可审批任意环节。";
 
 const ANNUAL_LEAVE_HELP = "特休（特别休假，即年假）按天计，1 天＝8 小时；余额由行政在员工页签的「余额控制台」中初始化或调整，请假通过后自动扣减。";
 import {
@@ -73,10 +74,10 @@ import {
   serviceOrderTypeLabel,
 } from "@/pages/attendance-shared";
 
-type AttendanceTab = "approve" | "records" | "employees" | "settings" | "duty";
+type AttendanceTab = "approve" | "calendar" | "records" | "employees" | "settings" | "duty";
 
 // 待办中心等外部入口通过 ?tab=approve 深链定位考勤页签
-const ATTENDANCE_TABS: AttendanceTab[] = ["approve", "records", "employees", "settings", "duty"];
+const ATTENDANCE_TABS: AttendanceTab[] = ["approve", "calendar", "records", "employees", "settings", "duty"];
 function parseTabParam(value: string | null): AttendanceTab {
   return ATTENDANCE_TABS.includes(value as AttendanceTab) ? (value as AttendanceTab) : "approve";
 }
@@ -429,8 +430,9 @@ export function Attendance() {
     if (canViewRecords) {
       items.push({ key: "records", label: canViewAll ? "记录与报表" : "申请明细" });
     }
+    items.push({ key: "calendar", label: "团队日历" });
     if (canManage) items.push({ key: "employees", label: "员工与余额" });
-    if (canManage) items.push({ key: "settings", label: "考勤设置" });
+    if (canManage) items.push({ key: "settings", label: "假勤设置" });
     if (canViewDuty) items.push({ key: "duty", label: "值班津贴" });
     return items;
   }, [canApply, canViewAll, canViewRecords, canManage, canViewDuty, approvalTodos.length]);
@@ -550,6 +552,23 @@ export function Attendance() {
       confirmLabel: "确认撤回",
       run: () => action(`/attendance/requests/${item.id}/withdraw`, "已撤回"),
     });
+  }
+
+  // 催一下（spec 007）：给当前环节审批人发提醒邮件，同一申请 24h 内只能催一次（后端同样节流）
+  function remindRequest(item: AttendanceRequest) {
+    setPendingAction({
+      title: "催一下",
+      description: <>{requestTypeLabel(item.requestType)} · 将给当前环节的审批人发送提醒邮件；同一申请 24 小时内只能催一次。</>,
+      confirmLabel: "发送提醒",
+      run: () => action(`/attendance/requests/${item.id}/remind`, "已提醒当前审批人"),
+    });
+  }
+
+  // 24h 内催过则置灰
+  function remindedRecently(item: AttendanceRequest) {
+    if (!item.lastRemindedAt) return false;
+    const time = new Date(String(item.lastRemindedAt).replace(" ", "T")).getTime();
+    return Number.isFinite(time) && Date.now() - time < 24 * 3600000;
   }
 
   function voidRequest(item: AttendanceRequest) {
@@ -841,7 +860,7 @@ export function Attendance() {
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold md:text-3xl">考勤管理</h1>
+          <h1 className="text-2xl font-semibold md:text-3xl">假勤管理</h1>
           <p className="mt-1 text-sm text-muted-foreground">请假、加班、调休申请与月度汇总</p>
         </div>
         <div className="flex items-center gap-2">
@@ -861,7 +880,7 @@ export function Attendance() {
       <ErrorToast message={error} />
 
       {tabs.length > 1 ? (
-        <div className="-mx-2 flex items-end gap-1 overflow-x-auto border-b border-border px-2 sm:mx-0 sm:px-1" role="tablist" aria-label="考勤视图">
+        <div className="-mx-2 flex items-end gap-1 overflow-x-auto border-b border-border px-2 sm:mx-0 sm:px-1" role="tablist" aria-label="假勤视图">
           {tabs.map((tab) => {
             const active = tab.key === activeTab;
             return (
@@ -1037,18 +1056,34 @@ export function Attendance() {
                 })}
               </>
             )}
-            actions={(item) => ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(item.status || "") ? (
-              <>
-                <Button size="sm" variant="outline" onClick={() => withdrawRequest(item)}>
-                  <RotateCcw className="mr-1 h-4 w-4" /> 撤回
-                </Button>
-              </>
-            ) : null}
+            actions={(item) => {
+              const status = item.status || "";
+              const isPending = status.startsWith("pending_");
+              const canWithdraw = ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(status);
+              if (!isPending && !canWithdraw) return null;
+              const reminded = remindedRecently(item);
+              return (
+                <>
+                  {isPending ? (
+                    <Button size="sm" variant="outline" disabled={reminded} title={reminded ? "24 小时内已催过，请稍后再试" : undefined} onClick={() => remindRequest(item)}>
+                      <BellRing className="mr-1 h-4 w-4" /> 催一下
+                    </Button>
+                  ) : null}
+                  {canWithdraw ? (
+                    <Button size="sm" variant="outline" onClick={() => withdrawRequest(item)}>
+                      <RotateCcw className="mr-1 h-4 w-4" /> 撤回
+                    </Button>
+                  ) : null}
+                </>
+              );
+            }}
           /> : null}
 
           <HolidayPanel publicHolidays={publicHolidays} publicHolidayYear={publicHolidayYear} setPublicHolidayYear={setPublicHolidayYear} />
         </div>
       ) : null}
+
+      {activeTab === "calendar" ? <TeamCalendar /> : null}
 
       {activeTab === "records" && canViewRecords ? (
         <div className="space-y-5">
@@ -1121,7 +1156,7 @@ export function Attendance() {
                       end={recordEndDate}
                       onChange={(s2, e2) => { setRecordStartDate(s2); setRecordEndDate(e2); }}
                       placeholder="开始日期 ~ 结束日期"
-                      ariaLabel="考勤记录日期范围"
+                      ariaLabel="假勤记录日期范围"
                     />
                   </div>
                   {hasRecordFilter ? <Button variant="ghost" size="sm" onClick={() => { setRecordStatus("all"); setRecordType("all"); setRecordKeyword(""); setRecordStartDate(""); setRecordEndDate(""); }}>重置</Button> : null}
@@ -1204,7 +1239,7 @@ export function Attendance() {
                 <CardDescription>集中查看员工档案状态、特休余额与调休余额</CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary">考勤员工 {activeEmployeeCount} 人</Badge>
+                <Badge variant="secondary">假勤员工 {activeEmployeeCount} 人</Badge>
                 <Badge variant="secondary">调休余额池 {hours(totalCompBalanceHours)} 小时</Badge>
               </div>
             </div>
@@ -1344,7 +1379,7 @@ export function Attendance() {
         <div className="space-y-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
-              <h2 className="text-xl font-semibold">考勤设置</h2>
+              <h2 className="text-xl font-semibold">假勤设置</h2>
               <p className="mt-1 text-sm text-muted-foreground">按影响范围管理审批流程与工作日历</p>
             </div>
             <Badge variant="outline"><Settings2 className="mr-1 h-3.5 w-3.5" />配置总览</Badge>

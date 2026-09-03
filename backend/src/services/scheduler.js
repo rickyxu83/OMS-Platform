@@ -1116,6 +1116,19 @@ function startScheduler() {
       }
     })
 
+    // 审批超时自动催办（spec 007）：每小时扫描，环节停留超 24h 给当前审批人发提醒邮件（同环节一天最多一封）
+    scheduleCron('17 * * * *', async () => {
+      try {
+        const { processStaleApprovalReminders } = require('../modules/attendance/controller')
+        const result = await processStaleApprovalReminders()
+        if (result?.reminded) {
+          console.log(`[scheduler] Attendance stale reminders: scanned=${result.scanned}, reminded=${result.reminded}`)
+        }
+      } catch (error) {
+        console.error('[scheduler] Attendance stale reminder check failed', error?.message)
+      }
+    })
+
     // 值班津贴自动提交：每月 1 号自动把当月值班批次提交给行政主管终审（与 08:20 月结错开 1 分钟）
   scheduleCron('21 8 1 * *', async () => {
     try {
@@ -1186,7 +1199,7 @@ function startScheduler() {
     'sales service-order notifications (every 5 minutes)',
     'install supervisor notifications (every 5 minutes)',
   ]
-  if (!env.featureModulesDisabled.has('attendance')) startedTasks.push('attendance notifications (every minute)', 'holiday auto-sync (09:15, Nov-Dec)', 'duty monthly auto-submit (08:21 on day 1)')
+  if (!env.featureModulesDisabled.has('attendance')) startedTasks.push('attendance notifications (every minute)', 'attendance stale reminders (hourly :17)', 'holiday auto-sync (09:15, Nov-Dec)', 'duty monthly auto-submit (08:21 on day 1)')
   if (!env.featureModulesDisabled.has('mr')) startedTasks.push('MR approval notifications (1m)', 'MR PDF archive retry (2m)')
   console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): ${startedTasks.join(', ')}`)}
 

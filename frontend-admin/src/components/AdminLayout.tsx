@@ -117,7 +117,7 @@ const STRINGS: Record<AppLang, {
       customers: "客户档案",
       devices: "设备资产",
       "maintenance-parties": "维保方目录",
-      attendance: "考勤管理",
+      attendance: "假勤管理",
       "attendance-duty": "工程值班",
       timesheets: "月报导出",
       users: "成员与角色",
@@ -173,7 +173,7 @@ const STRINGS: Record<AppLang, {
       customers: "客戶檔案",
       devices: "設備資產",
       "maintenance-parties": "維保方目錄",
-      attendance: "考勤管理",
+      attendance: "假勤管理",
       "attendance-duty": "工程值班",
       timesheets: "月報導出",
       users: "成員與角色",
@@ -261,7 +261,7 @@ const MOBILE_NAV_LABELS: Record<string, string> = {
   dashboard: "首页",
   "service-orders": "工单",
   "service-report": "填写",
-  attendance: "考勤",
+  attendance: "假勤",
   "approval-tasks": "待办",
 };
 

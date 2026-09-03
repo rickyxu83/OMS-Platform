@@ -69,7 +69,7 @@ const BIZ_INDICATOR: Record<string, { icon: LucideIcon; color: string; label: st
   mr: { icon: FileSignature, color: 'text-indigo-600', label: 'MR·签核' },
   mr_purchase: { icon: Package, color: 'text-cyan-600', label: 'MR·采购' },
   mr_contract_no: { icon: FileText, color: 'text-purple-600', label: 'MR·合同' },
-  attendance: { icon: CalendarClock, color: 'text-orange-600', label: '考勤' },
+  attendance: { icon: CalendarClock, color: 'text-orange-600', label: '假勤' },
 }
 
 function businessIndicator(task: ApprovalTask) {
