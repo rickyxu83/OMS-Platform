@@ -129,6 +129,47 @@ function suggestedDaysOf(tierYears, tiers, schemeCode = 'mainland') {
   return Math.round(days * 100) / 100
 }
 
+// ===== 年末折算 / 季末清零（spec 005 v3，佬 2026-09-03） =====
+
+// 特休年末折算率：台籍·特批 0.6，其他所有人 0.5
+function carryoverRateOf(schemeCode) {
+  return schemeOf(schemeCode) === 'taiwan_special' ? 0.6 : 0.5
+}
+
+// 向下取整到 0.5（特休最小请休单位为半天：零头不足半天抹掉，超过半天算半天）
+function floorHalfDay(days) {
+  return Math.floor(Number(days || 0) * 2) / 2
+}
+
+// 特休年末折算预览：当前余额 × 折扣 → 向下取整 0.5 天，结转次年
+function carryoverPreviewOf(balanceDays, schemeCode) {
+  const balance = Math.round(Number(balanceDays || 0) * 100) / 100
+  const rate = carryoverRateOf(schemeCode)
+  return { balanceDays: balance, rate, resultDays: floorHalfDay(balance * rate) }
+}
+
+// 季度边界（本地时区字符串）：month 1-12
+function quarterOfMonth(month) {
+  return Math.floor((month - 1) / 3) + 1
+}
+
+function quarterRange(year, quarter) {
+  const startMonth = (quarter - 1) * 3 + 1
+  const endMonth = startMonth + 2
+  const endDay = new Date(year, endMonth, 0).getDate()
+  return {
+    start: `${year}-${String(startMonth).padStart(2, '0')}-01 00:00:00`,
+    end: `${year}-${String(endMonth).padStart(2, '0')}-${String(endDay).padStart(2, '0')} 23:59:59`,
+    label: `Q${quarter}`,
+  }
+}
+
+// 调休到期日：当季入账在下一季度末清零
+function compExpiryOf(year, quarter) {
+  const nextQuarter = quarter === 4 ? { year: year + 1, quarter: 1 } : { year, quarter: quarter + 1 }
+  return quarterRange(nextQuarter.year, nextQuarter.quarter).end.slice(0, 10)
+}
+
 let cache = { at: 0, items: [] }
 const CACHE_TTL_MS = 30 * 1000
 
@@ -206,6 +247,8 @@ async function decorateAnnualLeaveSuggestion(items) {
       annualLeaveScheme: schemeCode,
       annualLeaveTierYears: tierYears,
       annualLeaveSuggestedDays: suggestedDaysOf(tierYears, tiers, schemeCode),
+      // 年末折算预览（spec 005 v3）：当前余额 × 折扣向下取整 0.5 天
+      annualLeaveCarryoverPreview: carryoverPreviewOf(item.annualLeaveBalanceDays, schemeCode),
     }
   })
 }
@@ -219,4 +262,10 @@ module.exports = {
   suggestedDaysOf,
   replaceTiers,
   decorateAnnualLeaveSuggestion,
+  carryoverRateOf,
+  floorHalfDay,
+  carryoverPreviewOf,
+  quarterOfMonth,
+  quarterRange,
+  compExpiryOf,
 }

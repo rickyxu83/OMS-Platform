@@ -16,6 +16,23 @@
 - 档位表加 `scheme_code` + `plus_per_year`（每年加）+ `max_days`（封顶）三列
 - **下一年的计算公式佬另外给**，本期只做当年档位与建议额度
 
+## v3 追加（2026-09-03，佬提供年末折算与调休清零规则）
+
+### 特休年末折算
+
+- **12-31 晚系统自动折算入账**（调度任务 23:50，幂等防重）：剩余特休余额 × 折扣（台籍·特批 0.6，其他所有人 0.5），结果**向下取整到 0.5 天**（特休最小请休单位为半天，零头不足半天抹掉、超过半天算半天）
+- 折算余额**结转次年并与新档位额度叠加**（台账差额调整天然支持）
+- 台账 action `year_end_carryover`，note 记录「剩余 X 天 × 0.5 → Y 天（结转次年）」
+- **预览常驻**（佬拍板：不只年底前几天，一直显示）：余额控制台与员工申请页实时显示「当前余额 X 天 × 0.5 → 年末结转 Y 天」
+
+### 调休季度清零
+
+- 当季的调休必须在**下一季度末**前用完，否则清零：Q 季入账的调休，Q+1 季末（3-31 / 6-30 / 9-30 / 12-31）到期
+- 调度任务每日 23:55 检查是否季末，是则执行清零（幂等）：按 FIFO 口径计算 Q 季入账剩余 = max(0, Q季入账 − max(0, 期间使用 − Q初结余))
+- 台账 action `comp_expire`，delta 为负，note「Q3 调休到期清零 X 小时」
+- 预览：余额控制台与申请页显示「本季入账剩余 X 小时将于 Q末 清零」
+- 行政手工 adjust 入账的调休不参与过期（非季度入账）
+
 ## Type
 
 Change
@@ -38,6 +55,8 @@ Change
 ## Scope
 
 - 新表 `attendance_annual_leave_tiers`（惰性迁移）：`scheme_code VARCHAR(32)`、`min_years INT`、`days DECIMAL(4,1)`（基础天数）、`plus_per_year DECIMAL(3,1) NULL`（超出档位起点后每年加天数）、`max_days DECIMAL(4,1) NULL`（封顶）、`note VARCHAR(200)`；UNIQUE (scheme_code, min_years)；seed 上述三方案九档
+- 年末/季末结算：台账新 action `year_end_carryover`（特休折算）与 `comp_expire`（调休清零），均无 request_id；两任务幂等（按年份/季度检查已有记录跳过）
+- 调度：`50 23 31 12 *` 特休年末折算；`55 23 * * *` 调休季末清零（代码内判断是否季末日）
 - 方案清单写死代码（mainland/taiwan/taiwan_special），label 由代码提供；员工方案 = `annual_leave_rule`，非法值回退 mainland
 - 后端 API：
   - `GET /attendance/annual-leave-tiers`（考勤读权限）

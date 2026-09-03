@@ -1127,6 +1127,16 @@ function startScheduler() {
     }
   })
 
+  // 年末/季末结算（spec 005 v3）：每日 23:50 检查——12-31 特休年末折算（×0.5/0.6 向下取整 0.5 天）；季末最后一天调休当季入账清零（幂等）
+  scheduleCron('50 23 * * *', async () => {
+    try {
+      const { annualLeaveSettlementTick } = require('../modules/attendance/controller')
+      await annualLeaveSettlementTick()
+    } catch (error) {
+      console.error('[scheduler] Annual leave settlement failed', error?.message)
+    }
+  })
+
   // 法定节假日自动同步：每年 11~12 月每天 09:15 检查来年数据，缺失则双源拉取写入并邮件通知管理员。
     // 失败通知节流：每周一提醒一次；12 月 15 日起（国务院通常已公布）仍未成功则每天提醒。
     scheduleCron('15 9 * * *', async () => {
@@ -1186,7 +1196,7 @@ function startScheduler() {
     'sales service-order notifications (every 5 minutes)',
     'install supervisor notifications (every 5 minutes)',
   ]
-  if (!env.featureModulesDisabled.has('attendance')) startedTasks.push('attendance notifications (every minute)', 'holiday auto-sync (09:15, Nov-Dec)', 'duty monthly auto-submit (08:21 on day 1)')
+  if (!env.featureModulesDisabled.has('attendance')) startedTasks.push('attendance notifications (every minute)', 'holiday auto-sync (09:15, Nov-Dec)', 'duty monthly auto-submit (08:21 on day 1)', 'annual leave carryover & comp-time expiry (23:50 daily check)')
   if (!env.featureModulesDisabled.has('mr')) startedTasks.push('MR approval notifications (1m)', 'MR PDF archive retry (2m)')
   console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): ${startedTasks.join(', ')}`)}
 

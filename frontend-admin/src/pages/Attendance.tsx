@@ -1357,11 +1357,23 @@ export function Attendance() {
                             <div className={`text-xs ${Number(employee.annualLeaveSuggestedDays || 0) !== Math.round(annualBalanceDays(employee) * 100) / 100 ? "text-amber-600" : "text-muted-foreground"}`}>
                               建议 {employee.annualLeaveSuggestedDays ?? "-"} 天/年
                             </div>
+                            {employee.annualLeaveCarryoverPreview && employee.annualLeaveCarryoverPreview.balanceDays > 0 ? (
+                              <div className="text-xs text-muted-foreground">
+                                年末结转 ≈ {employee.annualLeaveCarryoverPreview.resultDays} 天（{employee.annualLeaveCarryoverPreview.balanceDays} × {employee.annualLeaveCarryoverPreview.rate}）
+                              </div>
+                            ) : null}
                           </>
                         )}
                       </TableCell>
                       <TableCell><span className="text-base font-semibold">{days(annualBalanceDays(employee))}</span><span className="ml-1 text-xs text-muted-foreground">天</span></TableCell>
-                      <TableCell><span className="text-base font-semibold">{hours(employee.compTimeBalanceHours)}</span><span className="ml-1 text-xs text-muted-foreground">小时</span></TableCell>
+                      <TableCell>
+                        <span className="text-base font-semibold">{hours(employee.compTimeBalanceHours)}</span><span className="ml-1 text-xs text-muted-foreground">小时</span>
+                        {employee.compTimeExpiryPreview && employee.compTimeExpiryPreview.remainingHours > 0 ? (
+                          <div className="mt-0.5 text-xs text-amber-600">
+                            {employee.compTimeExpiryPreview.quarterLabel} 剩余 {hours(employee.compTimeExpiryPreview.remainingHours)} 小时将于 {employee.compTimeExpiryPreview.expiresAt.slice(5)} 清零
+                          </div>
+                        ) : null}
+                      </TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-wrap justify-end gap-2">
                           <Button size="sm" variant="outline" onClick={() => setEditEmployee(employee)}>

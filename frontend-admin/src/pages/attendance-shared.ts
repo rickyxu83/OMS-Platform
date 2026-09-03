@@ -36,6 +36,10 @@ export interface EmployeeProfile {
   annualLeaveScheme?: string;
   annualLeaveTierYears?: number | null;
   annualLeaveSuggestedDays?: number | null;
+  /** 年末折算预览（spec 005 v3）：当前余额 × 折扣向下取整 0.5 天，结转次年 */
+  annualLeaveCarryoverPreview?: { balanceDays: number; rate: number; resultDays: number } | null;
+  /** 调休季末清零预览（spec 005 v3）：当季入账剩余将于次季末清零 */
+  compTimeExpiryPreview?: { quarterLabel: string; remainingHours: number; expiresAt: string } | null;
   unavailableReason?: string | null;
 }
 

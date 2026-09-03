@@ -459,9 +459,15 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </button>
                 );
               })}
-              <div className="flex gap-2 pt-1 text-xs text-muted-foreground">
+              <div className="flex flex-wrap gap-2 pt-1 text-xs text-muted-foreground">
                 <Badge variant="secondary">特休 {days(annualBalanceDays(myProfile))} 天</Badge>
                 {canCompTime ? <Badge variant="secondary">调休 {hours(myProfile?.compTimeBalanceHours)} 小时</Badge> : null}
+                {myProfile?.annualLeaveCarryoverPreview && myProfile.annualLeaveCarryoverPreview.balanceDays > 0 ? (
+                  <Badge variant="outline" title="当年最后一天剩余特休按此折算结转次年">年末结转 ≈ {myProfile.annualLeaveCarryoverPreview.resultDays} 天</Badge>
+                ) : null}
+                {canCompTime && myProfile?.compTimeExpiryPreview && myProfile.compTimeExpiryPreview.remainingHours > 0 ? (
+                  <Badge variant="outline" title="当季入账的调休需在下一季度末前用完，逾期清零">{myProfile.compTimeExpiryPreview.quarterLabel} 入账 {hours(myProfile.compTimeExpiryPreview.remainingHours)} 小时 {myProfile.compTimeExpiryPreview.expiresAt.slice(5)} 到期</Badge>
+                ) : null}
               </div>
             </div>
           ) : null}
