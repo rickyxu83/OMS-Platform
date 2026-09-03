@@ -151,9 +151,9 @@ export function openNativePicker(input: HTMLInputElement) {
   input.focus();
 }
 
-export function openPickerOnMouse(event: React.PointerEvent<HTMLInputElement>) {
-  if (event.pointerType !== "mouse") return;
-  event.preventDefault();
+// Safari 只在 click 事件里认可 showPicker() 的用户激活（pointerdown/mousedown 会抛
+// NotAllowedError 被静默吞掉），所以必须用 click 触发；Chrome/Firefox 对 click 同样兼容。
+export function openPickerOnClick(event: React.MouseEvent<HTMLInputElement>) {
   openNativePicker(event.currentTarget);
 }
 
