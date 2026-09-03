@@ -1280,6 +1280,7 @@ export function Attendance() {
                   subtitle={`${employee.username || "-"} · ${roleLabel(employee.role)}`}
                   fields={[
                     { label: "籍别 / 入职", value: `${NATIONALITY_LABELS[employee.nationality || "mainland"] || "-"} · ${formatDate(employee.hireDate)}` },
+                    { label: "特休档位", value: employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined ? "-" : `满 ${employee.annualLeaveTierYears} 年档 · 建议 ${employee.annualLeaveSuggestedDays ?? "-"} 天` },
                     { label: "特休余额", value: `${days(annualBalanceDays(employee))} 天` },
                     { label: "调休余额", value: `${hours(employee.compTimeBalanceHours)} 小时` },
                   ]}
@@ -1310,6 +1311,7 @@ export function Attendance() {
                     <TableHead>员工</TableHead>
                     <TableHead>状态</TableHead>
                     <TableHead>籍别 / 入职</TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">特休档位 <HelpTooltip label="按入职日期计算：满年对齐自然年底（入职当年与次年 0 档，第三年起满 1 年档）；建议额度来自考勤设置里的特休档位表，仅供参考，入账由行政确认" /></span></TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">特休余额 <HelpTooltip label={ANNUAL_LEAVE_HELP} /></span></TableHead>
                     <TableHead>调休余额</TableHead>
                     <TableHead className="text-right">操作</TableHead>
@@ -1343,6 +1345,18 @@ export function Attendance() {
                         <div>{NATIONALITY_LABELS[employee.nationality || "mainland"] || employee.nationality || "-"}</div>
                         <div className="text-xs text-muted-foreground">{formatDate(employee.hireDate)} 入职</div>
                       </TableCell>
+                      <TableCell>
+                        {employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined ? (
+                          <span className="text-muted-foreground">-</span>
+                        ) : (
+                          <>
+                            <div className="text-sm font-medium">满 {employee.annualLeaveTierYears} 年档</div>
+                            <div className={`text-xs ${Number(employee.annualLeaveSuggestedDays || 0) !== Math.round(annualBalanceDays(employee) * 100) / 100 ? "text-amber-600" : "text-muted-foreground"}`}>
+                              建议 {employee.annualLeaveSuggestedDays ?? "-"} 天/年
+                            </div>
+                          </>
+                        )}
+                      </TableCell>
                       <TableCell><span className="text-base font-semibold">{days(annualBalanceDays(employee))}</span><span className="ml-1 text-xs text-muted-foreground">天</span></TableCell>
                       <TableCell><span className="text-base font-semibold">{hours(employee.compTimeBalanceHours)}</span><span className="ml-1 text-xs text-muted-foreground">小时</span></TableCell>
                       <TableCell className="text-right">
@@ -1359,7 +1373,7 @@ export function Attendance() {
                   ))}
                   {employees.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                         {loading ? "正在加载…" : "暂无员工档案"}
                       </TableCell>
                     </TableRow>

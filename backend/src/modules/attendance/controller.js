@@ -33,6 +33,13 @@ const {
   deleteLeaveType,
   referencedCounts,
 } = require('./leave-types')
+const {
+  ensureAnnualLeaveTierSchema,
+  listTierRows,
+  tierPayload,
+  replaceTiers,
+  decorateAnnualLeaveSuggestion,
+} = require('./annual-leave-tiers')
 
 const requestTypes = new Set(['leave', 'overtime', 'comp_time'])
 // 假别再枚举已表驱动（attendance_leave_types，spec 004），不再写死 Set
@@ -444,6 +451,7 @@ async function ensureSchema() {
       await ensureDefaultSupervisorRoleRules()
       await ensureApprovalRoleRuleSteps()
       await ensureLeaveTypeSchema()
+      await ensureAnnualLeaveTierSchema()
       await syncUserProfiles()
     })()
   }
@@ -1191,7 +1199,7 @@ async function listEmployees(req, res) {
      LIMIT 500`,
     { keyword, likeKeyword: `%${keyword}%` },
   )
-  res.json({ items: rows.map(profilePayload) })
+  res.json({ items: await decorateAnnualLeaveSuggestion(rows.map(profilePayload)) })
 }
 
 async function listDelegates(req, res) {
@@ -3290,6 +3298,19 @@ async function deleteLeaveTypeHandler(req, res) {
   res.json({ ok: true })
 }
 
+// ===== 特休档位表（spec 005） =====
+
+async function listAnnualLeaveTiers(req, res) {
+  await ensureSchema()
+  res.json({ items: (await listTierRows()).map(tierPayload) })
+}
+
+async function replaceAnnualLeaveTiers(req, res) {
+  await ensureSchema()
+  const count = await replaceTiers(req.body || {})
+  res.json({ ok: true, count })
+}
+
 module.exports = {
   ensureSchema,
   myBalanceLedger,
@@ -3332,4 +3353,6 @@ module.exports = {
   createLeaveTypeHandler,
   updateLeaveTypeHandler,
   deleteLeaveTypeHandler,
+  listAnnualLeaveTiers,
+  replaceAnnualLeaveTiers,
 }

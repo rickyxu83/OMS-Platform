@@ -32,6 +32,9 @@ export interface EmployeeProfile {
   unavailable?: boolean;
   /** 年度带薪假别额度（spec 004）：key 为假别 code，当前为病假 */
   leaveQuotas?: Record<string, LeaveQuotaInfo>;
+  /** 特休档位（spec 005）：档位年限（满年对齐自然年底）与按档位表的建议年度天数 */
+  annualLeaveTierYears?: number | null;
+  annualLeaveSuggestedDays?: number | null;
   unavailableReason?: string | null;
 }
 
@@ -138,6 +141,41 @@ export function leaveTypeLabelOf(code?: string | null, items?: LeaveTypeItem[], 
   if (snapshotLabel) return snapshotLabel;
   const key = String(code || "");
   return items?.find((item) => item.code === key)?.label || LEAVE_TYPE_LABELS[key] || key || "请假";
+}
+
+// ===== 特休档位表（spec 005） =====
+
+export interface AnnualLeaveTierItem {
+  id: number;
+  minYears: number;
+  days: number;
+  note: string;
+}
+
+let annualLeaveTiersCache: { at: number; items: AnnualLeaveTierItem[] } | null = null;
+
+export function invalidateAnnualLeaveTiersCache() {
+  annualLeaveTiersCache = null;
+}
+
+export function useAnnualLeaveTiers() {
+  const [items, setItems] = useState<AnnualLeaveTierItem[]>(annualLeaveTiersCache?.items || []);
+  useEffect(() => {
+    if (annualLeaveTiersCache && Date.now() - annualLeaveTiersCache.at < 30_000) {
+      setItems(annualLeaveTiersCache.items);
+      return;
+    }
+    let alive = true;
+    api.get("/attendance/annual-leave-tiers")
+      .then((data) => {
+        const list = Array.isArray(data?.items) ? data.items : [];
+        annualLeaveTiersCache = { at: Date.now(), items: list };
+        if (alive) setItems(list);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  return items;
 }
 
 export const OVERTIME_DAY_TYPE_LABELS: Record<string, string> = {

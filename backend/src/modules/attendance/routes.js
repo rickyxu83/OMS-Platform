@@ -30,6 +30,9 @@ router.get('/leave-types', requirePermission('attendance.apply', 'attendance.app
 router.post('/leave-types', requirePermission('attendance.manage'), controller.createLeaveTypeHandler)
 router.put('/leave-types/:id', requirePermission('attendance.manage'), controller.updateLeaveTypeHandler)
 router.delete('/leave-types/:id', requirePermission('attendance.manage'), controller.deleteLeaveTypeHandler)
+// 特休档位表（spec 005）：满 N 年 → 年度天数，行政可配
+router.get('/annual-leave-tiers', requirePermission('attendance.apply', 'attendance.approve', 'attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listAnnualLeaveTiers)
+router.put('/annual-leave-tiers', requirePermission('attendance.manage'), controller.replaceAnnualLeaveTiers)
 router.put('/legal-holidays/:date', requirePermission('attendance.manage'), controller.upsertLegalHoliday)
 router.delete('/legal-holidays/:date', requirePermission('attendance.manage'), controller.deleteLegalHoliday)
 router.post('/legal-holidays/sync-preview', requirePermission('attendance.manage'), controller.syncLegalHolidaysPreview)

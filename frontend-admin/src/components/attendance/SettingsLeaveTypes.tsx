@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { toast } from "sonner";
 import { api } from "@/services/api";
-import { invalidateLeaveTypesCache, type LeaveTypeItem } from "@/pages/attendance-shared";
+import { invalidateLeaveTypesCache, useAnnualLeaveTiers, invalidateAnnualLeaveTiersCache, type AnnualLeaveTierItem, type LeaveTypeItem } from "@/pages/attendance-shared";
 
 const QUOTA_HELP = "年度带薪额度（天）：按自然年跟踪该假别已批准天数，申请与审批时提示使用情况；超出额度的部分按「超额减薪比例」在提示与邮件中标注，系统不做强制拦截，以审批人把关为准。当前用于病假（3 天带薪，超额扣 30%）。产假等政策性强假别建议只配「参考天数 + 政策说明」，天数以审批为准。";
 
@@ -65,6 +65,33 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<LeaveTypeItem | null>(null);
   const [draft, setDraft] = useState<LeaveTypeDraft>(blankDraft);
+
+  // 特休档位表（spec 005）：满 N 年 → 年度天数
+  const tiers = useAnnualLeaveTiers();
+  const [tierRows, setTierRows] = useState<Array<{ minYears: string; days: string; note: string }>>([]);
+  const [tiersDirty, setTiersDirty] = useState(false);
+  const [tiersSaving, setTiersSaving] = useState(false);
+  useEffect(() => {
+    if (!tiersDirty && tiers.length) {
+      setTierRows(tiers.map((tier) => ({ minYears: String(tier.minYears), days: String(tier.days), note: tier.note || "" })));
+    }
+  }, [tiers, tiersDirty]);
+
+  async function saveTiers() {
+    setTiersSaving(true);
+    try {
+      await api.put("/attendance/annual-leave-tiers", {
+        items: tierRows.map((row) => ({ minYears: Number(row.minYears), days: Number(row.days), note: row.note.trim() })),
+      });
+      invalidateAnnualLeaveTiersCache();
+      setTiersDirty(false);
+      toast.success("特休档位表已保存");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "保存档位表失败");
+    } finally {
+      setTiersSaving(false);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -148,6 +175,7 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
   }
 
   return (
+    <div className="space-y-6">
     <Card>
       <CardHeader>
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -306,5 +334,74 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
         </DialogContent>
       </Dialog>
     </Card>
+
+    <Card>
+      <CardHeader>
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-1.5">特休档位表 <HelpTooltip label="档位年限按入职日期计算：满年对齐自然年底（入职当年与次年为 0 档，第三年起满 1 年档）。建议额度 = 满年数不超过档位年限的最大一档；仅作展示与一键带入，入账由行政在余额控制台确认。离职再入职重新起算；需累计以往工龄的特殊员工，由行政把入职日期手工前调。" /></CardTitle>
+            <CardDescription>满 N 年 → 年度特休天数；公司规则变化时直接改表，无需改代码</CardDescription>
+          </div>
+          {canManage ? (
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => { setTierRows([...tierRows, { minYears: "", days: "", note: "" }]); setTiersDirty(true); }}>
+                <Plus className="mr-2 h-4 w-4" />
+                新增档位
+              </Button>
+              <Button size="sm" onClick={saveTiers} disabled={tiersSaving || !tiersDirty}>
+                {tiersSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                保存档位表
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <Table className="min-w-[560px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-40">满年数（≥）</TableHead>
+                <TableHead className="w-40">年度特休天数</TableHead>
+                <TableHead>备注</TableHead>
+                {canManage ? <TableHead className="w-16 text-right">操作</TableHead> : null}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tierRows.map((row, index) => (
+                <TableRow key={index}>
+                  <TableCell>
+                    <Input type="number" min="1" max="100" step="1" value={row.minYears} disabled={!canManage}
+                      onChange={(e) => { const next = [...tierRows]; next[index] = { ...row, minYears: e.target.value }; setTierRows(next); setTiersDirty(true); }} />
+                  </TableCell>
+                  <TableCell>
+                    <Input type="number" min="0" max="365" step="0.5" value={row.days} disabled={!canManage}
+                      onChange={(e) => { const next = [...tierRows]; next[index] = { ...row, days: e.target.value }; setTierRows(next); setTiersDirty(true); }} />
+                  </TableCell>
+                  <TableCell>
+                    <Input value={row.note} disabled={!canManage} maxLength={200}
+                      onChange={(e) => { const next = [...tierRows]; next[index] = { ...row, note: e.target.value }; setTierRows(next); setTiersDirty(true); }} />
+                  </TableCell>
+                  {canManage ? (
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" aria-label="删除档位"
+                        onClick={() => { setTierRows(tierRows.filter((_, i) => i !== index)); setTiersDirty(true); }}>
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </TableCell>
+                  ) : null}
+                </TableRow>
+              ))}
+              {tierRows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={canManage ? 4 : 3} className="py-8 text-center text-sm text-muted-foreground">暂无档位</TableCell>
+                </TableRow>
+              ) : null}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+    </div>
   );
 }
