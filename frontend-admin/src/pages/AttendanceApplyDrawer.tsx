@@ -220,6 +220,11 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   const quotaWillExceedDays = leaveQuota && annualPreview
     ? Math.max(0, Math.round((leaveQuota.usedDays + Number(annualPreview.workingDays || 0) - leaveQuota.quotaDays) * 100) / 100)
     : 0;
+  // 产品裁决 2026-09-02：假别未配置参考天数且无带薪额度 = 没有天数依据，申请前需找行政确认
+  const leaveNeedsAdminConfirm = Boolean(
+    activeLeaveType && !activeLeaveType.countsBalance
+    && !activeLeaveType.referenceDays && activeLeaveType.paidQuotaDays === null,
+  );
   // 调休按整小时申请（最小单位 1 小时，产品裁决 2026-09-02）：不走半天槽，独立三个字段
   const [compDate, setCompDate] = useState(() => dateValue());
   const [compStartTime, setCompStartTime] = useState("09:00");
@@ -650,6 +655,11 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                         {activeLeaveType.referenceDays ? <div>参考天数：{activeLeaveType.referenceDays}</div> : null}
                         {activeLeaveType.policyNote ? <div>{activeLeaveType.policyNote}</div> : null}
+                      </div>
+                    ) : null}
+                    {leaveNeedsAdminConfirm ? (
+                      <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        <span>该假别未明确天数标准，提交前请先与行政确认可休天数。</span>
                       </div>
                     ) : null}
                     {leaveQuota ? (
