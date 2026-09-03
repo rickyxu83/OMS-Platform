@@ -29,9 +29,9 @@
 | sick        | 病假  | 1              | 0                        | 0              | 0               | 3               | 30                       |
 | personal    | 事假  | 0              | 0                        | 0              | 0               | NULL            | NULL                     |
 | marriage    | 婚假  | 1              | 1                        | 0              | 0               | NULL            | NULL                     |
-| bereavement | 丧假  | 1              | 1                        | 0              | 0               | NULL            | NULL                     |
+| bereavement | 丧假  | 0              | 1                        | 0              | 0               | NULL            | NULL                     |
 
-> seed 前需核对 `requiresLeaveProof` 现状实现，以上取值以对齐现状为准，实现时校正。
+> seed 已核对现状：`requiresLeaveProof`（workflow.js）= sick+marriage，`includeNonWorkingDays` 写死数组 = marriage+bereavement，上表取值与之对齐。
 
 ## `attendance_requests`（加列）
 

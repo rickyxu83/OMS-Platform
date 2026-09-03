@@ -14,6 +14,8 @@ import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LEAVE_TYPE_LABELS,
+  leaveTypeLabelOf,
+  useLeaveTypes,
   OVERTIME_DAY_TYPE_LABELS,
   SERVICE_MODE_LABELS,
   SERVICE_TYPE_LABELS,
@@ -78,6 +80,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   const [proofFiles, setProofFiles] = useState<File[]>([]);
   const [proofDragging, setProofDragging] = useState(false);
   const [delegates, setDelegates] = useState<EmployeeProfile[]>([]);
+  const leaveTypes = useLeaveTypes();
   const [delegatesLoading, setDelegatesLoading] = useState(false);
   const [overtimeOrders, setOvertimeOrders] = useState<OvertimeServiceOrder[]>([]);
   const [overtimeLoading, setOvertimeLoading] = useState(false);
@@ -208,8 +211,15 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     return "";
   }, [travelSegment, selectedOvertimeOrder, travelDepartureAt, travelReturnAt]);
 
-  const naturalDayLeave = form.requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
+  const activeLeaveType = form.requestType === "leave" ? leaveTypes.find((item) => item.code === form.leaveType) || null : null;
+  // 自然日口径（含六日与法定假）由假别表 includeNonWorkingDays 决定（spec 004；原写死：婚丧假）
+  const naturalDayLeave = form.requestType === "leave" && (activeLeaveType ? activeLeaveType.includeNonWorkingDays : ["marriage", "bereavement"].includes(form.leaveType || ""));
   const annualPreview = form.requestType === "leave" ? workingLeaveSummary(form, holidayDates, naturalDayLeave) : null;
+  // 年度带薪额度提示（spec 004，当前为病假 3 天/超额扣 30%）
+  const leaveQuota = form.requestType === "leave" && form.leaveType ? myProfile?.leaveQuotas?.[form.leaveType] : null;
+  const quotaWillExceedDays = leaveQuota && annualPreview
+    ? Math.max(0, Math.round((leaveQuota.usedDays + Number(annualPreview.workingDays || 0) - leaveQuota.quotaDays) * 100) / 100)
+    : 0;
   // 调休按整小时申请（最小单位 1 小时，产品裁决 2026-09-02）：不走半天槽，独立三个字段
   const [compDate, setCompDate] = useState(() => dateValue());
   const [compStartTime, setCompStartTime] = useState("09:00");
@@ -392,7 +402,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   }
 
   const typeLabel = form.requestType === "leave"
-    ? LEAVE_TYPE_LABELS[form.leaveType || ""] || "请假"
+    ? leaveTypeLabelOf(form.leaveType, leaveTypes)
     : form.requestType === "overtime" ? "工单加班" : "调休";
 
   return (
@@ -608,7 +618,10 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   <div className="space-y-2">
                     <Label>假别</Label>
                     <div className="flex flex-wrap gap-2">
-                      {Object.entries(LEAVE_TYPE_LABELS).map(([value, label]) => {
+                      {(leaveTypes.length
+                        ? leaveTypes.filter((item) => item.enabled).map((item) => ({ value: item.code, label: item.label }))
+                        : Object.entries(LEAVE_TYPE_LABELS).map(([value, label]) => ({ value, label }))
+                      ).map(({ value, label }) => {
                         const active = form.leaveType === value;
                         return (
                           <button
@@ -633,6 +646,18 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                         );
                       })}
                     </div>
+                    {activeLeaveType && (activeLeaveType.referenceDays || activeLeaveType.policyNote) ? (
+                      <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                        {activeLeaveType.referenceDays ? <div>参考天数：{activeLeaveType.referenceDays}</div> : null}
+                        {activeLeaveType.policyNote ? <div>{activeLeaveType.policyNote}</div> : null}
+                      </div>
+                    ) : null}
+                    {leaveQuota ? (
+                      <div className={`rounded-md border px-3 py-2 text-xs ${quotaWillExceedDays > 0 ? "border-amber-200 bg-amber-50 text-amber-800" : "bg-muted/30 text-muted-foreground"}`}>
+                        本年度带薪{leaveTypeLabelOf(form.leaveType, leaveTypes)}额度 {leaveQuota.quotaDays} 天，已批 {leaveQuota.usedDays} 天
+                        {quotaWillExceedDays > 0 ? `；本次将超出 ${quotaWillExceedDays} 天${leaveQuota.deductionPercent ? `，超出部分按政策扣 ${leaveQuota.deductionPercent}% 计` : ""}` : ""}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -969,7 +994,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       </span>
                     </div>
                     <div className="pt-1 text-xs leading-5 text-muted-foreground">
-                      {naturalDayLeave ? "婚假、丧假按自然日计算，包含周末和国定假日" : "已排除周末和国定假日"}
+                      {naturalDayLeave ? "该假别按自然日计算，包含周末和国定假日" : "已排除周末和国定假日"}
                     </div>
                   </>
                 )}

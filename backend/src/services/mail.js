@@ -981,8 +981,9 @@ async function sendCustomerSignatureRequestMail(order, recipientEmail, signUrl, 
   return { sent: true, to }
 }
 
-function attendanceLeaveTypeLabel(type) {
-  return {
+// 假别 label：优先提交时快照（spec 004），历史数据回退写死映射
+function attendanceLeaveTypeLabel(type, snapshotLabel) {
+  return snapshotLabel || {
     annual: '年假',
     sick: '病假',
     personal: '事假',
@@ -998,10 +999,18 @@ function attendanceDateRange(payload) {
 function attendanceMailRows(payload) {
   const rows = [
     ['申请人', payload.applicantName || '-'],
-    ['假别', attendanceLeaveTypeLabel(payload.leaveType)],
+    ['假别', attendanceLeaveTypeLabel(payload.leaveType, payload.leaveTypeLabel)],
     ['请假时间', attendanceDateRange(payload)],
     ['核算天数', payload.workingDays === null || payload.workingDays === undefined ? '-' : `${payload.workingDays} 天`],
   ]
+  if (payload.leaveReferenceDays) rows.push(['参考天数', payload.leaveReferenceDays])
+  if (payload.leavePolicyNote) rows.push(['政策说明', payload.leavePolicyNote])
+  if (payload.quotaDays !== null && payload.quotaDays !== undefined && payload.quotaDays !== '') {
+    rows.push(['带薪额度', `年度 ${payload.quotaDays} 天，此前已批 ${payload.quotaUsedDays || 0} 天`])
+    if (Number(payload.quotaExceedDays || 0) > 0) {
+      rows.push(['超额提示', `本次申请超出带薪额度 ${payload.quotaExceedDays} 天${payload.quotaDeductionPercent ? `，超出部分按政策扣 ${payload.quotaDeductionPercent}% 计` : ''}`])
+    }
+  }
   if (payload.delegateName) rows.push(['工作代理人', payload.delegateName])
   if (payload.reason) rows.push(['申请原因', payload.reason])
   if (payload.stepOrder && payload.stepCount) rows.push(['审批进度', `第 ${payload.stepOrder} / ${payload.stepCount} 级`])
@@ -1021,7 +1030,7 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
   if (!to.length) return { skipped: true, reason: 'no_recipient_email' }
 
   const eventType = String(payload.eventType || '')
-  const leaveType = attendanceLeaveTypeLabel(payload.leaveType)
+  const leaveType = attendanceLeaveTypeLabel(payload.leaveType, payload.leaveTypeLabel)
   const subjectByType = {
     approval_pending: `请假待审批：${payload.applicantName || '-'} / ${leaveType}`,
     delegate_info: `请假代理通知：${payload.applicantName || '-'} / ${leaveType}`,
