@@ -239,7 +239,7 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
                       {item.label}
                       {item.systemReserved ? <Badge variant="secondary" className="ml-1.5">内置</Badge> : null}
                       {!item.countsBalance && !item.referenceDays && item.paidQuotaDays === null ? (
-                        <Badge variant="warning" className="ml-1.5">需行政确认</Badge>
+                        <Badge variant="info" className="ml-1.5">申请前问行政</Badge>
                       ) : null}
                       {item.policyNote ? <div className="mt-0.5 max-w-[240px] truncate text-xs font-normal text-muted-foreground" title={item.policyNote}>{item.policyNote}</div> : null}
                     </TableCell>
