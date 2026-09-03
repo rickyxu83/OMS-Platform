@@ -658,8 +658,8 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       </div>
                     ) : null}
                     {leaveNeedsAdminConfirm ? (
-                      <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                        <span>该假别未明确天数标准，提交前请先与行政确认可休天数。</span>
+                      <div className="flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                        <span>温馨提示：该假别的可请天数会随政策和地区规定调整，提交前请先与行政确认本次可请天数。</span>
                       </div>
                     ) : null}
                     {leaveQuota ? (
