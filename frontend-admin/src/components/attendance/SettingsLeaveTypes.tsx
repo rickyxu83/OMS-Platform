@@ -359,8 +359,8 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
       <CardHeader>
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-1.5">特休档位表 <HelpTooltip label="档位年限按入职日期计算：满年对齐自然年底（入职当年与次年为 0 档，第三年起满 1 年档）。建议额度 = 员工方案内满年数不超过档位年限的最大一档，含「每年加 N 天」递增与封顶；仅作展示与一键带入，入账由行政在余额控制台确认。台籍·特批方案由行政在员工编辑对话框手工指定。" /></CardTitle>
-            <CardDescription>方案 × 满 N 年 → 年度特休天数；规则变化时直接改表，无需改代码</CardDescription>
+            <CardTitle className="flex items-center gap-1.5">特休档位（员工级别） <HelpTooltip label="员工的特休级别即这里的方案：编辑员工档案时在「特休档位（级别）」里选择，默认随籍别。档位年限按入职日期计算：满年对齐自然年底（入职当年与次年为 0 档，第三年起满 1 年档）。建议额度 = 员工级别内满年数不超过档位年限的最大一档，含「每年加 N 天」递增与封顶；仅作展示与一键带入，入账由行政在余额控制台确认。台籍·特批仅个别员工由行政手工指定。" /></CardTitle>
+            <CardDescription>员工的级别就是这张表：方案 × 满 N 年 → 年度特休天数；规则变化时直接改表，无需改代码</CardDescription>
           </div>
           {canManage ? (
             <div className="flex gap-2">

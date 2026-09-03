@@ -120,7 +120,7 @@ export function EmployeeEditDialog({ employee, onClose, onSaved }: EmployeeDialo
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>特休方案</Label>
+                <Label>特休档位（级别）</Label>
                 <Select
                   value={draft.annualLeaveRule}
                   onValueChange={(value) => patchDraft({ annualLeaveRule: value })}
@@ -132,7 +132,7 @@ export function EmployeeEditDialog({ employee, onClose, onSaved }: EmployeeDialo
                     <SelectItem value="taiwan_special">台籍·特批</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">默认随籍别；「台籍·特批」仅个别员工由行政手工指定</p>
+                <p className="text-xs text-muted-foreground">级别即考勤设置里特休档位表的方案，默认随籍别；「台籍·特批」仅个别员工由行政手工指定</p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
