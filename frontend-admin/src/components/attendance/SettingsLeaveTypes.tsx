@@ -190,6 +190,9 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
                     <TableCell className="font-medium">
                       {item.label}
                       {item.systemReserved ? <Badge variant="secondary" className="ml-1.5">内置</Badge> : null}
+                      {!item.countsBalance && !item.referenceDays && item.paidQuotaDays === null ? (
+                        <Badge variant="warning" className="ml-1.5">需行政确认</Badge>
+                      ) : null}
                       {item.policyNote ? <div className="mt-0.5 max-w-[240px] truncate text-xs font-normal text-muted-foreground" title={item.policyNote}>{item.policyNote}</div> : null}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{item.code}</TableCell>
