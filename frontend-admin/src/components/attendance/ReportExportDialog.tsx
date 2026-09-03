@@ -18,7 +18,7 @@ interface ReportExportDialogProps {
   employees: EmployeeProfile[];
 }
 
-/** 导出考勤报表弹窗：按月/自定义范围 + 员工范围多选，状态自包含 */
+/** 导出假勤报表弹窗：按月/自定义范围 + 员工范围多选，状态自包含 */
 export function ReportExportDialog({ open, onOpenChange, initialMonth, employees }: ReportExportDialogProps) {
   const [reportExportMode, setReportExportMode] = useState<"month" | "range">("month");
   const [reportExportMonth, setReportExportMonth] = useState(initialMonth);
@@ -63,15 +63,15 @@ export function ReportExportDialog({ open, onOpenChange, initialMonth, employees
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `考勤报表-${range.startDate.replace(/-/g, "")}-${range.endDate.replace(/-/g, "")}.xlsx`;
+      anchor.download = `假勤报表-${range.startDate.replace(/-/g, "")}-${range.endDate.replace(/-/g, "")}.xlsx`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(url);
       onOpenChange(false);
-      toast.success("考勤报表已导出");
+      toast.success("假勤报表已导出");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "考勤报表导出失败");
+      toast.error(e instanceof Error ? e.message : "假勤报表导出失败");
     } finally {
       setReportExporting(false);
     }
@@ -80,7 +80,7 @@ export function ReportExportDialog({ open, onOpenChange, initialMonth, employees
       <Dialog open={open} onOpenChange={(open) => { if (!reportExporting) onOpenChange(open); }}>
         <DialogContent className="sm:max-w-[620px]">
           <DialogHeader>
-            <DialogTitle>导出考勤报表</DialogTitle>
+            <DialogTitle>导出假勤报表</DialogTitle>
             <DialogDescription>生成包含请假统计、加班统计和假期余额的 Excel 文件，仅统计已通过申请。</DialogDescription>
           </DialogHeader>
           <div className="space-y-5">
