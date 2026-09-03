@@ -253,6 +253,43 @@ async function queueNextApprovalNotification(connection, request, step) {
   await queueApprovalNotification(connection, request, step, null, delegate)
 }
 
+// 催办提醒（spec 007）：手动/自动共用本函数，收件人 = 当前待审环节审批人。
+// 不限假别（请假/调休/加班均可催），eventKey 带时间戳保证每次催办都能入队（表对 event_key 唯一约束）。
+async function queueReminderNotification(connection, request, step, { kind = 'manual', waitingHours = 0 } = {}) {
+  const normalized = approvalStep(step)
+  const eventKey = `request:${request.id}:reminder:${normalized.stepOrder}:${kind}:${Date.now()}`
+  await runSafely(
+    { requestId: request.id, eventKey, eventType: 'reminder' },
+    async () => {
+      let recipients = []
+      if (normalized.assigneeRole) {
+        recipients = await roleRecipients(connection, normalized.assigneeRole, request.submitted_by)
+      } else if (normalized.assigneeEmployeeId) {
+        const contact = await employeeContact(connection, normalized.assigneeEmployeeId)
+        if (contact) recipients = [contact]
+      } else if (normalized.stepType === 'supervisor' && request.supervisor_employee_id) {
+        const contact = await employeeContact(connection, request.supervisor_employee_id)
+        if (contact) recipients = [contact]
+      }
+      const totalSteps = await approvalStepCount(connection, request.id)
+      return enqueueAttendanceEmailNotification(connection, {
+        requestId: request.id,
+        eventKey,
+        eventType: 'reminder',
+        recipients,
+        payload: requestPayload(request, {
+          requestTypeLabel: { leave: '请假', comp_time: '调休', overtime: '加班' }[request.request_type] || '申请',
+          stepOrder: normalized.stepOrder,
+          stepCount: totalSteps,
+          reminderKind: kind,
+          waitingHours: Math.max(0, Math.round(waitingHours)),
+          missingRecipientNames: recipients.filter((recipient) => !recipient.email).map((recipient) => recipient.name),
+        }),
+      })
+    },
+  )
+}
+
 async function queueRejectedLeaveNotification(connection, request, user, reason) {
   if (request.request_type !== 'leave') return
   const eventKey = `request:${request.id}:rejected`
@@ -448,4 +485,5 @@ module.exports = {
   queueNextApprovalNotification,
   queueRejectedLeaveNotification,
   queueCompletedLeaveNotification,
+  queueReminderNotification,
 }

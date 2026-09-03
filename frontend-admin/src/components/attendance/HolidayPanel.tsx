@@ -27,7 +27,7 @@ export function HolidayPanel({ publicHolidays, publicHolidayYear, setPublicHolid
                 <h3 className="flex items-center gap-2 text-sm font-semibold">
                   <CalendarDays className="h-4 w-4 text-rose-500" />
                   法定节假日
-                  <HelpTooltip label="全年法定节假日与调休补班一览，供请假与排班参考。节假日由管理员在「考勤设置」中维护，并有每年 11~12 月自动同步来年数据的机制。" />
+                  <HelpTooltip label="全年法定节假日与调休补班一览，供请假与排班参考。节假日由管理员在「假勤设置」中维护，并有每年 11~12 月自动同步来年数据的机制。" />
                 </h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">全年法定节假日一览，供请假与排班参考</p>
               </div>

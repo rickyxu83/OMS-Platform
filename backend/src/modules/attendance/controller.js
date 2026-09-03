@@ -15,6 +15,7 @@ const {
   queueNextApprovalNotification,
   queueRejectedLeaveNotification,
   queueCompletedLeaveNotification,
+  queueReminderNotification,
 } = require('../../services/attendance-notifications')
 const { isTriplePayDate, triplePayDatesInRange } = require('./triple-pay-days')
 const {
@@ -445,6 +446,7 @@ async function ensureSchema() {
 
       await ensureLegalHolidayDayTypeColumn()
       await ensureRequestsBatchIdColumn()
+      await ensureRequestsReminderColumns()
       await ensureAttendanceEmailNotificationsTable()
 
       await seedBuiltinLegalHolidays()
@@ -475,6 +477,24 @@ async function ensureRequestsBatchIdColumn() {
   if (!rows.length) {
     await query("ALTER TABLE attendance_requests ADD COLUMN batch_id VARCHAR(36) NULL AFTER source_snapshot")
     await query("ALTER TABLE attendance_requests ADD INDEX idx_attendance_requests_batch (batch_id)")
+  }
+}
+
+// 催办留痕（spec 007）：手动催办/超时自动提醒各自节流 24h，时间戳落这两列
+async function ensureRequestsReminderColumns() {
+  const rows = await query(
+    `SELECT COLUMN_NAME AS columnName
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'attendance_requests'
+       AND COLUMN_NAME IN ('last_reminded_at', 'last_auto_reminded_at')`,
+  )
+  const existing = new Set(rows.map((row) => row.columnName))
+  if (!existing.has('last_reminded_at')) {
+    await query("ALTER TABLE attendance_requests ADD COLUMN last_reminded_at DATETIME NULL AFTER batch_id")
+  }
+  if (!existing.has('last_auto_reminded_at')) {
+    await query("ALTER TABLE attendance_requests ADD COLUMN last_auto_reminded_at DATETIME NULL AFTER last_reminded_at")
   }
 }
 
@@ -794,6 +814,7 @@ function requestPayload(row) {
     workingDays: row.working_days === null || row.working_days === undefined ? null : Number(row.working_days),
     reason: row.reason || '',
     status: row.status,
+    lastRemindedAt: row.last_reminded_at || null,
     submittedBy: row.submitted_by,
     submittedAt: row.submitted_at,
     supervisorApprovedBy: row.supervisor_approved_by,
@@ -3277,6 +3298,139 @@ async function myBalanceLedger(req, res) {
   res.json({ items })
 }
 
+// 催办（spec 007）：手动催办与超时自动提醒各自节流 24 小时
+const REMINDER_INTERVAL_HOURS = 24
+const STALE_APPROVAL_HOURS = 24
+
+function hoursSince(value) {
+  if (!value) return Infinity
+  const time = value instanceof Date
+    ? value.getTime()
+    : new Date(String(value).replace(' ', 'T')).getTime()
+  if (!Number.isFinite(time)) return Infinity
+  return (Date.now() - time) / 3600000
+}
+
+// 当前待审环节（status='pending' 的最小 step_order）
+async function currentPendingStepConnection(connection, requestId) {
+  const [rows] = await connection.execute(
+    `SELECT step_type, step_order, assignee_role, assignee_employee_id
+     FROM attendance_request_approvals
+     WHERE request_id = :requestId AND status = 'pending'
+     ORDER BY step_order ASC, id ASC
+     LIMIT 1`,
+    { requestId },
+  )
+  return rows[0] || null
+}
+
+// 当前环节进入待审的时间：前一环节的审批时间，首环节回退到提交时间
+async function stepPendingSinceConnection(connection, requestId, stepOrder) {
+  const [rows] = await connection.execute(
+    `SELECT MAX(approved_at) AS last_approved_at
+     FROM attendance_request_approvals
+     WHERE request_id = :requestId AND step_order < :stepOrder AND status = 'approved'`,
+    { requestId, stepOrder: Number(stepOrder || 0) },
+  )
+  return rows[0]?.last_approved_at || null
+}
+
+// 员工手动催办：仅申请人本人、仅审批中状态、24h 节流
+async function remindRequest(req, res) {
+  await ensureSchema()
+  const id = Number(req.params.id)
+  let remindedAt = null
+  await transaction(async (connection) => {
+    const request = await requestForUpdate(connection, id)
+    if (!request) throw notFound('申请不存在')
+    if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以催办')
+    if (!String(request.status).startsWith('pending_')) throw badRequest('当前状态不在审批中，无需催办')
+    if (request.last_reminded_at && hoursSince(request.last_reminded_at) < REMINDER_INTERVAL_HOURS) {
+      throw badRequest('24 小时内已催过，请稍后再试')
+    }
+    const step = await currentPendingStepConnection(connection, id)
+    if (!step) throw badRequest('当前状态不在审批中，无需催办')
+    const since = await stepPendingSinceConnection(connection, id, step.step_order) || request.submitted_at || request.created_at
+    await queueReminderNotification(connection, request, step, { kind: 'manual', waitingHours: hoursSince(since) })
+    await connection.execute(
+      'UPDATE attendance_requests SET last_reminded_at = NOW() WHERE id = :id',
+      { id },
+    )
+    remindedAt = new Date().toISOString()
+  })
+  res.json({ ok: true, remindedAt })
+}
+
+// 超时自动提醒（调度器每小时调用）：当前环节停留超 24h 且 24h 内未自动提醒过
+async function processStaleApprovalReminders(limit = 50) {
+  await ensureSchema()
+  const rows = await query(
+    `SELECT r.*, a.step_type, a.step_order, a.assignee_role, a.assignee_employee_id,
+            (SELECT MAX(a2.approved_at) FROM attendance_request_approvals a2
+             WHERE a2.request_id = r.id AND a2.step_order < a.step_order AND a2.status = 'approved') AS prev_approved_at
+     FROM attendance_requests r
+     JOIN attendance_request_approvals a ON a.request_id = r.id AND a.status = 'pending'
+     WHERE r.status LIKE 'pending\_%'
+       AND a.step_order = (SELECT MIN(a3.step_order) FROM attendance_request_approvals a3
+                           WHERE a3.request_id = r.id AND a3.status = 'pending')
+       AND (r.last_auto_reminded_at IS NULL OR r.last_auto_reminded_at < NOW() - INTERVAL ${REMINDER_INTERVAL_HOURS} HOUR)
+     ORDER BY r.submitted_at ASC
+     LIMIT ${Math.max(1, Number(limit) || 50)}`
+  )
+  let reminded = 0
+  for (const row of rows) {
+    const since = row.prev_approved_at || row.submitted_at || row.created_at
+    const waitingHours = hoursSince(since)
+    if (waitingHours < STALE_APPROVAL_HOURS) continue
+    await transaction(async (connection) => {
+      await queueReminderNotification(connection, row, row, { kind: 'auto', waitingHours })
+      await connection.execute(
+        'UPDATE attendance_requests SET last_auto_reminded_at = NOW() WHERE id = :id',
+        { id: row.id },
+      )
+    })
+    reminded += 1
+  }
+  return { scanned: rows.length, reminded }
+}
+
+// 团队请假日历（spec 006-C）：当月已批准的请假/调休条目，全员考勤用户可见（内部透明，佬 2026-09-03 裁决）
+async function teamCalendar(req, res) {
+  await ensureSchema()
+  const month = text(req.query.month)
+  if (!/^\d{4}-\d{2}$/.test(month)) throw badRequest('月份格式不正确（YYYY-MM）')
+  const [year, mon] = month.split('-').map(Number)
+  if (mon < 1 || mon > 12) throw badRequest('月份格式不正确（YYYY-MM）')
+  const lastDay = new Date(Date.UTC(year, mon, 0)).getUTCDate()
+  const rows = await query(
+    `SELECT r.id, r.employee_id, p.employee_name, r.request_type, r.leave_type,
+            r.start_at, r.end_at, r.hours, r.working_days
+     FROM attendance_requests r
+     JOIN attendance_employee_profiles p ON p.id = r.employee_id
+     WHERE r.status = 'approved'
+       AND r.request_type IN ('leave', 'comp_time')
+       AND r.start_at <= :monthEnd
+       AND r.end_at >= :monthStart
+     ORDER BY p.employee_name ASC, r.start_at ASC`,
+    { monthStart: `${month}-01 00:00:00`, monthEnd: `${month}-${String(lastDay).padStart(2, '0')} 23:59:59` },
+  )
+  res.json({
+    month,
+    items: rows.map((row) => ({
+      id: row.id,
+      employeeId: row.employee_id,
+      employeeName: row.employee_name,
+      requestType: row.request_type,
+      leaveType: row.leave_type,
+      startAt: toIsoMinute(row.start_at),
+      endAt: toIsoMinute(row.end_at),
+      hours: Number(row.hours || 0),
+      workingDays: row.working_days === null || row.working_days === undefined ? null : Number(row.working_days),
+    })),
+  })
+}
+
+
 // ===== 年末/季末结算（spec 005 v3，佬 2026-09-03） =====
 
 // 调休季末清零预览：当季入账在下一季末到期；FIFO 口径剩余 = max(0, 当季入账 − max(0, 当季起使用 − 季初结余))
@@ -3471,6 +3625,7 @@ async function replaceAnnualLeaveTiers(req, res) {
 
 module.exports = {
   ensureSchema,
+  teamCalendar,
   myBalanceLedger,
   listEmployees,
   listDelegates,
@@ -3504,6 +3659,8 @@ module.exports = {
   rejectRequest,
   withdrawRequest,
   voidRequest,
+  remindRequest,
+  processStaleApprovalReminders,
   adjustBalance,
   batchInitBalance,
   monthlyReport,

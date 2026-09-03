@@ -1037,6 +1037,7 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
     rejected: `请假申请已驳回：${payload.applicantName || '-'} / ${leaveType}`,
     completed: `请假流程已完成：${payload.applicantName || '-'} / ${leaveType}`,
     duty_pending_admin: `值班津贴待终审：${payload.month || '-'}（${payload.total || 0} 条）`,
+    reminder: `催办提醒：${payload.applicantName || '-'} 的${payload.requestTypeLabel || '申请'}待您审批`,
   }
   const headingByType = {
     approval_pending: '请假待审批',
@@ -1044,6 +1045,7 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
     rejected: '请假申请已驳回',
     completed: '请假流程已完成',
     duty_pending_admin: '值班津贴待终审',
+    reminder: '审批催办提醒',
   }
   const subject = subjectByType[eventType] || `请假通知：${payload.applicantName || '-'}`
   const heading = headingByType[eventType] || '请假通知'
@@ -1054,6 +1056,18 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
     rows.push(['记录条数', `${payload.total || 0} 条`])
     rows.push(['值班人次', `${payload.units || 0} 人次`])
     rows.push(['提交方式', payload.auto ? '系统每月自动提交' : '工程主管提交'])
+  }
+  // 催办提醒（spec 007）：行项目自建，覆盖请假/调休/加班全类型
+  if (eventType === 'reminder') {
+    rows.length = 0
+    rows.push(['申请人', payload.applicantName || '-'])
+    rows.push(['申请类型', payload.requestTypeLabel || '请假'])
+    if (payload.leaveType) rows.push(['假别', attendanceLeaveTypeLabel(payload.leaveType)])
+    rows.push(['时间范围', attendanceDateRange(payload)])
+    if (payload.stepOrder && payload.stepCount) rows.push(['审批进度', `第 ${payload.stepOrder} / ${payload.stepCount} 级`])
+    rows.push(['已等待', `${payload.waitingHours || 0} 小时`])
+    rows.push(['提醒方式', payload.reminderKind === 'auto' ? '系统自动（环节停留超 24 小时）' : '申请人手动催办'])
+    if (payload.reason) rows.push(['申请原因', payload.reason])
   }
   if (eventType === 'rejected') {
     rows.push(['驳回人', payload.rejectedByName || '-'])
@@ -1069,14 +1083,14 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
   }
   const detailUrl = adminLink(settings.notification?.serviceOrderAdminBaseUrl, '/attendance')
   const linkBlock = detailUrl
-    ? `<p style="margin:18px 0"><a href="${htmlEscape(detailUrl)}" style="${MAIL_BUTTON_STYLE}">打开 OMS 考勤管理</a></p>`
-    : '<p style="color:#64748b">请登录 OMS 管理端查看考勤详情。</p>'
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(detailUrl)}" style="${MAIL_BUTTON_STYLE}">打开 OMS 假勤管理</a></p>`
+    : '<p style="color:#64748b">请登录 OMS 管理端查看假勤详情。</p>'
   const introByType = {
     approval_pending: '当前请假申请已进入你的审批步骤，请登录 OMS 处理。',
     delegate_info: '你被指定为本次请假期间的工作代理人，请提前做好工作交接；此邮件不需要你在系统中确认。',
     rejected: '本次请假申请未通过审批，请查看驳回原因并按需重新提交。',
     completed: '本次请假申请已完成审批，以下为最终结果和结算后的余额信息。',
-    duty_pending_admin: '本月值班津贴（7×24 值班 + 法定节假日值班）已自动提交，请在考勤页「审批」中完成终审。',
+    duty_pending_admin: '本月值班津贴（7×24 值班 + 法定节假日值班）已自动提交，请在假勤页「审批」中完成终审。',
   }
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
@@ -1258,10 +1272,10 @@ async function sendHolidaySyncMail({ year, synced, count = 0, warnings = [], rea
       ${synced
         ? `<p>系统已从国务院公告镜像双源自动同步 <b>${htmlEscape(String(year))} 年</b>法定节假日与调休补班安排，共 <b>${count}</b> 天，并已生效于加班折算规则。</p>
            ${warningList}
-           <p>请登录管理端「考勤设置 → 法定节假日」抽查确认。</p>`
+           <p>请登录管理端「假勤设置 → 法定节假日」抽查确认。</p>`
         : `<p>系统尝试自动同步 <b>${htmlEscape(String(year))} 年</b>法定节假日失败：</p>
            <p style="color:#b91c1c">${htmlEscape(reason || '未知原因')}</p>
-           <p>请登录管理端「考勤设置 → 法定节假日」使用「同步官方数据」按钮手动同步，或手工录入。</p>`}
+           <p>请登录管理端「假勤设置 → 法定节假日」使用「同步官方数据」按钮手动同步，或手工录入。</p>`}
       ${mailFooter()}
     </div>
   `

@@ -53,7 +53,7 @@ export const AUDIT_TARGET_LABELS: Record<string, string> = {
   user: "用户",
   users: "用户",
   announcements: "公告",
-  attendance: "考勤",
+  attendance: "假勤",
   customers: "客户",
   devices: "设备",
   "device-model-catalog": "设备型号库",

@@ -529,6 +529,8 @@ export interface AttendanceRequest {
   proofFiles?: Array<{ id: number | string; originalName: string; mimeType?: string; size?: number }>;
   approvals?: ApprovalStep[];
   status?: string;
+  /** 催办节流（spec 007）：后端返回最近一次手动催办时间，用于按钮置灰 */
+  lastRemindedAt?: string | null;
 }
 
 export const REQUEST_TYPE_LABELS: Record<string, string> = {

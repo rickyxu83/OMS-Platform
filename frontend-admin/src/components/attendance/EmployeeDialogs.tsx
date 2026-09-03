@@ -141,8 +141,8 @@ export function EmployeeEditDialog({ employee, onClose, onSaved }: EmployeeDialo
               </div>
               <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
                 <div>
-                  <div className="text-sm font-medium">参与考勤</div>
-                  <div className="text-xs text-muted-foreground">停用后该员工暂不纳入考勤管理</div>
+                  <div className="text-sm font-medium">参与假勤</div>
+                  <div className="text-xs text-muted-foreground">停用后该员工暂不纳入假勤管理</div>
                 </div>
                 <Switch
                   checked={draft.attendanceEnabled}
