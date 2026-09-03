@@ -47,13 +47,16 @@ router.post('/requests', requirePermission('attendance.apply'), controller.creat
 router.post('/requests/:id/submit', requirePermission('attendance.apply'), controller.submitRequest)
 router.get('/overtime/service-orders', requirePermission('attendance.apply'), controller.listOvertimeServiceOrders)
 router.post('/overtime/service-orders/:id/apply', requirePermission('attendance.apply'), controller.createServiceOrderOvertimeRequest)
-router.post('/requests/:id/approve-delegate', requirePermission('attendance.approve'), controller.approveDelegate)
+// 代理确认入口不卡 attendance.approve（2026-09-03）：被指定的代理人多为工程师/司机（无审批角色权限），
+// 真正的门禁在 assertWorkflowStepApprover 里严格比对 assignee_user_id
+router.post('/requests/:id/approve-delegate', requirePermission('attendance.apply'), controller.approveDelegate)
 router.post('/requests/:id/approve-supervisor', requirePermission('attendance.approve', 'attendance.view'), controller.approveSupervisor)
 router.post('/requests/:id/approve-hr', requirePermission('attendance.hr.approve'), controller.approveHr)
 router.post('/requests/:id/approve-vp', requirePermission('attendance.vp.approve'), controller.approveVp)
 router.post('/requests/:id/approve', requirePermission('attendance.approve', 'attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.approveRole)
 router.post('/requests/:id/approve-admin', requirePermission('attendance.admin.approve'), controller.approveAdmin)
-router.post('/requests/:id/reject', requirePermission('attendance.approve', 'attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.rejectRequest)
+// 驳回同样放行 attendance.apply：代理人（工程师/司机）需在代理步骤可驳回；assignee 校验在 assertWorkflowStepApprover
+router.post('/requests/:id/reject', requirePermission('attendance.apply', 'attendance.approve', 'attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.rejectRequest)
 router.post('/requests/:id/withdraw', requirePermission('attendance.apply'), controller.withdrawRequest)
 router.post('/requests/:id/void', requirePermission('attendance.admin.approve'), controller.voidRequest)
 

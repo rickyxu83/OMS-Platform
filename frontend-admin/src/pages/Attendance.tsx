@@ -432,7 +432,9 @@ export function Attendance() {
     const seen = new Set(supervisorPending.map((item) => String(item.id)));
     return [...supervisorPending, ...adminPending.filter((item) => !seen.has(String(item.id)))];
   }, [supervisorPending, adminPending]);
-  const isApprover = canApprove && (!canApply || canAdminApprove || supervisorPending.length > 0);
+  // 代理确认待办：被指定为代理人的工程师/司机没有 attendance.approve 权限，但必须能看到并处理（2026-09-03 修复：待办中心能跳到但考勤页不渲染）
+  const delegateTodos = useMemo(() => supervisorPending.filter((item) => item.status === "pending_delegate"), [supervisorPending]);
+  const isApprover = (canApprove && (!canApply || canAdminApprove || supervisorPending.length > 0)) || delegateTodos.length > 0;
 
   const tabs = useMemo(() => {
     const items: Array<{ key: AttendanceTab; label: string; count?: number }> = [
