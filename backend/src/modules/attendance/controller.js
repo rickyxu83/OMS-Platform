@@ -3408,6 +3408,7 @@ async function teamCalendar(req, res) {
       workingDays: row.working_days === null || row.working_days === undefined ? null : Number(row.working_days),
     })),
   })
+}
 
 // ===== 假别元数据管理（spec 004） =====
 
