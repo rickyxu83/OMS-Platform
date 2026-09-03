@@ -21,21 +21,20 @@ export interface TimeInputProps {
   onTimeChange: (time: string) => void;
 }
 
-// 5 分钟步进的全天时间选项（00:00–23:55）
-const TIME_OPTIONS: string[] = [];
-for (let hour = 0; hour < 24; hour++) {
-  for (let minute = 0; minute < 60; minute += 5) {
-    TIME_OPTIONS.push(`${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`);
-  }
-}
+// 时/分双列选项：小时 00–23，分钟 5 分钟步进 00–55
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
+const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index * 5).padStart(2, "0"));
 const TIME_OPTION_HEIGHT = 32; // 与选项按钮 h-8 对应
-const DEFAULT_SCROLL_INDEX = 8 * 12; // 空值打开时默认定位到 08:00
+const DEFAULT_HOUR_INDEX = 8; // 空值打开时小时列默认定位到 08
 
 export function NativeTimeInput({ label, time, onTimeChange }: TimeInputProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const listRef = useRef<HTMLDivElement | null>(null);
+  const hourListRef = useRef<HTMLDivElement | null>(null);
+  const minuteListRef = useRef<HTMLDivElement | null>(null);
   const currentTime = time.slice(0, 5);
+  const currentHour = currentTime ? currentTime.slice(0, 2) : "";
+  const currentMinute = currentTime ? currentTime.slice(3, 5) : "";
 
   // Safari 桌面版的 time 输入框没有原生时间选择弹层（date 有日历、time 只有分段键盘输入，
   // showPicker() 对 time 是静默空操作）；iPad 上 Apple Pencil 点时间框原生滚轮也不弹（实测反馈）。
@@ -67,14 +66,30 @@ export function NativeTimeInput({ label, time, onTimeChange }: TimeInputProps) {
     };
   }, [open]);
 
-  // 打开瞬间把列表滚到当前值（空值滚到 08:00），不跟随输入变化打断用户滚动
+  // 打开瞬间两列分别滚到当前值（空值小时列滚到 08），不跟随输入变化打断用户滚动
   useEffect(() => {
-    if (!open || !listRef.current) return;
-    const index = TIME_OPTIONS.indexOf(currentTime);
-    const target = index >= 0 ? index : DEFAULT_SCROLL_INDEX;
-    listRef.current.scrollTop = Math.max(0, target - 3) * TIME_OPTION_HEIGHT;
+    if (!open) return;
+    const hourIndex = HOUR_OPTIONS.indexOf(currentHour);
+    const minuteIndex = MINUTE_OPTIONS.indexOf(currentMinute);
+    if (hourListRef.current) {
+      const target = hourIndex >= 0 ? hourIndex : DEFAULT_HOUR_INDEX;
+      hourListRef.current.scrollTop = Math.max(0, target - 2) * TIME_OPTION_HEIGHT;
+    }
+    if (minuteListRef.current && minuteIndex > 0) {
+      minuteListRef.current.scrollTop = Math.max(0, minuteIndex - 2) * TIME_OPTION_HEIGHT;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // 点时列保持打开方便接着选分；点分列完成选择并关闭
+  function selectHour(hour: string) {
+    onTimeChange(`${hour}:${currentMinute || "00"}`);
+  }
+
+  function selectMinute(minute: string) {
+    onTimeChange(`${currentHour || "08"}:${minute}`);
+    setOpen(false);
+  }
 
   return (
     <div ref={rootRef} className="relative min-w-0">
@@ -88,23 +103,37 @@ export function NativeTimeInput({ label, time, onTimeChange }: TimeInputProps) {
         className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
       />
       {open ? (
-        <div
-          ref={listRef}
-          className="absolute left-0 top-full z-50 mt-1 max-h-56 w-full min-w-[8rem] overflow-auto rounded-md border bg-popover p-1 text-sm text-popover-foreground shadow-md"
-        >
-          {TIME_OPTIONS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => {
-                onTimeChange(option);
-                setOpen(false);
-              }}
-              className={`flex h-8 w-full items-center rounded-sm px-2.5 tabular-nums hover:bg-accent hover:text-accent-foreground ${option === currentTime ? "bg-primary/10 font-semibold text-primary" : ""}`}
-            >
-              {option}
-            </button>
-          ))}
+        <div className="absolute left-0 top-full z-50 mt-1 flex w-44 overflow-hidden rounded-md border bg-popover text-sm text-popover-foreground shadow-md">
+          <div className="w-1/2 border-r border-border/60">
+            <div className="border-b border-border/60 py-1 text-center text-xs font-medium text-muted-foreground">时</div>
+            <div ref={hourListRef} className="max-h-48 overflow-auto p-1">
+              {HOUR_OPTIONS.map((hour) => (
+                <button
+                  key={hour}
+                  type="button"
+                  onClick={() => selectHour(hour)}
+                  className={`flex h-8 w-full items-center justify-center rounded-sm tabular-nums hover:bg-accent hover:text-accent-foreground ${hour === currentHour ? "bg-primary/10 font-semibold text-primary" : ""}`}
+                >
+                  {hour}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="w-1/2">
+            <div className="border-b border-border/60 py-1 text-center text-xs font-medium text-muted-foreground">分</div>
+            <div ref={minuteListRef} className="max-h-48 overflow-auto p-1">
+              {MINUTE_OPTIONS.map((minute) => (
+                <button
+                  key={minute}
+                  type="button"
+                  onClick={() => selectMinute(minute)}
+                  className={`flex h-8 w-full items-center justify-center rounded-sm tabular-nums hover:bg-accent hover:text-accent-foreground ${minute === currentMinute ? "bg-primary/10 font-semibold text-primary" : ""}`}
+                >
+                  {minute}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       ) : null}
     </div>
