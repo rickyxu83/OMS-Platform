@@ -9,10 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { toast } from "sonner";
 import { api } from "@/services/api";
-import { invalidateLeaveTypesCache, useAnnualLeaveTiers, invalidateAnnualLeaveTiersCache, type AnnualLeaveTierItem, type LeaveTypeItem } from "@/pages/attendance-shared";
+import { invalidateLeaveTypesCache, useAnnualLeaveTiers, invalidateAnnualLeaveTiersCache, NATIONALITY_LABELS, type AnnualLeaveTierItem, type EmployeeProfile, type LeaveTypeItem } from "@/pages/attendance-shared";
 
 const QUOTA_HELP = "年度带薪额度（天）：按自然年跟踪该假别已批准天数，申请与审批时提示使用情况；超出额度的部分按「超额减薪比例」在提示与邮件中标注，系统不做强制拦截，以审批人把关为准。当前用于病假（3 天带薪，超额扣 30%）。产假等政策性强假别建议只配「参考天数 + 政策说明」，天数以审批为准。";
 
@@ -57,8 +58,8 @@ function draftOf(item: LeaveTypeItem): LeaveTypeDraft {
   };
 }
 
-/** 考勤设置-假别管理（spec 004）：假别再配置化，政策文案/额度修改不改代码 */
-export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
+/** 考勤设置-假别管理（spec 004）+ 特休档位与成员归属（spec 005 v3：级别即档位表方案，成员在这里维护） */
+export function SettingsLeaveTypes({ canManage, onChanged }: { canManage: boolean; onChanged?: () => void }) {
   const [items, setItems] = useState<LeaveTypeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -111,6 +112,41 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
   function patchTierRow(index: number, patch: Partial<{ minYears: string; days: string; plusPerYear: string; maxDays: string; note: string }>) {
     setTierRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
     setTiersDirty(true);
+  }
+
+  // 方案成员（spec 005 v3）：员工级别归属在这张卡里维护，员工编辑对话框不再单设
+  const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
+  const [memberSaving, setMemberSaving] = useState(false);
+  const loadEmployees = useCallback(async () => {
+    try {
+      const data = await api.get("/attendance/employees");
+      setEmployees(Array.isArray(data?.items) ? data.items : []);
+    } catch {
+      // 读取失败不阻塞档位表本身
+    }
+  }, []);
+  useEffect(() => { loadEmployees(); }, [loadEmployees]);
+
+  const schemeMembers = employees.filter((employee) => (employee.annualLeaveScheme || "mainland") === tierScheme);
+  const schemeCandidates = employees.filter((employee) => (employee.annualLeaveScheme || "mainland") !== tierScheme && employee.attendanceEnabled !== false);
+
+  async function moveMember(employee: EmployeeProfile, schemeCode: string) {
+    setMemberSaving(true);
+    try {
+      await api.put(`/attendance/employees/${employee.id}`, {
+        employeeName: employee.employeeName,
+        nationality: employee.nationality,
+        attendanceEnabled: employee.attendanceEnabled !== false,
+        annualLeaveRule: schemeCode,
+      });
+      toast.success(`已将「${employee.employeeName}」调整到 ${schemes.find((s) => s.code === schemeCode)?.label || schemeCode}`);
+      await loadEmployees();
+      onChanged?.();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "调整成员失败");
+    } finally {
+      setMemberSaving(false);
+    }
   }
 
   const load = useCallback(async () => {
@@ -440,6 +476,61 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
               ) : null}
             </TableBody>
           </Table>
+        </div>
+
+        <div className="mt-5 space-y-2">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            成员（{schemeMembers.length} 人）
+            <span className="text-xs font-normal text-muted-foreground">未单独指定的员工按籍别自动归入陆籍/台籍·常规</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {schemeMembers.map((employee) => {
+              const defaultScheme = employee.nationality === "taiwan" ? "taiwan" : "mainland";
+              const isDefault = tierScheme === defaultScheme;
+              return (
+                <Badge key={employee.id} variant="secondary" className="gap-1 py-1 pl-2.5 pr-1">
+                  <span>{employee.employeeName || employee.username}</span>
+                  <span className="text-muted-foreground">{NATIONALITY_LABELS[employee.nationality || "mainland"] || "-"}</span>
+                  {canManage && !isDefault ? (
+                    <button
+                      type="button"
+                      className="rounded-sm px-0.5 opacity-70 hover:opacity-100 focus:outline-none"
+                      title="移出（回到籍别默认级别）"
+                      disabled={memberSaving}
+                      onClick={() => moveMember(employee, defaultScheme)}
+                      aria-label={`将 ${employee.employeeName} 移出该级别`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  ) : null}
+                </Badge>
+              );
+            })}
+            {schemeMembers.length === 0 ? <span className="text-xs text-muted-foreground">暂无成员</span> : null}
+          </div>
+          {canManage ? (
+            <div className="max-w-xs">
+              <Select
+                value=""
+                onValueChange={(id) => {
+                  const target = schemeCandidates.find((employee) => String(employee.id) === id);
+                  if (target) moveMember(target, tierScheme);
+                }}
+                disabled={memberSaving || schemeCandidates.length === 0}
+              >
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder="添加成员到该级别…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {schemeCandidates.map((employee) => (
+                    <SelectItem key={employee.id} value={String(employee.id)}>
+                      {employee.employeeName || employee.username}（{NATIONALITY_LABELS[employee.nationality || "mainland"] || "-"}，当前：{schemes.find((s) => s.code === (employee.annualLeaveScheme || "mainland"))?.label || "陆籍"}）
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
         </div>
       </CardContent>
     </Card>

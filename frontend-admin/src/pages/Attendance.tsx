@@ -1501,7 +1501,7 @@ export function Attendance() {
           ) : null}
 
           {settingsView === "leaveTypes" ? (
-            <SettingsLeaveTypes canManage={canManage} />
+            <SettingsLeaveTypes canManage={canManage} onChanged={() => load()} />
           ) : null}
 
           {settingsView === "holidays" ? (
