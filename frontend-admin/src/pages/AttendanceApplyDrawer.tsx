@@ -235,7 +235,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     : null;
   const annualSingleDay = form.annualStartDate === form.annualEndDate;
   const selectedDelegateName = delegates.find((item) => String(item.id) === form.delegateEmployeeId)?.employeeName || "";
-  const proofRequired = form.requestType === "leave" && ["sick", "marriage"].includes(form.leaveType);
+  const proofRequired = form.requestType === "leave" && (activeLeaveType ? activeLeaveType.requiresProof : ["sick", "marriage"].includes(form.leaveType || ""));
   // 草稿中已上传的证明数量（继续提交时可补充，重复计算校验分母）
   const compBalance = Number(myProfile?.compTimeBalanceHours || 0);
   const annualBalance = annualBalanceDays(myProfile);
@@ -305,7 +305,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     }
     if (form.requestType === "leave" && form.leaveType === "personal" && !String(form.reason || "").trim()) return "请填写事假事由";
     if (proofRequired && proofFiles.length === 0) {
-      return form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明";
+      return `${leaveTypeLabelOf(form.leaveType, leaveTypes)}必须上传证明`;
     }
     if (annualPreview && !annualPreview.workingDays) {
       return naturalDayLeave ? "申请范围内没有有效日期" : "申请范围内没有工作日";
@@ -880,13 +880,25 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                 {annualPreview || (form.requestType === "comp_time" && compPreview) ? (
                   <div className={balanceInsufficient
                     ? "rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-                    : "rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground"}>
+                    : quotaWillExceedDays > 0
+                      ? "rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+                      : "rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground"}>
                     <div className="flex items-center justify-between gap-3">
                       <span>本次申请：<b>{form.requestType === "comp_time" ? `${hours(compPreview?.hours || 0)} 小时` : `${days(annualPreview?.workingDays || 0)} 天`}</b></span>
-                      <span className="text-xs">可用：<b>{form.requestType === "comp_time" ? `${hours(compBalance)} 小时` : `${days(annualBalance)} 天`}</b></span>
+                      {form.requestType === "comp_time" ? (
+                        <span className="text-xs">可用调休：<b>{hours(compBalance)} 小时</b></span>
+                      ) : form.leaveType === "annual" ? (
+                        <span className="text-xs">特休余额：<b>{days(annualBalance)} 天</b></span>
+                      ) : leaveQuota ? (
+                        <span className="text-xs">带薪额度剩余：<b>{days(Math.max(0, Math.round((leaveQuota.quotaDays - leaveQuota.usedDays) * 100) / 100))} 天</b></span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">该假别不计系统余额</span>
+                      )}
                     </div>
                     {balanceInsufficient ? (
                       <p className="mt-1 text-xs font-medium">{form.requestType === "comp_time" ? "调休余额不足，请减少时长或先加班积累" : "特休余额不足，请缩短请假天数"}</p>
+                    ) : quotaWillExceedDays > 0 ? (
+                      <p className="mt-1 text-xs font-medium">本次将超出带薪额度 {quotaWillExceedDays} 天{leaveQuota?.deductionPercent ? `，超出部分按政策扣 ${leaveQuota.deductionPercent}% 计` : ""}，系统不拦截，以审批人把关为准</p>
                     ) : null}
                   </div>
                 ) : null}
