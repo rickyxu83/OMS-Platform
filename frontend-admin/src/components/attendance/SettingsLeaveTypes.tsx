@@ -66,14 +66,22 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
   const [editing, setEditing] = useState<LeaveTypeItem | null>(null);
   const [draft, setDraft] = useState<LeaveTypeDraft>(blankDraft);
 
-  // 特休档位表（spec 005）：满 N 年 → 年度天数
-  const tiers = useAnnualLeaveTiers();
-  const [tierRows, setTierRows] = useState<Array<{ minYears: string; days: string; note: string }>>([]);
+  // 特休档位表（spec 005 v2）：方案（陆籍/台籍·常规/台籍·特批）× 满 N 年 → 年度天数，支持递增封顶尾档
+  const { items: tiers, schemes } = useAnnualLeaveTiers();
+  const [tierRows, setTierRows] = useState<Array<{ schemeCode: string; minYears: string; days: string; plusPerYear: string; maxDays: string; note: string }>>([]);
+  const [tierScheme, setTierScheme] = useState("mainland");
   const [tiersDirty, setTiersDirty] = useState(false);
   const [tiersSaving, setTiersSaving] = useState(false);
   useEffect(() => {
     if (!tiersDirty && tiers.length) {
-      setTierRows(tiers.map((tier) => ({ minYears: String(tier.minYears), days: String(tier.days), note: tier.note || "" })));
+      setTierRows(tiers.map((tier) => ({
+        schemeCode: tier.schemeCode,
+        minYears: String(tier.minYears),
+        days: String(tier.days),
+        plusPerYear: tier.plusPerYear === null ? "" : String(tier.plusPerYear),
+        maxDays: tier.maxDays === null ? "" : String(tier.maxDays),
+        note: tier.note || "",
+      })));
     }
   }, [tiers, tiersDirty]);
 
@@ -81,7 +89,14 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
     setTiersSaving(true);
     try {
       await api.put("/attendance/annual-leave-tiers", {
-        items: tierRows.map((row) => ({ minYears: Number(row.minYears), days: Number(row.days), note: row.note.trim() })),
+        items: tierRows.map((row) => ({
+          schemeCode: row.schemeCode,
+          minYears: Number(row.minYears),
+          days: Number(row.days),
+          plusPerYear: row.plusPerYear.trim() === "" ? null : Number(row.plusPerYear),
+          maxDays: row.maxDays.trim() === "" ? null : Number(row.maxDays),
+          note: row.note.trim(),
+        })),
       });
       invalidateAnnualLeaveTiersCache();
       setTiersDirty(false);
@@ -91,6 +106,11 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
     } finally {
       setTiersSaving(false);
     }
+  }
+
+  function patchTierRow(index: number, patch: Partial<{ minYears: string; days: string; plusPerYear: string; maxDays: string; note: string }>) {
+    setTierRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+    setTiersDirty(true);
   }
 
   const load = useCallback(async () => {
@@ -339,12 +359,12 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
       <CardHeader>
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <CardTitle className="flex items-center gap-1.5">特休档位表 <HelpTooltip label="档位年限按入职日期计算：满年对齐自然年底（入职当年与次年为 0 档，第三年起满 1 年档）。建议额度 = 满年数不超过档位年限的最大一档；仅作展示与一键带入，入账由行政在余额控制台确认。离职再入职重新起算；需累计以往工龄的特殊员工，由行政把入职日期手工前调。" /></CardTitle>
-            <CardDescription>满 N 年 → 年度特休天数；公司规则变化时直接改表，无需改代码</CardDescription>
+            <CardTitle className="flex items-center gap-1.5">特休档位表 <HelpTooltip label="档位年限按入职日期计算：满年对齐自然年底（入职当年与次年为 0 档，第三年起满 1 年档）。建议额度 = 员工方案内满年数不超过档位年限的最大一档，含「每年加 N 天」递增与封顶；仅作展示与一键带入，入账由行政在余额控制台确认。台籍·特批方案由行政在员工编辑对话框手工指定。" /></CardTitle>
+            <CardDescription>方案 × 满 N 年 → 年度特休天数；规则变化时直接改表，无需改代码</CardDescription>
           </div>
           {canManage ? (
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => { setTierRows([...tierRows, { minYears: "", days: "", note: "" }]); setTiersDirty(true); }}>
+              <Button size="sm" variant="outline" onClick={() => { setTierRows([...tierRows, { schemeCode: tierScheme, minYears: "", days: "", plusPerYear: "", maxDays: "", note: "" }]); setTiersDirty(true); }}>
                 <Plus className="mr-2 h-4 w-4" />
                 新增档位
               </Button>
@@ -355,32 +375,53 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
             </div>
           ) : null}
         </div>
+        <div className="mt-3 flex w-fit gap-1 rounded-lg border bg-muted/40 p-1 text-sm">
+          {schemes.map((scheme) => (
+            <button
+              key={scheme.code}
+              type="button"
+              onClick={() => setTierScheme(scheme.code)}
+              title={scheme.note}
+              className={`h-8 rounded-md px-4 font-medium transition ${tierScheme === scheme.code ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >{scheme.label}</button>
+          ))}
+        </div>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
-          <Table className="min-w-[560px]">
+          <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-40">满年数（≥）</TableHead>
-                <TableHead className="w-40">年度特休天数</TableHead>
+                <TableHead className="w-28">满年数（≥）</TableHead>
+                <TableHead className="w-28">基础天数</TableHead>
+                <TableHead className="w-28">每年加（可空）</TableHead>
+                <TableHead className="w-28">封顶（可空）</TableHead>
                 <TableHead>备注</TableHead>
                 {canManage ? <TableHead className="w-16 text-right">操作</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tierRows.map((row, index) => (
+              {tierRows.map((row, index) => ({ row, index })).filter(({ row }) => row.schemeCode === tierScheme).map(({ row, index }) => (
                 <TableRow key={index}>
                   <TableCell>
-                    <Input type="number" min="1" max="100" step="1" value={row.minYears} disabled={!canManage}
-                      onChange={(e) => { const next = [...tierRows]; next[index] = { ...row, minYears: e.target.value }; setTierRows(next); setTiersDirty(true); }} />
+                    <Input type="number" min="0" max="100" step="1" value={row.minYears} disabled={!canManage}
+                      onChange={(e) => patchTierRow(index, { minYears: e.target.value })} />
                   </TableCell>
                   <TableCell>
                     <Input type="number" min="0" max="365" step="0.5" value={row.days} disabled={!canManage}
-                      onChange={(e) => { const next = [...tierRows]; next[index] = { ...row, days: e.target.value }; setTierRows(next); setTiersDirty(true); }} />
+                      onChange={(e) => patchTierRow(index, { days: e.target.value })} />
+                  </TableCell>
+                  <TableCell>
+                    <Input type="number" min="0" max="30" step="0.5" value={row.plusPerYear} disabled={!canManage} placeholder="-"
+                      onChange={(e) => patchTierRow(index, { plusPerYear: e.target.value })} />
+                  </TableCell>
+                  <TableCell>
+                    <Input type="number" min="0" max="365" step="0.5" value={row.maxDays} disabled={!canManage} placeholder="-"
+                      onChange={(e) => patchTierRow(index, { maxDays: e.target.value })} />
                   </TableCell>
                   <TableCell>
                     <Input value={row.note} disabled={!canManage} maxLength={200}
-                      onChange={(e) => { const next = [...tierRows]; next[index] = { ...row, note: e.target.value }; setTierRows(next); setTiersDirty(true); }} />
+                      onChange={(e) => patchTierRow(index, { note: e.target.value })} />
                   </TableCell>
                   {canManage ? (
                     <TableCell className="text-right">
@@ -392,9 +433,9 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
                   ) : null}
                 </TableRow>
               ))}
-              {tierRows.length === 0 ? (
+              {tierRows.filter((row) => row.schemeCode === tierScheme).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={canManage ? 4 : 3} className="py-8 text-center text-sm text-muted-foreground">暂无档位</TableCell>
+                  <TableCell colSpan={canManage ? 6 : 5} className="py-8 text-center text-sm text-muted-foreground">该方案暂无档位</TableCell>
                 </TableRow>
               ) : null}
             </TableBody>

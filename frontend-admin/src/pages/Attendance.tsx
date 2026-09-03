@@ -46,6 +46,7 @@ import {
   annualLeaveRange,
   type LeaveQuotaInfo,
   type LeaveTypeItem,
+  ANNUAL_LEAVE_SCHEME_LABELS,
   applyAnnualLeaveRange,
   createBlankForm,
   dateIndex,
@@ -1280,7 +1281,7 @@ export function Attendance() {
                   subtitle={`${employee.username || "-"} · ${roleLabel(employee.role)}`}
                   fields={[
                     { label: "籍别 / 入职", value: `${NATIONALITY_LABELS[employee.nationality || "mainland"] || "-"} · ${formatDate(employee.hireDate)}` },
-                    { label: "特休档位", value: employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined ? "-" : `满 ${employee.annualLeaveTierYears} 年档 · 建议 ${employee.annualLeaveSuggestedDays ?? "-"} 天` },
+                    { label: "特休档位", value: employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined ? "-" : `${ANNUAL_LEAVE_SCHEME_LABELS[employee.annualLeaveScheme || ""] || "陆籍"} · 满 ${employee.annualLeaveTierYears} 年档 · 建议 ${employee.annualLeaveSuggestedDays ?? "-"} 天` },
                     { label: "特休余额", value: `${days(annualBalanceDays(employee))} 天` },
                     { label: "调休余额", value: `${hours(employee.compTimeBalanceHours)} 小时` },
                   ]}
@@ -1350,7 +1351,7 @@ export function Attendance() {
                           <span className="text-muted-foreground">-</span>
                         ) : (
                           <>
-                            <div className="text-sm font-medium">满 {employee.annualLeaveTierYears} 年档</div>
+                            <div className="text-sm font-medium">{ANNUAL_LEAVE_SCHEME_LABELS[employee.annualLeaveScheme || ""] || "陆籍"} · 满 {employee.annualLeaveTierYears} 年档</div>
                             <div className={`text-xs ${Number(employee.annualLeaveSuggestedDays || 0) !== Math.round(annualBalanceDays(employee) * 100) / 100 ? "text-amber-600" : "text-muted-foreground"}`}>
                               建议 {employee.annualLeaveSuggestedDays ?? "-"} 天/年
                             </div>

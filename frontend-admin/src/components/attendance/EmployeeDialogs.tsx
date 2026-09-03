@@ -119,6 +119,21 @@ export function EmployeeEditDialog({ employee, onClose, onSaved }: EmployeeDialo
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>特休方案</Label>
+                <Select
+                  value={draft.annualLeaveRule}
+                  onValueChange={(value) => patchDraft({ annualLeaveRule: value })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mainland">陆籍</SelectItem>
+                    <SelectItem value="taiwan">台籍·常规</SelectItem>
+                    <SelectItem value="taiwan_special">台籍·特批</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">默认随籍别；「台籍·特批」仅个别员工由行政手工指定</p>
+              </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>入职日期</Label>

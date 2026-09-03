@@ -32,7 +32,8 @@ export interface EmployeeProfile {
   unavailable?: boolean;
   /** 年度带薪假别额度（spec 004）：key 为假别 code，当前为病假 */
   leaveQuotas?: Record<string, LeaveQuotaInfo>;
-  /** 特休档位（spec 005）：档位年限（满年对齐自然年底）与按档位表的建议年度天数 */
+  /** 特休档位（spec 005）：方案、档位年限（满年对齐自然年底）与按档位表的建议年度天数 */
+  annualLeaveScheme?: string;
   annualLeaveTierYears?: number | null;
   annualLeaveSuggestedDays?: number | null;
   unavailableReason?: string | null;
@@ -143,39 +144,58 @@ export function leaveTypeLabelOf(code?: string | null, items?: LeaveTypeItem[], 
   return items?.find((item) => item.code === key)?.label || LEAVE_TYPE_LABELS[key] || key || "请假";
 }
 
-// ===== 特休档位表（spec 005） =====
+// ===== 特休档位表（spec 005 v2：方案 × 档位 + 递增封顶尾档） =====
 
 export interface AnnualLeaveTierItem {
   id: number;
+  schemeCode: string;
   minYears: number;
   days: number;
+  plusPerYear: number | null;
+  maxDays: number | null;
   note: string;
 }
 
-let annualLeaveTiersCache: { at: number; items: AnnualLeaveTierItem[] } | null = null;
+export interface AnnualLeaveSchemeItem {
+  code: string;
+  label: string;
+  note: string;
+}
+
+export const ANNUAL_LEAVE_SCHEME_LABELS: Record<string, string> = {
+  mainland: "陆籍",
+  taiwan: "台籍·常规",
+  taiwan_special: "台籍·特批",
+};
+
+let annualLeaveTiersCache: { at: number; items: AnnualLeaveTierItem[]; schemes: AnnualLeaveSchemeItem[] } | null = null;
 
 export function invalidateAnnualLeaveTiersCache() {
   annualLeaveTiersCache = null;
 }
 
 export function useAnnualLeaveTiers() {
-  const [items, setItems] = useState<AnnualLeaveTierItem[]>(annualLeaveTiersCache?.items || []);
+  const [state, setState] = useState<{ items: AnnualLeaveTierItem[]; schemes: AnnualLeaveSchemeItem[] }>({
+    items: annualLeaveTiersCache?.items || [],
+    schemes: annualLeaveTiersCache?.schemes || [],
+  });
   useEffect(() => {
     if (annualLeaveTiersCache && Date.now() - annualLeaveTiersCache.at < 30_000) {
-      setItems(annualLeaveTiersCache.items);
+      setState({ items: annualLeaveTiersCache.items, schemes: annualLeaveTiersCache.schemes });
       return;
     }
     let alive = true;
     api.get("/attendance/annual-leave-tiers")
       .then((data) => {
-        const list = Array.isArray(data?.items) ? data.items : [];
-        annualLeaveTiersCache = { at: Date.now(), items: list };
-        if (alive) setItems(list);
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const schemes = Array.isArray(data?.schemes) ? data.schemes : [];
+        annualLeaveTiersCache = { at: Date.now(), items, schemes };
+        if (alive) setState({ items, schemes });
       })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
-  return items;
+  return state;
 }
 
 export const OVERTIME_DAY_TYPE_LABELS: Record<string, string> = {

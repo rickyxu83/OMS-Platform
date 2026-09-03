@@ -34,6 +34,7 @@ const {
   referencedCounts,
 } = require('./leave-types')
 const {
+  SCHEMES,
   ensureAnnualLeaveTierSchema,
   listTierRows,
   tierPayload,
@@ -3302,7 +3303,10 @@ async function deleteLeaveTypeHandler(req, res) {
 
 async function listAnnualLeaveTiers(req, res) {
   await ensureSchema()
-  res.json({ items: (await listTierRows()).map(tierPayload) })
+  res.json({
+    items: (await listTierRows()).map(tierPayload),
+    schemes: SCHEMES.map((scheme) => ({ ...scheme })),
+  })
 }
 
 async function replaceAnnualLeaveTiers(req, res) {

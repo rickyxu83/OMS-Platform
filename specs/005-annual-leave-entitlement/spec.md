@@ -1,6 +1,20 @@
 # Spec: 特休额度公式化（入职日期 = 年假起算日 + 可配置档位表）
 
-**Date**: 2026-09-02 ｜ **Status**: 待佬确认（档位表规则由佬后续提供，行政可在界面录入，不阻塞开工）
+**Date**: 2026-09-02 ｜ **Status**: v2 修订（佬提供现行规则图片）待佬确认
+
+## v2 修订说明（2026-09-02，佬提供 Excel 规则图）
+
+现行规则为**多方案 + 递增封顶尾档**模型，单表平铺档位不够：
+
+| 方案 code | 名称 | 适用 | 档位 |
+|---|---|---|---|
+| `mainland` | 陆籍 | 所有陆籍 | 满1年 5天 / 满3年 7天 / 满5年 10天 / 满10年 15天 / 满20年起 每年+1天、封顶30天 |
+| `taiwan` | 台籍·常规 | 除特批外的台籍 | 满1年 15天 / 满20年起 每年+1天、封顶30天 |
+| `taiwan_special` | 台籍·特批 | 仅 Jack、Adoflo（行政手工指定） | 满0年 15天 / 满3年 18天 / 满5年 22天 / 满10年起 每年+1天、封顶30天 |
+
+- 员工归属方案复用现有 `annual_leave_rule` 字段（默认随籍别，编辑对话框可独立改成特批方案）
+- 档位表加 `scheme_code` + `plus_per_year`（每年加）+ `max_days`（封顶）三列
+- **下一年的计算公式佬另外给**，本期只做当年档位与建议额度
 
 ## Type
 
@@ -23,7 +37,8 @@ Change
 
 ## Scope
 
-- 新表 `attendance_annual_leave_tiers`（惰性迁移）：`min_years INT`（满几年）、`days DECIMAL(4,1)`（年度天数）、`note VARCHAR(200)`；seed 法定口径（满 1 年 5 天 / 满 10 年 10 天 / 满 20 年 15 天）作为初始值，行政可改
+- 新表 `attendance_annual_leave_tiers`（惰性迁移）：`scheme_code VARCHAR(32)`、`min_years INT`、`days DECIMAL(4,1)`（基础天数）、`plus_per_year DECIMAL(3,1) NULL`（超出档位起点后每年加天数）、`max_days DECIMAL(4,1) NULL`（封顶）、`note VARCHAR(200)`；UNIQUE (scheme_code, min_years)；seed 上述三方案九档
+- 方案清单写死代码（mainland/taiwan/taiwan_special），label 由代码提供；员工方案 = `annual_leave_rule`，非法值回退 mainland
 - 后端 API：
   - `GET /attendance/annual-leave-tiers`（考勤读权限）
   - `PUT /attendance/annual-leave-tiers`（`attendance.manage`，整表替换，事务内删旧插新）
@@ -44,8 +59,8 @@ Change
 ## Behavior
 
 - 档位年限公式：`tierYears = max(0, 当前年份 − 入职年份 − 1)`；入职日期为空 → 不显示档位
-- 建议额度匹配：档位表中 `min_years ≤ tierYears` 的最大档；无匹配 → 建议 0
-- 档位表校验：min_years 为正整数且唯一、days > 0；至少保留一行
+- 建议额度匹配：员工方案内 `min_years ≤ tierYears` 的最大档；`建议 = days + plus_per_year × (tierYears − min_years)`，有 `max_days` 则封顶；无匹配 → 建议 0
+- 档位表校验：min_years 为 0~100 整数且方案内唯一、days > 0、plus_per_year ≥ 0 可空、max_days > 0 可空；至少保留一行
 - 改档位表/改入职日期即时影响建议值展示，**不追溯改动已入账余额**
 
 ## Contracts
