@@ -28,6 +28,7 @@ import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 import { RequestList, requestTypeLabel } from "@/components/attendance/RequestList";
 import { HolidayPanel } from "@/components/attendance/HolidayPanel";
 import { SettingsHolidays, type HolidayDraft, type HolidaySyncPreview } from "@/components/attendance/SettingsHolidays";
+import { SettingsLeaveTypes } from "@/components/attendance/SettingsLeaveTypes";
 import { ReportExportDialog } from "@/components/attendance/ReportExportDialog";
 import { AdjustBalanceDialog, BatchBalanceDialog, EmployeeEditDialog } from "@/components/attendance/EmployeeDialogs";
 
@@ -43,6 +44,8 @@ import {
   addHoursValue,
   annualBalanceDays,
   annualLeaveRange,
+  type LeaveQuotaInfo,
+  type LeaveTypeItem,
   applyAnnualLeaveRange,
   createBlankForm,
   dateIndex,
@@ -128,6 +131,9 @@ interface MonthlyReportItem {
   annualLeaveBalanceDays?: number;
   annualLeaveBalanceHours?: number;
   compTimeBalanceHours?: number;
+  /** 假别动态聚合（spec 004）：key 为假别 code；病假附当年带薪额度使用情况 */
+  leaveTypeHours?: Record<string, number>;
+  sickLeaveYtd?: LeaveQuotaInfo | null;
 }
 
 interface RoleOption {
@@ -226,7 +232,10 @@ export function Attendance() {
   const [activeTab, setActiveTab] = useState<AttendanceTab>(() => parseTabParam(searchParams.get("tab")));
   const [recordView, setRecordView] = useState<"detail" | "summary">(() => searchParams.get("record") === "summary" ? "summary" : "detail");
   // 考勤设置子视图：审批流程 / 工作日历；角色审批链默认折叠，展开后才可编辑
-  const [settingsView, setSettingsView] = useState<"rules" | "holidays">(() => searchParams.get("view") === "holidays" ? "holidays" : "rules");
+  const [settingsView, setSettingsView] = useState<"rules" | "holidays" | "leaveTypes">(() => {
+    const view = searchParams.get("view");
+    return view === "holidays" || view === "leaveTypes" ? view : "rules";
+  });
   const [applyOpen, setApplyOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -273,6 +282,7 @@ export function Attendance() {
   const [pendingActionSaving, setPendingActionSaving] = useState(false);
   const [reportMonth, setReportMonth] = useState(todayMonth());
   const [reportItems, setReportItems] = useState<MonthlyReportItem[]>([]);
+  const [reportLeaveTypes, setReportLeaveTypes] = useState<LeaveTypeItem[]>([]);
   const [reportExportOpen, setReportExportOpen] = useState(false);
   const [holidayYear, setHolidayYear] = useState(todayYear());
   const [applicationHolidays, setApplicationHolidays] = useState<LegalHolidayItem[]>([]);
@@ -355,6 +365,7 @@ export function Attendance() {
     try {
       const data = await api.get(`/attendance/reports/monthly?month=${reportMonth}`);
       setReportItems((data?.items || []) as MonthlyReportItem[]);
+      setReportLeaveTypes(Array.isArray(data?.leaveTypes) ? data.leaveTypes : []);
     } catch { /* 静默：主 load 已统一报错，避免双 toast */ }
   }
 
@@ -837,6 +848,22 @@ export function Attendance() {
     ] : []),
     ...(isApprover ? [{ label: "待我审批", value: String(approvalTodos.length), warn: false }] : []),
   ];
+  // 报表假别列动态化（spec 004）：特休独立列，其余按假别表出列；后端老响应无 meta 时回退内置四假别
+  const reportLeaveColumns: LeaveTypeItem[] = reportLeaveTypes.length
+    ? reportLeaveTypes.filter((item) => item.enabled && item.code !== "annual")
+    : (["sick", "personal", "marriage", "bereavement"] as const).map((code) => ({
+        id: 0, code, label: LEAVE_TYPE_LABELS[code], enabled: true, sortOrder: 0,
+        requiresProof: false, includeNonWorkingDays: false, countsBalance: false,
+        referenceDays: "", policyNote: "", paidQuotaDays: null, exceedDeductionPercent: null, systemReserved: false,
+      }));
+  const reportLeaveHours = (item: MonthlyReportItem, code: string) => {
+    if (item.leaveTypeHours) return Number(item.leaveTypeHours[code] || 0);
+    if (code === "sick") return Number(item.sickLeaveHours || 0);
+    if (code === "personal") return Number(item.personalLeaveHours || 0);
+    if (code === "marriage") return Number(item.marriageLeaveHours || 0);
+    if (code === "bereavement") return Number(item.bereavementLeaveHours || 0);
+    return 0;
+  };
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -1157,9 +1184,13 @@ export function Attendance() {
                   <TableRow>
                     <TableHead>员工</TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">特休 <HelpTooltip label={ANNUAL_LEAVE_HELP} /></span></TableHead>
-                    <TableHead>病假</TableHead>
-                    <TableHead>事假</TableHead>
-                    <TableHead>其他假</TableHead>
+                    {reportLeaveColumns.map((column) => (
+                      <TableHead key={column.code}>
+                        {column.code === "sick" ? (
+                          <span className="inline-flex items-center gap-1">{column.label} <HelpTooltip label={`年度带薪额度 ${column.paidQuotaDays ?? 3} 天，超出部分按政策扣 ${column.exceedDeductionPercent ?? 30}% 计；格子下方小字为当年累计额度使用情况`} /></span>
+                        ) : column.label}
+                      </TableHead>
+                    ))}
                     <TableHead>加班·转调休</TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">加班·付费 <HelpTooltip label="按加班审批结果记录的付费时长；付费加班按日类型标记倍率角标（工作日 1.5 倍、周末 2 倍、法定节假日 3 倍），具体加班费由行政线下核计。" /></span></TableHead>
                     <TableHead>调休使用</TableHead>
@@ -1172,9 +1203,16 @@ export function Attendance() {
                     <TableRow key={item.employeeId}>
                       <TableCell className="font-medium">{item.employeeName}</TableCell>
                       <TableCell>{days(annualUsageDays(item))} 天</TableCell>
-                      <TableCell>{hours(item.sickLeaveHours)}</TableCell>
-                      <TableCell>{hours(item.personalLeaveHours)}</TableCell>
-                      <TableCell>{hours(Number(item.marriageLeaveHours || 0) + Number(item.bereavementLeaveHours || 0))}</TableCell>
+                      {reportLeaveColumns.map((column) => (
+                        <TableCell key={column.code}>
+                          {hours(reportLeaveHours(item, column.code))}
+                          {column.code === "sick" && item.sickLeaveYtd ? (
+                            <div className={`text-[11px] ${item.sickLeaveYtd.exceedDays > 0 ? "text-amber-600" : "text-muted-foreground"}`}>
+                              额度 {item.sickLeaveYtd.usedDays}/{item.sickLeaveYtd.quotaDays} 天{item.sickLeaveYtd.exceedDays > 0 ? ` · 超额 ${item.sickLeaveYtd.exceedDays} 天` : ""}
+                            </div>
+                          ) : null}
+                        </TableCell>
+                      ))}
                       <TableCell>{hours(item.overtimeToCompHours)}</TableCell>
                       <TableCell>{hours(item.overtimeToPayHours)}</TableCell>
                       <TableCell>{hours(item.compTimeUsedHours)}</TableCell>
@@ -1363,6 +1401,11 @@ export function Attendance() {
               >审批流程</button>
               <button
                 type="button"
+                onClick={() => setSettingsView("leaveTypes")}
+                className={`h-8 rounded-md px-4 font-medium transition ${settingsView === "leaveTypes" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >假别管理</button>
+              <button
+                type="button"
                 onClick={() => setSettingsView("holidays")}
                 className={`h-8 rounded-md px-4 font-medium transition ${settingsView === "holidays" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
               >工作日历</button>
@@ -1426,6 +1469,10 @@ export function Attendance() {
                 ) : null}
               </CardContent>
             </Card>
+          ) : null}
+
+          {settingsView === "leaveTypes" ? (
+            <SettingsLeaveTypes canManage={canManage} />
           ) : null}
 
           {settingsView === "holidays" ? (

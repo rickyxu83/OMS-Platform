@@ -21,11 +21,21 @@ const {
   buildApprovalSteps,
   calculateWorkingLeaveRange,
   requestStatusForStep,
-  requiresLeaveProof,
 } = require('./workflow')
+const {
+  ensureLeaveTypeSchema,
+  leaveTypeMap,
+  listLeaveTypeRows,
+  leaveQuotaUsageYtd,
+  payload: leaveTypePayload,
+  createLeaveType,
+  updateLeaveType,
+  deleteLeaveType,
+  referencedCounts,
+} = require('./leave-types')
 
 const requestTypes = new Set(['leave', 'overtime', 'comp_time'])
-const leaveTypes = new Set(['annual', 'sick', 'personal', 'marriage', 'bereavement'])
+// 假别再枚举已表驱动（attendance_leave_types，spec 004），不再写死 Set
 const overtimeKinds = new Set(['travel', 'work'])
 const overtimeResults = new Set(['comp_time', 'pay'])
 const finalStatuses = new Set(['approved', 'rejected', 'withdrawn', 'voided'])
@@ -433,6 +443,7 @@ async function ensureSchema() {
       await removeNonApplicantApprovalRoleRules()
       await ensureDefaultSupervisorRoleRules()
       await ensureApprovalRoleRuleSteps()
+      await ensureLeaveTypeSchema()
       await syncUserProfiles()
     })()
   }
@@ -749,6 +760,10 @@ function requestPayload(row) {
     supervisorRole: row.supervisor_role,
     requestType: row.request_type,
     leaveType: row.leave_type,
+    // 假别快照（spec 004）：历史单据口径以快照为准
+    leaveTypeLabel: row.leave_type_label || null,
+    leaveReferenceDays: row.leave_reference_days || null,
+    leavePolicyNote: row.leave_policy_note || null,
     overtimeKind: row.overtime_kind,
     overtimeResult: row.overtime_result,
     overtimeDayType: row.overtime_day_type,
@@ -1246,7 +1261,16 @@ async function me(req, res) {
      LIMIT 1`,
     { userId: req.user.id },
   )
-  res.json({ item: rows[0] ? profilePayload(rows[0]) : null })
+  const item = rows[0] ? profilePayload(rows[0]) : null
+  if (item) {
+    // 年度带薪假别额度（spec 004，当前为病假 3 天/超额扣 30%）：供申请抽屉实时提示
+    const leaveTypeRows = await leaveTypeMap()
+    const usage = await leaveQuotaUsageYtd([item.id], new Date().getFullYear(), leaveTypeRows)
+    const quotas = {}
+    for (const [key, value] of usage) quotas[String(key).split(':')[1]] = value
+    item.leaveQuotas = quotas
+  }
+  res.json({ item })
 }
 
 async function updateEmployee(req, res) {
@@ -1302,8 +1326,9 @@ function normalizeRequestInput(body) {
 
   let leaveType = null
   if (requestType === 'leave') {
+    // 假别合法性由 createRequest 查 attendance_leave_types 表校验（表驱动，spec 004）
     leaveType = text(body?.leaveType)
-    if (!leaveTypes.has(leaveType)) throw badRequest('假别不正确')
+    if (!leaveType) throw badRequest('请选择假别')
   }
 
   let hours = positiveNumber(body?.hours, '申请小时数')
@@ -1369,6 +1394,14 @@ async function createRequest(req, res) {
   if (input.requestType === 'comp_time' && !['engineer', 'driver'].includes(req.user.role)) throw forbidden('仅工程师与司机可以申请调休')
   if (input.requestType === 'overtime' && !['engineer', 'driver'].includes(req.user.role)) throw forbidden('仅工程师与司机可以申请加班')
 
+  // 假别表驱动校验（spec 004）：存在且启用才允许发起；停用假别不再可新申请
+  let leaveTypeRow = null
+  if (input.requestType === 'leave') {
+    const map = await leaveTypeMap()
+    leaveTypeRow = map.get(input.leaveType) || null
+    if (!leaveTypeRow || !leaveTypeRow.enabled) throw badRequest('假别不正确或已停用')
+  }
+
   let delegateEmployeeId = null
   let workingDays = null
   if (input.requestType === 'leave' || input.requestType === 'comp_time') {
@@ -1385,8 +1418,8 @@ async function createRequest(req, res) {
           endAt: input.endAt,
           holidays: new Set(legalHolidayCache.keys()),
           makeupWorkdays: new Set(makeupWorkdayCache),
-          // 病假/事假/特休不含六日与法定假；婚丧假含六日（自然日口径）
-          includeNonWorkingDays: ['marriage', 'bereavement'].includes(input.leaveType),
+          // 是否含六日与法定假由假别表 include_non_working_days 决定（spec 004；原写死：婚丧假含六日）
+          includeNonWorkingDays: Boolean(leaveTypeRow?.include_non_working_days),
         })
         input.startAt = range.startAt
         input.endAt = range.endAt
@@ -1396,7 +1429,7 @@ async function createRequest(req, res) {
         throw badRequest(error.message)
       }
     } else {
-      // 调休按小时申请（0.5h 步进）：天数按 8h/天折算，不再走半天槽与六日掐算
+      // 调休按整小时申请（最小 1 小时，产品裁决 2026-09-02）：天数按 8h/天折算，不再走半天槽与六日掐算
       workingDays = Number((Number(input.hours) / 8).toFixed(2))
     }
 
@@ -1440,9 +1473,9 @@ async function createRequest(req, res) {
 
   const result = await query(
     `INSERT INTO attendance_requests
-       (workflow_version, employee_id, delegate_employee_id, request_type, leave_type, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, start_at, end_at, hours, working_days, reason, status, submitted_by)
+       (workflow_version, employee_id, delegate_employee_id, request_type, leave_type, leave_type_label, leave_reference_days, leave_policy_note, overtime_kind, overtime_result, overtime_day_type, overtime_pay_multiplier, supervisor_role, start_at, end_at, hours, working_days, reason, status, submitted_by)
      VALUES
-       (:workflowVersion, :employeeId, :delegateEmployeeId, :requestType, :leaveType, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, :startAt, :endAt, :hours, :workingDays, :reason, 'draft', :submittedBy)`,
+       (:workflowVersion, :employeeId, :delegateEmployeeId, :requestType, :leaveType, :leaveTypeLabel, :leaveReferenceDays, :leavePolicyNote, :overtimeKind, :overtimeResult, :overtimeDayType, :overtimePayMultiplier, :supervisorRole, :startAt, :endAt, :hours, :workingDays, :reason, 'draft', :submittedBy)`,
     {
       workflowVersion: 4,
       employeeId: employee.id,
@@ -1450,6 +1483,10 @@ async function createRequest(req, res) {
       submittedBy: req.user.id,
       supervisorRole: null,
       workingDays,
+      // 假别快照（spec 004）：政策文案日后调整不影响历史单据口径
+      leaveTypeLabel: leaveTypeRow ? leaveTypeRow.label : null,
+      leaveReferenceDays: leaveTypeRow ? leaveTypeRow.reference_days : null,
+      leavePolicyNote: leaveTypeRow ? leaveTypeRow.policy_note : null,
       ...input,
     },
   )
@@ -2143,8 +2180,25 @@ async function listRequests(req, res) {
       proofFileMap.set(Number(row.owner_id), items)
     }
   }
+  // 年度带薪假别额度（spec 004）：按单据年份批量计算，审批人在列表即可看到申请人额度使用情况
+  const leaveTypeRowsForQuota = await leaveTypeMap()
+  const leaveQuotaMap = new Map()
+  const leaveYearGroups = new Map()
+  for (const row of rows) {
+    if (row.request_type !== 'leave' || !row.leave_type) continue
+    const year = new Date(row.start_at).getFullYear()
+    if (!leaveYearGroups.has(year)) leaveYearGroups.set(year, new Set())
+    leaveYearGroups.get(year).add(Number(row.employee_id))
+  }
+  for (const [year, ids] of leaveYearGroups) {
+    const usage = await leaveQuotaUsageYtd([...ids], year, leaveTypeRowsForQuota)
+    for (const [key, value] of usage) leaveQuotaMap.set(`${year}:${key}`, value)
+  }
   res.json({ items: rows.map((row) => ({
     ...requestPayload(row),
+    leaveQuota: row.request_type === 'leave' && row.leave_type
+      ? leaveQuotaMap.get(`${new Date(row.start_at).getFullYear()}:${Number(row.employee_id)}:${row.leave_type}`) || null
+      : null,
     serviceOrder: (() => {
       const sourceId = Number(row.source_id)
       if (row.source_type !== 'service_order' || !Number.isFinite(sourceId) || sourceId <= 0) return null
@@ -2247,6 +2301,7 @@ async function approvalTaskCountsValue(user) {
 // ---- 待办中心（/api/v1/approval-tasks）考勤侧数据源 ----
 // 考勤审批不走 MR 的 approval_tasks 表，这里把 attendance_requests/attendance_request_approvals
 // 映射成与 MR ApprovalTask 同构的结构，由 approval-tasks 控制器合并返回。
+// 任务标题假别 label 兜底：历史单据无快照列时回退（新单据以 leave_type_label 快照为准，spec 004）
 const ATTENDANCE_TASK_LEAVE_LABELS = Object.freeze({
   annual: '特休', sick: '病假', personal: '事假', marriage: '婚假', bereavement: '丧假',
 })
@@ -2258,7 +2313,7 @@ function approvalTaskTitle(row) {
     const days = row.working_days === null || row.working_days === undefined
       ? annualLeaveDaysFromHours(row.hours)
       : Number(row.working_days)
-    return `${name} · ${ATTENDANCE_TASK_LEAVE_LABELS[row.leave_type] || '请假'} ${days} 天`
+    return `${name} · ${row.leave_type_label || ATTENDANCE_TASK_LEAVE_LABELS[row.leave_type] || '请假'} ${days} 天`
   }
   if (row.request_type === 'overtime') {
     return `${name} · ${ATTENDANCE_TASK_OVERTIME_KIND_LABELS[row.overtime_kind] || '加班'} ${Number(row.hours || 0)} 小时`
@@ -2538,16 +2593,30 @@ async function submitRequest(req, res) {
       )
       if (conflict) throw badRequest('所选代理人在申请时段已有请假，请选择其他代理人')
     }
-    if (request.request_type === 'leave' && requiresLeaveProof(request.leave_type)) {
-      const [proofRows] = await connection.execute(
-        `SELECT COUNT(*) AS proof_count
-         FROM files
-         WHERE owner_type = 'attendance_request'
-           AND owner_id = :requestId
-           AND purpose = 'leave_proof'`,
-        { requestId: request.id },
+    if (request.request_type === 'leave') {
+      // 假别表驱动（spec 004）：提交草稿时刷新快照（假别文案可能在草稿期间被管理员调整），并按表字段校验证明要求
+      const leaveTypeRows = await leaveTypeMap()
+      const leaveTypeRow = leaveTypeRows.get(request.leave_type) || null
+      await connection.execute(
+        'UPDATE attendance_requests SET leave_type_label = :label, leave_reference_days = :referenceDays, leave_policy_note = :policyNote WHERE id = :id',
+        {
+          id: request.id,
+          label: leaveTypeRow ? leaveTypeRow.label : request.leave_type_label || null,
+          referenceDays: leaveTypeRow ? leaveTypeRow.reference_days : request.leave_reference_days || null,
+          policyNote: leaveTypeRow ? leaveTypeRow.policy_note : request.leave_policy_note || null,
+        },
       )
-      if (!Number(proofRows[0]?.proof_count || 0)) throw badRequest('病假或婚假必须上传证明')
+      if (leaveTypeRow && leaveTypeRow.requires_proof) {
+        const [proofRows] = await connection.execute(
+          `SELECT COUNT(*) AS proof_count
+           FROM files
+           WHERE owner_type = 'attendance_request'
+             AND owner_id = :requestId
+             AND purpose = 'leave_proof'`,
+          { requestId: request.id },
+        )
+        if (!Number(proofRows[0]?.proof_count || 0)) throw badRequest(`${leaveTypeRow.label}必须上传证明`)
+      }
     }
 
     let steps
@@ -3096,12 +3165,31 @@ async function monthlyReport(req, res) {
      ORDER BY p.employee_name ASC, p.id ASC`,
     { month },
   )
-  res.json({ month, items: rows.map((row) => ({
+  // 假别动态聚合（spec 004）：自定义/新假别无需改 SQL 即可出列，前端按 leaveTypes meta 动态渲染
+  const leaveTypeRows = await leaveTypeMap()
+  const leaveHoursRows = await query(
+    `SELECT employee_id, leave_type, COALESCE(SUM(hours), 0) AS leave_hours
+     FROM attendance_requests
+     WHERE status = 'approved' AND request_type = 'leave' AND leave_type IS NOT NULL
+       AND DATE_FORMAT(start_at, '%Y-%m') = :month
+     GROUP BY employee_id, leave_type`,
+    { month },
+  )
+  const leaveHoursMap = new Map()
+  for (const row of leaveHoursRows) {
+    const bucket = leaveHoursMap.get(Number(row.employee_id)) || {}
+    bucket[row.leave_type] = Number(row.leave_hours || 0)
+    leaveHoursMap.set(Number(row.employee_id), bucket)
+  }
+  const quotaUsage = await leaveQuotaUsageYtd(rows.map((row) => Number(row.employee_id)), Number(month.slice(0, 4)), leaveTypeRows)
+  res.json({ month, leaveTypes: [...leaveTypeRows.values()].map(leaveTypePayload), items: rows.map((row) => ({
     employeeId: row.employee_id,
     employeeName: row.employee_name,
     annualLeaveDays: annualLeaveDaysFromHours(row.annual_leave_hours),
     annualLeaveHours: Number(row.annual_leave_hours || 0),
     sickLeaveHours: Number(row.sick_leave_hours || 0),
+    sickLeaveYtd: quotaUsage.get(`${Number(row.employee_id)}:sick`) || null,
+    leaveTypeHours: leaveHoursMap.get(Number(row.employee_id)) || {},
     personalLeaveHours: Number(row.personal_leave_hours || 0),
     marriageLeaveHours: Number(row.marriage_leave_hours || 0),
     bereavementLeaveHours: Number(row.bereavement_leave_hours || 0),
@@ -3168,6 +3256,40 @@ async function myBalanceLedger(req, res) {
   res.json({ items })
 }
 
+// ===== 假别元数据管理（spec 004） =====
+
+async function listLeaveTypes(req, res) {
+  await ensureSchema()
+  const includeDisabled = text(req.query.all) === '1' && await hasPermission(req.user.role, 'attendance.manage')
+  const refs = await referencedCounts()
+  const items = (await listLeaveTypeRows())
+    .filter((row) => includeDisabled || row.enabled)
+    .map((row) => ({ ...leaveTypePayload(row), referenced: Number(refs.get(row.code) || 0) }))
+  res.json({ items })
+}
+
+async function createLeaveTypeHandler(req, res) {
+  await ensureSchema()
+  const id = await createLeaveType(req.body || {})
+  res.status(201).json({ id })
+}
+
+async function updateLeaveTypeHandler(req, res) {
+  await ensureSchema()
+  const id = Number(req.params.id)
+  if (!id) throw badRequest('假别 ID 不正确')
+  await updateLeaveType(id, req.body || {})
+  res.json({ ok: true })
+}
+
+async function deleteLeaveTypeHandler(req, res) {
+  await ensureSchema()
+  const id = Number(req.params.id)
+  if (!id) throw badRequest('假别 ID 不正确')
+  await deleteLeaveType(id)
+  res.json({ ok: true })
+}
+
 module.exports = {
   ensureSchema,
   myBalanceLedger,
@@ -3206,4 +3328,8 @@ module.exports = {
   adjustBalance,
   batchInitBalance,
   monthlyReport,
+  listLeaveTypes,
+  createLeaveTypeHandler,
+  updateLeaveTypeHandler,
+  deleteLeaveTypeHandler,
 }

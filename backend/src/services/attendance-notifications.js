@@ -1,6 +1,7 @@
 const { query } = require('../config/db')
 const { effectiveSettings } = require('../modules/settings/controller')
 const { WORK_HOURS_PER_DAY } = require('../modules/attendance/workflow')
+const { leaveTypeMap, leaveQuotaUsageYtd } = require('../modules/attendance/leave-types')
 const { sendAttendanceNotificationMail } = require('./mail')
 
 const MAX_ATTEMPTS = 5
@@ -63,6 +64,10 @@ function requestPayload(request, extra = {}) {
     requestId: Number(request.id),
     applicantName: request.employee_name || '',
     leaveType: request.leave_type || '',
+    // 假别快照（spec 004）：邮件 label/政策文案以提交时快照为准
+    leaveTypeLabel: request.leave_type_label || '',
+    leaveReferenceDays: request.leave_reference_days || '',
+    leavePolicyNote: request.leave_policy_note || '',
     startAt: request.start_at,
     endAt: request.end_at,
     workingDays: request.working_days === null || request.working_days === undefined
@@ -150,6 +155,30 @@ async function employeeContactSafely(connection, employeeId, requestId, eventTyp
   return result?.error ? null : result
 }
 
+// 年度带薪假别额度提示（spec 004，当前为病假）：读取的是已提交口径（不含当前在途事务），邮件仅作提示
+async function leaveQuotaExtra(request) {
+  if (request.request_type !== 'leave' || !request.leave_type) return {}
+  try {
+    const map = await leaveTypeMap()
+    const type = map.get(request.leave_type)
+    if (!type || type.paid_quota_days === null || type.paid_quota_days === undefined) return {}
+    const year = new Date(request.start_at).getFullYear()
+    const usage = await leaveQuotaUsageYtd([request.employee_id], year, map)
+    const quota = usage.get(`${request.employee_id}:${request.leave_type}`)
+    if (!quota) return {}
+    const thisDays = Math.round((Number(request.hours || 0) / 8) * 100) / 100
+    const exceedDays = Math.max(0, Math.round((quota.usedDays + thisDays - quota.quotaDays) * 100) / 100)
+    return {
+      quotaDays: quota.quotaDays,
+      quotaUsedDays: quota.usedDays,
+      quotaExceedDays: exceedDays,
+      quotaDeductionPercent: quota.deductionPercent,
+    }
+  } catch {
+    return {}
+  }
+}
+
 async function queueApprovalNotification(connection, request, step, stepCount, delegate = null) {
   if (request.request_type !== 'leave') return
   const normalized = approvalStep(step)
@@ -179,6 +208,7 @@ async function queueApprovalNotification(connection, request, step, stepCount, d
           stepCount: totalSteps,
           approverRole: normalized.assigneeRole || '',
           missingRecipientNames: recipients.filter((recipient) => !recipient.email).map((recipient) => recipient.name),
+          ...(await leaveQuotaExtra(request)),
         }),
       })
     },
@@ -271,6 +301,7 @@ async function queueCompletedLeaveNotification(connection, request) {
         payload: requestPayload(request, {
           annualLeaveUsedDays: usedDays,
           annualLeaveBalanceDays: balanceDays,
+          ...(await leaveQuotaExtra(request)),
         }),
       })
     },

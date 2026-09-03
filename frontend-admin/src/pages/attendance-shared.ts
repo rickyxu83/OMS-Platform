@@ -1,4 +1,6 @@
 import type { ServiceOrderDetailItem } from "@/lib/service-order-detail";
+import { useEffect, useState } from "react";
+import { api } from "@/services/api";
 
 /**
  * 考勤域共享模块：Attendance 与 AttendanceApplyDrawer 共用的类型、标签映射与日期/时长工具函数。
@@ -28,6 +30,8 @@ export interface EmployeeProfile {
   annualLeaveBalanceHours?: number;
   compTimeBalanceHours?: number;
   unavailable?: boolean;
+  /** 年度带薪假别额度（spec 004）：key 为假别 code，当前为病假 */
+  leaveQuotas?: Record<string, LeaveQuotaInfo>;
   unavailableReason?: string | null;
 }
 
@@ -75,6 +79,66 @@ export const LEAVE_TYPE_LABELS: Record<string, string> = {
   marriage: "婚假",
   bereavement: "丧假",
 };
+
+// ===== 假别元数据（spec 004）：表驱动，LEAVE_TYPE_LABELS 仅作历史数据究底 =====
+
+export interface LeaveTypeItem {
+  id: number;
+  code: string;
+  label: string;
+  enabled: boolean;
+  sortOrder: number;
+  requiresProof: boolean;
+  includeNonWorkingDays: boolean;
+  countsBalance: boolean;
+  referenceDays: string;
+  policyNote: string;
+  paidQuotaDays: number | null;
+  exceedDeductionPercent: number | null;
+  systemReserved: boolean;
+  referenced?: number;
+}
+
+export interface LeaveQuotaInfo {
+  quotaDays: number;
+  usedDays: number;
+  exceedDays: number;
+  deductionPercent: number | null;
+}
+
+let leaveTypesCache: { at: number; items: LeaveTypeItem[] } | null = null;
+
+export function invalidateLeaveTypesCache() {
+  leaveTypesCache = null;
+}
+
+/** 读取启用假别列表（申请下拉/label 用），30s 进程内缓存；管理端编辑后调 invalidateLeaveTypesCache */
+export function useLeaveTypes() {
+  const [items, setItems] = useState<LeaveTypeItem[]>(leaveTypesCache?.items || []);
+  useEffect(() => {
+    if (leaveTypesCache && Date.now() - leaveTypesCache.at < 30_000) {
+      setItems(leaveTypesCache.items);
+      return;
+    }
+    let alive = true;
+    api.get("/attendance/leave-types")
+      .then((data) => {
+        const list = Array.isArray(data?.items) ? data.items : [];
+        leaveTypesCache = { at: Date.now(), items: list };
+        if (alive) setItems(list);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  return items;
+}
+
+/** label 取值链：单据快照 → 表数据 → 写死究底（历史） → code 原文 */
+export function leaveTypeLabelOf(code?: string | null, items?: LeaveTypeItem[], snapshotLabel?: string | null) {
+  if (snapshotLabel) return snapshotLabel;
+  const key = String(code || "");
+  return items?.find((item) => item.code === key)?.label || LEAVE_TYPE_LABELS[key] || key || "请假";
+}
 
 export const OVERTIME_DAY_TYPE_LABELS: Record<string, string> = {
   workday: "工作日",
@@ -378,6 +442,11 @@ export interface AttendanceRequest {
   delegateEmployeeName?: string | null;
   requestType: RequestType;
   leaveType?: string | null;
+  /** 假别快照（spec 004）：提交时名称/参考天数/政策说明；年度带薪额度使用情况 */
+  leaveTypeLabel?: string | null;
+  leaveReferenceDays?: string | null;
+  leavePolicyNote?: string | null;
+  leaveQuota?: LeaveQuotaInfo | null;
   overtimeKind?: string | null;
   overtimeResult?: string | null;
   overtimeDayType?: string | null;

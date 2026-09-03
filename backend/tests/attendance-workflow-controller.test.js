@@ -51,7 +51,21 @@ function requestColumnRows() {
     'source_snapshot',
     'overtime_day_type',
     'overtime_pay_multiplier',
+    'leave_type_label',
+    'leave_reference_days',
+    'leave_policy_note',
   ].map((columnName) => ({ columnName }))
+}
+
+// 假别元数据（spec 004）：与 leave-types.js seed 对齐，behavior 与旧写死版本一致
+function leaveTypeRows() {
+  return [
+    { id: 1, code: 'annual', label: '特休', enabled: 1, sort_order: 10, requires_proof: 0, include_non_working_days: 0, counts_balance: 1, reference_days: null, policy_note: null, paid_quota_days: null, exceed_deduction_percent: null, system_reserved: 1 },
+    { id: 2, code: 'sick', label: '病假', enabled: 1, sort_order: 20, requires_proof: 1, include_non_working_days: 0, counts_balance: 0, reference_days: null, policy_note: null, paid_quota_days: 3, exceed_deduction_percent: 30, system_reserved: 0 },
+    { id: 3, code: 'personal', label: '事假', enabled: 1, sort_order: 30, requires_proof: 0, include_non_working_days: 0, counts_balance: 0, reference_days: null, policy_note: null, paid_quota_days: null, exceed_deduction_percent: null, system_reserved: 0 },
+    { id: 4, code: 'marriage', label: '婚假', enabled: 1, sort_order: 40, requires_proof: 1, include_non_working_days: 1, counts_balance: 0, reference_days: null, policy_note: null, paid_quota_days: null, exceed_deduction_percent: null, system_reserved: 0 },
+    { id: 5, code: 'bereavement', label: '丧假', enabled: 1, sort_order: 50, requires_proof: 0, include_non_working_days: 1, counts_balance: 0, reference_days: null, policy_note: null, paid_quota_days: null, exceed_deduction_percent: null, system_reserved: 0 },
+  ]
 }
 
 async function loadController({
@@ -73,6 +87,8 @@ async function loadController({
     if (/information_schema\.STATISTICS/.test(sql)) return [{ indexName: 'idx_attendance_requests_source' }]
     if (/FROM attendance_schema_migrations/.test(sql)) return [{ migration_key: 'annual_leave_ledger_days_v1' }]
     if (/SELECT holiday_date, holiday_name/.test(sql) && /is_active = 1/.test(sql)) return []
+    if (/SELECT COUNT\(\*\) AS n FROM attendance_leave_types/.test(sql)) return [{ n: leaveTypeRows().length }]
+    if (/FROM attendance_leave_types/.test(sql)) return leaveTypeRows()
     if (/SELECT id, start_at, overtime_result/.test(sql)) return []
     if (/SELECT p\.\*/.test(sql) && /p\.user_id = :userId/.test(sql)) {
       return [{ id: 5, user_id: 42, employee_name: '申请人', attendance_enabled: 1 }]
