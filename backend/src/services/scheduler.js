@@ -1140,11 +1140,13 @@ function startScheduler() {
     }
   })
 
-  // 年末/季末结算（spec 005 v3）：每日 23:50 检查——12-31 特休年末折算（×0.5/0.6 向下取整 0.5 天）；季末最后一天调休上一季度入账到期清零（幂等）
+  // 年末/季末结算（spec 005 v3）：每日 23:50 检查——12-31 特休年末折算（×0.5/0.6 向下取整 0.5 天）；季末最后一天调休上一季度入账到期清零（幂等）；
+  // 同日顺带跑到期提醒（调休季初/季末前 7 天、特休 12-01/12-25，事件键幂等）
   scheduleCron('50 23 * * *', async () => {
     try {
-      const { annualLeaveSettlementTick } = require('../modules/attendance/controller')
+      const { annualLeaveSettlementTick, attendanceExpiryReminderTick } = require('../modules/attendance/controller')
       await annualLeaveSettlementTick()
+      await attendanceExpiryReminderTick()
     } catch (error) {
       console.error('[scheduler] Annual leave settlement failed', error?.message)
     }

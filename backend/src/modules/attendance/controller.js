@@ -11,6 +11,7 @@ const {
 const { ensureFilePurposeColumn } = require('../files/controller')
 const {
   ensureAttendanceEmailNotificationsTable,
+  enqueueAttendanceEmailNotification,
   queueSubmittedLeaveNotifications,
   queueNextApprovalNotification,
   queueRejectedLeaveNotification,
@@ -3491,21 +3492,18 @@ async function teamCalendar(req, res) {
 // 调休季末清零预览：当季入账在下一季末到期；FIFO 口径剩余 = max(0, 当季入账 − max(0, 当季起使用 − 季初结余))
 // 口径 2026-09-04 佬裁决：入账/消耗按正负号判定（不再只看 earn/use），
 // 行政手动设定（adjust）同样按创建日所在季度归属、次季末清零
-async function compExpiryPreviewMap(employeeIds) {
+async function compExpiryMapForQuarter(employeeIds, year, quarter) {
   const result = new Map()
   if (!employeeIds.length) return result
-  const now = new Date()
-  const year = now.getFullYear()
-  const quarter = quarterOfMonth(now.getMonth() + 1)
   const range = quarterRange(year, quarter)
-  const params = { start: range.start }
+  const params = { start: range.start, end: range.end }
   const idList = employeeIds.map((id, index) => {
     params[`emp${index}`] = Number(id)
     return `:emp${index}`
   })
   const rows = await query(
     `SELECT employee_id,
-            COALESCE(SUM(CASE WHEN delta_hours > 0 AND created_at >= :start THEN delta_hours ELSE 0 END), 0) AS earned_quarter,
+            COALESCE(SUM(CASE WHEN delta_hours > 0 AND created_at >= :start AND created_at <= :end THEN delta_hours ELSE 0 END), 0) AS earned_quarter,
             COALESCE(SUM(CASE WHEN delta_hours < 0 AND created_at >= :start THEN delta_hours ELSE 0 END), 0) AS used_since_quarter,
             COALESCE(SUM(CASE WHEN created_at < :start THEN delta_hours ELSE 0 END), 0) AS pool_before
      FROM attendance_balance_ledger
@@ -3525,6 +3523,11 @@ async function compExpiryPreviewMap(employeeIds) {
     })
   }
   return result
+}
+
+async function compExpiryPreviewMap(employeeIds) {
+  const now = new Date()
+  return compExpiryMapForQuarter(employeeIds, now.getFullYear(), quarterOfMonth(now.getMonth() + 1))
 }
 
 // 特休年末折算（12-31 晚自动执行）：余额 × 0.5/0.6 向下取整 0.5 天，差额台账调整；幂等
@@ -3634,6 +3637,87 @@ async function annualLeaveSettlementTick() {
   }
 }
 
+// 即将过期提醒（每日 23:50 随结算 tick 执行，事件键幂等去重不会重发）：
+// 调休——上一季度入账将在本季末清零，本季第 1 天与季末前 7 天各提醒一次；
+// 特休——12-01 与 12-25 提醒年末折算（余额 × 折算率向下取整 0.5 天结转，其余清零）
+async function attendanceExpiryReminderTick() {
+  await ensureSchema()
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const day = now.getDate()
+  const today = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  const employees = await query(
+    `SELECT p.id, p.employee_name, p.annual_leave_rule, u.role, u.email
+     FROM attendance_employee_profiles p
+     LEFT JOIN users u ON u.id = p.user_id
+     WHERE p.attendance_enabled = 1`,
+  )
+  const withEmail = employees.filter((row) => String(row.email || '').trim())
+
+  // 调休：上一季度入账 → 本季末清零
+  const quarter = quarterOfMonth(month)
+  const range = quarterRange(year, quarter)
+  const endDay = range.end.slice(0, 10)
+  const d7Date = new Date(`${endDay}T00:00:00`)
+  d7Date.setDate(d7Date.getDate() - 7)
+  const d7 = `${d7Date.getFullYear()}-${String(d7Date.getMonth() + 1).padStart(2, '0')}-${String(d7Date.getDate()).padStart(2, '0')}`
+  const compStages = []
+  if (range.start.slice(0, 10) === today) compStages.push('q_start')
+  if (today === d7) compStages.push('d7')
+  if (compStages.length) {
+    const compEmployees = withEmail.filter((row) => ['engineer', 'driver'].includes(String(row.role || '')))
+    const prev = quarter === 1 ? { year: year - 1, quarter: 4 } : { year, quarter: quarter - 1 }
+    const prevMap = await compExpiryMapForQuarter(compEmployees.map((row) => Number(row.id)), prev.year, prev.quarter)
+    for (const row of compEmployees) {
+      const preview = prevMap.get(Number(row.id))
+      if (!preview || !(preview.remainingHours > 0)) continue
+      for (const stage of compStages) {
+        await enqueueAttendanceEmailNotification(null, {
+          requestId: 0,
+          eventKey: `comp-expiry:${prev.year}Q${prev.quarter}:emp${row.id}:${stage}`,
+          eventType: 'comp_expiry_reminder',
+          recipients: [{ email: row.email }],
+          payload: {
+            employeeName: row.employee_name,
+            remainingHours: preview.remainingHours,
+            expiresAt: preview.expiresAt,
+          },
+        })
+      }
+    }
+  }
+
+  // 特休：年末折算提醒
+  if (month === 12 && (day === 1 || day === 25)) {
+    const stage = day === 1 ? 'dec1' : 'dec25'
+    const balanceRows = await query(
+      `SELECT employee_id, COALESCE(SUM(delta_hours), 0) AS balance
+       FROM attendance_balance_ledger
+       WHERE balance_type = 'annual_leave'
+       GROUP BY employee_id`,
+    )
+    const balanceMap = new Map(balanceRows.map((row) => [Number(row.employee_id), Number(row.balance || 0)]))
+    for (const row of withEmail) {
+      const balance = roundBalance(balanceMap.get(Number(row.id)) || 0)
+      if (balance <= 0) continue
+      const preview = carryoverPreviewOf(balance, row.annual_leave_rule)
+      await enqueueAttendanceEmailNotification(null, {
+        requestId: 0,
+        eventKey: `annual-carryover:${year}:emp${row.id}:${stage}`,
+        eventType: 'annual_carryover_reminder',
+        recipients: [{ email: row.email }],
+        payload: {
+          employeeName: row.employee_name,
+          balanceDays: preview.balanceDays,
+          carryoverRate: preview.rate,
+          resultDays: preview.resultDays,
+        },
+      })
+    }
+  }
+}
+
 // ===== 假别元数据管理（spec 004） =====
 
 async function listLeaveTypes(req, res) {
@@ -3734,4 +3818,5 @@ module.exports = {
   runAnnualLeaveCarryover,
   runCompTimeExpiry,
   annualLeaveSettlementTick,
+  attendanceExpiryReminderTick,
 }
