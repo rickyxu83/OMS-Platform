@@ -4401,7 +4401,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                             >
                               横屏全屏签名
                             </Button>
-                            <SignaturePad value={form.customerSignature} onChange={(value) => patchForm({ customerSignature: value, customerSignatureFileId: "" })} />
+                            <SignaturePad value={form.customerSignature} onChange={(value) => patchForm({ customerSignature: value, customerSignatureFileId: "" })} rotated={false} />
                           </div>
                         </Field>
                       </div>
