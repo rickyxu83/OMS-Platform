@@ -1311,12 +1311,15 @@ export function Attendance() {
                         onCheckedChange={(checked) => setEmployeeSelected(index, checked ? "add" : "remove")}
                       />
                       <span title={employee.employeeName || "-"} className="truncate">{employee.employeeName || "-"}</span>
+                      <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[11px] font-normal">{roleLabel(employee.role)}</Badge>
                     </span>
                   )}
-                  subtitle={`${employee.username || "-"} · ${roleLabel(employee.role)}`}
+                  subtitle={employee.username || "-"}
                   fields={[
                     { label: "级别 / 入职", value: `${ANNUAL_LEAVE_SCHEME_LABELS[employee.annualLeaveScheme || ""] || "陆籍"} · ${formatDate(employee.hireDate)}` },
-                    { label: "特休余额", value: `${days(annualBalanceDays(employee))} 天` },
+                    { label: "特休余额", value: employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined
+                      ? `${days(annualBalanceDays(employee))} 天`
+                      : `${days(annualBalanceDays(employee))} 天（满 ${employee.annualLeaveTierYears} 年档 · 建议 ${employee.annualLeaveSuggestedDays ?? "-"} 天/年）` },
                     ...(employee.annualLeaveCarryoverPreview && employee.annualLeaveCarryoverPreview.balanceDays > 0
                       ? [{ label: "年末结转", value: `≈ ${employee.annualLeaveCarryoverPreview.resultDays} 天（${employee.annualLeaveCarryoverPreview.balanceDays} × ${employee.annualLeaveCarryoverPreview.rate}）` }]
                       : []),
@@ -1367,8 +1370,11 @@ export function Attendance() {
                         />
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium">{employee.employeeName || "-"}</div>
-                        <div className="text-xs text-muted-foreground">{employee.username || "-"} · {roleLabel(employee.role)}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium">{employee.employeeName || "-"}</span>
+                          <Badge variant="outline" className="px-1.5 py-0 text-[11px] font-normal">{roleLabel(employee.role)}</Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground">{employee.username || "-"}</div>
                       </TableCell>
                       <TableCell>
                         <div>{ANNUAL_LEAVE_SCHEME_LABELS[employee.annualLeaveScheme || ""] || "陆籍"}</div>
@@ -1376,6 +1382,11 @@ export function Attendance() {
                       </TableCell>
                       <TableCell>
                         <span className="text-base font-semibold">{days(annualBalanceDays(employee))}</span><span className="ml-1 text-xs text-muted-foreground">天</span>
+                        {employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined ? null : (
+                          <div className={`mt-0.5 text-xs ${Number(employee.annualLeaveSuggestedDays || 0) !== Math.round(annualBalanceDays(employee) * 100) / 100 ? "text-amber-600" : "text-muted-foreground"}`}>
+                            满 {employee.annualLeaveTierYears} 年档 · 建议 {employee.annualLeaveSuggestedDays ?? "-"} 天/年
+                          </div>
+                        )}
                         {employee.annualLeaveCarryoverPreview && employee.annualLeaveCarryoverPreview.balanceDays > 0 ? (
                           <div className="mt-0.5 text-xs text-muted-foreground">
                             年末结转 ≈ {employee.annualLeaveCarryoverPreview.resultDays} 天（{employee.annualLeaveCarryoverPreview.balanceDays} × {employee.annualLeaveCarryoverPreview.rate}）
