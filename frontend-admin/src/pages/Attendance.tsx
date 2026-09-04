@@ -31,7 +31,7 @@ import { HolidayPanel } from "@/components/attendance/HolidayPanel";
 import { SettingsHolidays, type HolidayDraft, type HolidaySyncPreview } from "@/components/attendance/SettingsHolidays";
 import { SettingsLeaveTypes } from "@/components/attendance/SettingsLeaveTypes";
 import { ReportExportDialog } from "@/components/attendance/ReportExportDialog";
-import { AdjustBalanceDialog, BatchBalanceDialog, EmployeeEditDialog } from "@/components/attendance/EmployeeDialogs";
+import { BatchBalanceDialog, EmployeeManageDialog } from "@/components/attendance/EmployeeDialogs";
 
 // 法定节假日说明文案已迁 SettingsHolidays；审批链规则说明保留在本页（设置-审批流程视图使用）
 const APPROVAL_RULE_HELP = "审批链按固定模型自动推导，无需逐级配置：普通员工 = 直属主管 → 行政主管；工程/销售主管 = 行政主管 → 运营负责人；行政主管本人 = 运营负责人；请假满 3 天自动追加运营负责人终审。直属主管映射为「行政主管」时等同无直属主管步骤（自动去重）。管理员与行政主管拥有全部假勤权限，可审批任意环节。";
@@ -256,8 +256,7 @@ export function Attendance() {
   // 员工余额表多选：点击行切换、Shift 连选、按住拖动框选（交互与 MR 采购卡一致）
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
   // 员工相关弹窗：draft 与保存态内化在 components/attendance/EmployeeDialogs
-  const [editEmployee, setEditEmployee] = useState<EmployeeProfile | null>(null);
-  const [adjustEmployee, setAdjustEmployee] = useState<EmployeeProfile | null>(null);
+  const [manageEmployee, setManageEmployee] = useState<EmployeeProfile | null>(null);
   const [batchBalanceOpen, setBatchBalanceOpen] = useState(false);
   const selectedEmployeesList = useMemo(() => employees.filter((employee) => selectedEmployeeIds.has(String(employee.id))), [employees, selectedEmployeeIds]);
   // 值班津贴待终审批次（审批 tab 与值班 tab 双入口，状态实时同步）
@@ -1312,28 +1311,27 @@ export function Attendance() {
                         onCheckedChange={(checked) => setEmployeeSelected(index, checked ? "add" : "remove")}
                       />
                       <span title={employee.employeeName || "-"} className="truncate">{employee.employeeName || "-"}</span>
+                      <span className="shrink-0 text-xs font-normal text-muted-foreground">{roleLabel(employee.role)}</span>
                     </span>
                   )}
-                  status={<Badge variant={employee.attendanceEnabled === false ? "outline" : "success"}>{employee.attendanceEnabled === false ? "停用" : "启用"}</Badge>}
-                  subtitle={`${employee.username || "-"} · ${roleLabel(employee.role)}`}
+                  subtitle={employee.username || "-"}
                   fields={[
                     { label: "级别 / 入职", value: `${ANNUAL_LEAVE_SCHEME_LABELS[employee.annualLeaveScheme || ""] || "陆籍"} · ${formatDate(employee.hireDate)}` },
-                    { label: "特休档位", value: employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined ? "-" : `满 ${employee.annualLeaveTierYears} 年档 · ${employee.annualLeaveSuggestedDays ?? "-"} 天/年` },
-                    { label: "特休余额", value: `${days(annualBalanceDays(employee))} 天` },
+                    { label: "特休余额", value: employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined
+                      ? `${days(annualBalanceDays(employee))} 天`
+                      : `${days(annualBalanceDays(employee))} 天（满 ${employee.annualLeaveTierYears} 年档 · ${employee.annualLeaveSuggestedDays ?? "-"} 天/年）` },
+                    ...(employee.annualLeaveCarryoverPreview && employee.annualLeaveCarryoverPreview.balanceDays > 0
+                      ? [{ label: "年末结转", value: `≈ ${employee.annualLeaveCarryoverPreview.resultDays} 天（${employee.annualLeaveCarryoverPreview.balanceDays} × ${employee.annualLeaveCarryoverPreview.rate}）` }]
+                      : []),
                     { label: "调休余额", value: ["engineer", "driver"].includes(employee.role || "") ? `${hours(employee.compTimeBalanceHours)} 小时` : "-" },
                     ...(["engineer", "driver"].includes(employee.role || "") && employee.compTimeExpiryPreview && employee.compTimeExpiryPreview.remainingHours > 0
-                      ? [{ label: "季末结转", value: `${employee.compTimeExpiryPreview.quarterLabel} 剩余 ${hours(employee.compTimeExpiryPreview.remainingHours)} 小时 · 可用至 ${employee.compTimeExpiryPreview.expiresAt.slice(5)}` }]
+                      ? [{ label: "次季到期", value: `${hours(employee.compTimeExpiryPreview.remainingHours)} 小时 · ${employee.compTimeExpiryPreview.expiresAt.slice(5)} 清零` }]
                       : []),
                   ]}
                   actions={(
-                    <>
-                      <Button size="sm" variant="outline" onClick={() => setEditEmployee(employee)}>
-                        <Pencil className="mr-1 h-4 w-4" /> 编辑
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setAdjustEmployee(employee)}>
-                        <Wallet className="mr-1 h-4 w-4" /> 调余额
-                      </Button>
-                    </>
+                    <Button size="sm" variant="outline" onClick={() => setManageEmployee(employee)}>
+                      <Settings2 className="mr-1 h-4 w-4" /> 管理
+                    </Button>
                   )}
                 />
               )}
@@ -1350,9 +1348,7 @@ export function Attendance() {
                       />
                     </TableHead>
                     <TableHead>员工</TableHead>
-                    <TableHead>状态</TableHead>
                     <TableHead>级别 / 入职</TableHead>
-                    <TableHead><span className="inline-flex items-center gap-1">特休档位 <HelpTooltip label="按入职日期计算：满年对齐自然年底（入职当年与次年 0 档，第三年起满 1 年档）；建议额度来自考勤设置里的特休档位表，仅供参考，入账由行政确认" /></span></TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">特休余额 <HelpTooltip label={ANNUAL_LEAVE_HELP} /></span></TableHead>
                     <TableHead>调休余额</TableHead>
                     <TableHead className="text-right">操作</TableHead>
@@ -1374,43 +1370,36 @@ export function Attendance() {
                         />
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium">{employee.employeeName || "-"}</div>
-                        <div className="text-xs text-muted-foreground">{employee.username || "-"} · {roleLabel(employee.role)}</div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={employee.attendanceEnabled === false ? "outline" : "success"}>
-                          {employee.attendanceEnabled === false ? "停用" : "启用"}
-                        </Badge>
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="font-medium">{employee.employeeName || "-"}</span>
+                          <span className="text-xs text-muted-foreground">{roleLabel(employee.role)}</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">{employee.username || "-"}</div>
                       </TableCell>
                       <TableCell>
                         <div>{ANNUAL_LEAVE_SCHEME_LABELS[employee.annualLeaveScheme || ""] || "陆籍"}</div>
                         <div className="text-xs text-muted-foreground">{formatDate(employee.hireDate)} 入职</div>
                       </TableCell>
                       <TableCell>
-                        {employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined ? (
-                          <span className="text-muted-foreground">-</span>
-                        ) : (
-                          <>
-                            <div className="text-sm font-medium">{ANNUAL_LEAVE_SCHEME_LABELS[employee.annualLeaveScheme || ""] || "陆籍"} · 满 {employee.annualLeaveTierYears} 年档</div>
-                            <div className={`text-xs ${Number(employee.annualLeaveSuggestedDays || 0) !== Math.round(annualBalanceDays(employee) * 100) / 100 ? "text-amber-600" : "text-muted-foreground"}`}>
-                              {employee.annualLeaveSuggestedDays ?? "-"} 天/年
-                            </div>
-                            {employee.annualLeaveCarryoverPreview && employee.annualLeaveCarryoverPreview.balanceDays > 0 ? (
-                              <div className="text-xs text-muted-foreground">
-                                年末结转 ≈ {employee.annualLeaveCarryoverPreview.resultDays} 天（{employee.annualLeaveCarryoverPreview.balanceDays} × {employee.annualLeaveCarryoverPreview.rate}）
-                              </div>
-                            ) : null}
-                          </>
+                        <span className="text-base font-semibold">{days(annualBalanceDays(employee))}</span><span className="ml-1 text-xs text-muted-foreground">天</span>
+                        {employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined ? null : (
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            满 {employee.annualLeaveTierYears} 年档 · {employee.annualLeaveSuggestedDays ?? "-"} 天/年
+                          </div>
                         )}
+                        {employee.annualLeaveCarryoverPreview && employee.annualLeaveCarryoverPreview.balanceDays > 0 ? (
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            年末结转 ≈ {employee.annualLeaveCarryoverPreview.resultDays} 天（{employee.annualLeaveCarryoverPreview.balanceDays} × {employee.annualLeaveCarryoverPreview.rate}）
+                          </div>
+                        ) : null}
                       </TableCell>
-                      <TableCell><span className="text-base font-semibold">{days(annualBalanceDays(employee))}</span><span className="ml-1 text-xs text-muted-foreground">天</span></TableCell>
                       <TableCell>
                         {["engineer", "driver"].includes(employee.role || "") ? (
                           <>
                             <span className="text-base font-semibold">{hours(employee.compTimeBalanceHours)}</span><span className="ml-1 text-xs text-muted-foreground">小时</span>
                             {employee.compTimeExpiryPreview && employee.compTimeExpiryPreview.remainingHours > 0 ? (
-                              <div className="mt-0.5 text-xs text-amber-600">
-                                {employee.compTimeExpiryPreview.quarterLabel} 剩余 {hours(employee.compTimeExpiryPreview.remainingHours)} 小时 · 可用至 {employee.compTimeExpiryPreview.expiresAt.slice(5)}（逾期清零）
+                              <div className="mt-0.5 text-xs text-muted-foreground">
+                                {hours(employee.compTimeExpiryPreview.remainingHours)} 小时 · {employee.compTimeExpiryPreview.expiresAt.slice(5)} 清零
                               </div>
                             ) : null}
                           </>
@@ -1420,11 +1409,8 @@ export function Attendance() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-wrap justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => setEditEmployee(employee)}>
-                            <Pencil className="mr-1 h-4 w-4" /> 编辑
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => setAdjustEmployee(employee)}>
-                            <Wallet className="mr-1 h-4 w-4" /> 调余额
+                          <Button size="sm" variant="outline" onClick={() => setManageEmployee(employee)}>
+                            <Settings2 className="mr-1 h-4 w-4" /> 管理
                           </Button>
                         </div>
                       </TableCell>
@@ -1767,9 +1753,7 @@ export function Attendance() {
         </DialogContent>
       </Dialog>
 
-      <EmployeeEditDialog employee={editEmployee} onClose={() => setEditEmployee(null)} onSaved={load} />
-
-      <AdjustBalanceDialog employee={adjustEmployee} onClose={() => setAdjustEmployee(null)} onSaved={load} />
+      <EmployeeManageDialog employee={manageEmployee} onClose={() => setManageEmployee(null)} onSaved={load} />
 
       <ReportExportDialog open={reportExportOpen} onOpenChange={setReportExportOpen} initialMonth={reportMonth} employees={employees} />
     </div>

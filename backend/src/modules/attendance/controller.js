@@ -11,6 +11,7 @@ const {
 const { ensureFilePurposeColumn } = require('../files/controller')
 const {
   ensureAttendanceEmailNotificationsTable,
+  enqueueAttendanceEmailNotification,
   queueSubmittedLeaveNotifications,
   queueNextApprovalNotification,
   queueRejectedLeaveNotification,
@@ -3107,16 +3108,71 @@ async function voidRequest(req, res) {
   res.json({ ok: true })
 }
 
+// 调休仅工程师/司机有（产品口径 2026-09-04）：其他角色拒绝调休余额调整
+async function assertCompTimeRole(connection, employeeId, balanceType) {
+  if (balanceType !== 'comp_time') return
+  const [rows] = await connection.execute(
+    `SELECT u.role
+     FROM attendance_employee_profiles p
+     LEFT JOIN users u ON u.id = p.user_id
+     WHERE p.id = :employeeId`,
+    { employeeId },
+  )
+  const role = String(rows[0]?.role || '')
+  if (!['engineer', 'driver'].includes(role)) throw badRequest('该员工无调休余额（仅工程师/司机有调休）')
+}
+
 async function adjustBalance(req, res) {
   await ensureSchema()
   if (!await hasPermission(req.user.role, 'attendance.manage')) throw forbidden()
   const employeeId = Number(req.params.id)
   const balanceType = text(req.body?.balanceType)
   if (!['annual_leave', 'comp_time'].includes(balanceType)) throw badRequest('余额类型不正确')
-  const hasDeltaDays = Object.prototype.hasOwnProperty.call(req.body || {}, 'deltaDays')
+  const body = req.body || {}
+  const note = nullableText(body.note)
+  const unit = balanceType === 'annual_leave' ? '天' : '小时'
+  const targetKey = balanceType === 'annual_leave' ? 'targetDays' : 'targetHours'
+
+  // 目标值模式（2026-09-04 佬裁决：直接“设定为”目标余额，不再让行政做加减心算）：
+  // 服务端在余额锁内读台账算差额入账，杜绝并发下按旧余额算错差额
+  if (Object.prototype.hasOwnProperty.call(body, targetKey)) {
+    const target = Number(body[targetKey])
+    if (!Number.isFinite(target) || target < 0) throw badRequest('目标余额不正确（不能为负数）')
+    assertHalfUnit(target, balanceType === 'annual_leave' ? '特休余额' : '调休余额')
+    const result = { ok: true, unchanged: false, delta: 0 }
+    await transaction(async (connection) => {
+      await lockEmployeeBalance(connection, employeeId)
+      await assertCompTimeRole(connection, employeeId, balanceType)
+      const [rows] = await connection.execute(
+        `SELECT COALESCE(SUM(delta_hours), 0) AS balance
+         FROM attendance_balance_ledger
+         WHERE employee_id = :employeeId AND balance_type = :balanceType`,
+        { employeeId, balanceType },
+      )
+      const current = Number(rows[0]?.balance || 0)
+      const delta = roundBalance(target - current)
+      if (delta === 0) {
+        result.unchanged = true
+        return
+      }
+      result.delta = delta
+      await connection.execute(
+        `INSERT INTO attendance_balance_ledger
+           (employee_id, request_id, balance_type, delta_hours, action, note, created_by)
+         VALUES
+           (:employeeId, NULL, :balanceType, :delta, 'adjust', :note, :createdBy)`,
+        { employeeId, balanceType, delta, note: `${note || '余额设定'}（设定为 ${target} ${unit}，原 ${roundBalance(current)} ${unit}）`, createdBy: req.user.id },
+      )
+    })
+    res.json(result)
+    return
+  }
+
+  // 差额模式（历史兼容，新前端已不再使用）
+  const hasDeltaDays = Object.prototype.hasOwnProperty.call(body, 'deltaDays')
   const deltaAmount = balanceType === 'annual_leave'
-    ? Number(hasDeltaDays ? req.body?.deltaDays : Number(req.body?.deltaHours) / WORK_HOURS_PER_DAY)
-    : Number(req.body?.deltaHours)
+    ? Number(hasDeltaDays ? body.deltaDays : Number(body.deltaHours) / WORK_HOURS_PER_DAY)
+    : Number(body.deltaHours)
   if (!Number.isFinite(deltaAmount) || deltaAmount === 0) {
     throw badRequest(balanceType === 'annual_leave' ? '调整天数不能为 0' : '调整小时数不能为 0')
   }
@@ -3125,9 +3181,9 @@ async function adjustBalance(req, res) {
   } else {
     assertHalfUnit(deltaAmount, '调休调整')
   }
-  const note = nullableText(req.body?.note)
   await transaction(async (connection) => {
     await lockEmployeeBalance(connection, employeeId)
+    await assertCompTimeRole(connection, employeeId, balanceType)
     await connection.execute(
       `INSERT INTO attendance_balance_ledger
          (employee_id, request_id, balance_type, delta_hours, action, note, created_by)
@@ -3434,23 +3490,21 @@ async function teamCalendar(req, res) {
 // ===== 年末/季末结算（spec 005 v3，佬 2026-09-03） =====
 
 // 调休季末清零预览：当季入账在下一季末到期；FIFO 口径剩余 = max(0, 当季入账 − max(0, 当季起使用 − 季初结余))
-// 注：作废冲回（void）回滚使用的边缘场景未反向修正，预览与清零口径偏保守（少清零），可接受
-async function compExpiryPreviewMap(employeeIds) {
+// 口径 2026-09-04 佬裁决：入账/消耗按正负号判定（不再只看 earn/use），
+// 行政手动设定（adjust）同样按创建日所在季度归属、次季末清零
+async function compExpiryMapForQuarter(employeeIds, year, quarter) {
   const result = new Map()
   if (!employeeIds.length) return result
-  const now = new Date()
-  const year = now.getFullYear()
-  const quarter = quarterOfMonth(now.getMonth() + 1)
   const range = quarterRange(year, quarter)
-  const params = { start: range.start }
+  const params = { start: range.start, end: range.end }
   const idList = employeeIds.map((id, index) => {
     params[`emp${index}`] = Number(id)
     return `:emp${index}`
   })
   const rows = await query(
     `SELECT employee_id,
-            COALESCE(SUM(CASE WHEN action = 'earn' AND created_at >= :start THEN delta_hours ELSE 0 END), 0) AS earned_quarter,
-            COALESCE(SUM(CASE WHEN action = 'use' AND created_at >= :start THEN delta_hours ELSE 0 END), 0) AS used_since_quarter,
+            COALESCE(SUM(CASE WHEN delta_hours > 0 AND created_at >= :start AND created_at <= :end THEN delta_hours ELSE 0 END), 0) AS earned_quarter,
+            COALESCE(SUM(CASE WHEN delta_hours < 0 AND created_at >= :start THEN delta_hours ELSE 0 END), 0) AS used_since_quarter,
             COALESCE(SUM(CASE WHEN created_at < :start THEN delta_hours ELSE 0 END), 0) AS pool_before
      FROM attendance_balance_ledger
      WHERE balance_type = 'comp_time' AND employee_id IN (${idList.join(', ')})
@@ -3469,6 +3523,11 @@ async function compExpiryPreviewMap(employeeIds) {
     })
   }
   return result
+}
+
+async function compExpiryPreviewMap(employeeIds) {
+  const now = new Date()
+  return compExpiryMapForQuarter(employeeIds, now.getFullYear(), quarterOfMonth(now.getMonth() + 1))
 }
 
 // 特休年末折算（12-31 晚自动执行）：余额 × 0.5/0.6 向下取整 0.5 天，差额台账调整；幂等
@@ -3526,8 +3585,8 @@ async function runCompTimeExpiry(year, quarter, operatorUserId = null) {
     if (Number(existing[0]?.n || 0) > 0) return { skipped: true, count: 0 }
     const [rows] = await connection.execute(
       `SELECT employee_id,
-              COALESCE(SUM(CASE WHEN action = 'earn' AND created_at >= :start AND created_at <= :end THEN delta_hours ELSE 0 END), 0) AS earned_quarter,
-              COALESCE(SUM(CASE WHEN action = 'use' AND created_at >= :start THEN delta_hours ELSE 0 END), 0) AS used_since_quarter,
+              COALESCE(SUM(CASE WHEN delta_hours > 0 AND created_at >= :start AND created_at <= :end THEN delta_hours ELSE 0 END), 0) AS earned_quarter,
+              COALESCE(SUM(CASE WHEN delta_hours < 0 AND created_at >= :start THEN delta_hours ELSE 0 END), 0) AS used_since_quarter,
               COALESCE(SUM(CASE WHEN created_at < :start THEN delta_hours ELSE 0 END), 0) AS pool_before
        FROM attendance_balance_ledger
        WHERE balance_type = 'comp_time'
@@ -3561,6 +3620,8 @@ async function runCompTimeExpiry(year, quarter, operatorUserId = null) {
 }
 
 // 调度入口（每日 23:50）：12-31 跑特休年末折算；季末最后一天跑调休清零（两个任务自身幂等）
+// 调休口径：当季入账次季末清零——季末最后一天到期的是【上一季度】的入账（compExpiryOf 同口径），
+// 修复 2026-09-04 前误在当季末清当季（提前一个季度清零）
 async function annualLeaveSettlementTick() {
   const now = new Date()
   const year = now.getFullYear()
@@ -3570,7 +3631,91 @@ async function annualLeaveSettlementTick() {
   const quarter = quarterOfMonth(month)
   const range = quarterRange(year, quarter)
   const today = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-  if (range.end.slice(0, 10) === today) await runCompTimeExpiry(year, quarter)
+  if (range.end.slice(0, 10) === today) {
+    const prevQuarter = quarter === 1 ? { year: year - 1, quarter: 4 } : { year, quarter: quarter - 1 }
+    await runCompTimeExpiry(prevQuarter.year, prevQuarter.quarter)
+  }
+}
+
+// 即将过期提醒（每日 23:50 随结算 tick 执行，事件键幂等去重不会重发）：
+// 调休——上一季度入账将在本季末清零，本季第 1 天与季末前 7 天各提醒一次；
+// 特休——12-01 与 12-25 提醒年末折算（余额 × 折算率向下取整 0.5 天结转，其余清零）
+async function attendanceExpiryReminderTick() {
+  await ensureSchema()
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const day = now.getDate()
+  const today = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  const employees = await query(
+    `SELECT p.id, p.employee_name, p.annual_leave_rule, u.role, u.email
+     FROM attendance_employee_profiles p
+     LEFT JOIN users u ON u.id = p.user_id
+     WHERE p.attendance_enabled = 1`,
+  )
+  const withEmail = employees.filter((row) => String(row.email || '').trim())
+
+  // 调休：上一季度入账 → 本季末清零
+  const quarter = quarterOfMonth(month)
+  const range = quarterRange(year, quarter)
+  const endDay = range.end.slice(0, 10)
+  const d7Date = new Date(`${endDay}T00:00:00`)
+  d7Date.setDate(d7Date.getDate() - 7)
+  const d7 = `${d7Date.getFullYear()}-${String(d7Date.getMonth() + 1).padStart(2, '0')}-${String(d7Date.getDate()).padStart(2, '0')}`
+  const compStages = []
+  if (range.start.slice(0, 10) === today) compStages.push('q_start')
+  if (today === d7) compStages.push('d7')
+  if (compStages.length) {
+    const compEmployees = withEmail.filter((row) => ['engineer', 'driver'].includes(String(row.role || '')))
+    const prev = quarter === 1 ? { year: year - 1, quarter: 4 } : { year, quarter: quarter - 1 }
+    const prevMap = await compExpiryMapForQuarter(compEmployees.map((row) => Number(row.id)), prev.year, prev.quarter)
+    for (const row of compEmployees) {
+      const preview = prevMap.get(Number(row.id))
+      if (!preview || !(preview.remainingHours > 0)) continue
+      for (const stage of compStages) {
+        await enqueueAttendanceEmailNotification(null, {
+          requestId: 0,
+          eventKey: `comp-expiry:${prev.year}Q${prev.quarter}:emp${row.id}:${stage}`,
+          eventType: 'comp_expiry_reminder',
+          recipients: [{ email: row.email }],
+          payload: {
+            employeeName: row.employee_name,
+            remainingHours: preview.remainingHours,
+            expiresAt: preview.expiresAt,
+          },
+        })
+      }
+    }
+  }
+
+  // 特休：年末折算提醒
+  if (month === 12 && (day === 1 || day === 25)) {
+    const stage = day === 1 ? 'dec1' : 'dec25'
+    const balanceRows = await query(
+      `SELECT employee_id, COALESCE(SUM(delta_hours), 0) AS balance
+       FROM attendance_balance_ledger
+       WHERE balance_type = 'annual_leave'
+       GROUP BY employee_id`,
+    )
+    const balanceMap = new Map(balanceRows.map((row) => [Number(row.employee_id), Number(row.balance || 0)]))
+    for (const row of withEmail) {
+      const balance = roundBalance(balanceMap.get(Number(row.id)) || 0)
+      if (balance <= 0) continue
+      const preview = carryoverPreviewOf(balance, row.annual_leave_rule)
+      await enqueueAttendanceEmailNotification(null, {
+        requestId: 0,
+        eventKey: `annual-carryover:${year}:emp${row.id}:${stage}`,
+        eventType: 'annual_carryover_reminder',
+        recipients: [{ email: row.email }],
+        payload: {
+          employeeName: row.employee_name,
+          balanceDays: preview.balanceDays,
+          carryoverRate: preview.rate,
+          resultDays: preview.resultDays,
+        },
+      })
+    }
+  }
 }
 
 // ===== 假别元数据管理（spec 004） =====
@@ -3673,4 +3818,5 @@ module.exports = {
   runAnnualLeaveCarryover,
   runCompTimeExpiry,
   annualLeaveSettlementTick,
+  attendanceExpiryReminderTick,
 }

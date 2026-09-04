@@ -1038,6 +1038,8 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
     completed: `请假流程已完成：${payload.applicantName || '-'} / ${leaveType}`,
     duty_pending_admin: `值班津贴待终审：${payload.month || '-'}（${payload.total || 0} 条）`,
     reminder: `催办提醒：${payload.applicantName || '-'} 的${payload.requestTypeLabel || '申请'}待您审批`,
+    comp_expiry_reminder: `调休即将清零提醒：${payload.remainingHours || 0} 小时 · ${payload.expiresAt || '-'} 清零`,
+    annual_carryover_reminder: `特休年末折算提醒：当前余额 ${payload.balanceDays || 0} 天`,
   }
   const headingByType = {
     approval_pending: '请假待审批',
@@ -1046,6 +1048,8 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
     completed: '请假流程已完成',
     duty_pending_admin: '值班津贴待终审',
     reminder: '审批催办提醒',
+    comp_expiry_reminder: '调休即将清零提醒',
+    annual_carryover_reminder: '特休年末折算提醒',
   }
   const subject = subjectByType[eventType] || `请假通知：${payload.applicantName || '-'}`
   const heading = headingByType[eventType] || '请假通知'
@@ -1081,6 +1085,22 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
       rows.push(['余额说明', '该假别不计系统余额'])
     }
   }
+  // 到期提醒（2026-09-04）：调休次季末清零 / 特休年末折算
+  if (eventType === 'comp_expiry_reminder') {
+    rows.length = 0
+    rows.push(['员工', payload.employeeName || '-'])
+    rows.push(['将清零调休', `${payload.remainingHours || 0} 小时`])
+    rows.push(['清零日期', `${payload.expiresAt || '-'}（当日 24:00 生效）`])
+    rows.push(['规则', '当季入账的调休（含行政手动设定）需在下一季度末前用完，逾期自动清零'])
+  }
+  if (eventType === 'annual_carryover_reminder') {
+    rows.length = 0
+    rows.push(['员工', payload.employeeName || '-'])
+    rows.push(['当前特休余额', `${payload.balanceDays || 0} 天`])
+    rows.push(['折算规则', `12-31 晚按 ${Math.round(Number(payload.carryoverRate || 0) * 100)}% 折算，向下取整至 0.5 天`])
+    rows.push(['预计结转次年', `${payload.resultDays || 0} 天`])
+    rows.push(['提醒', '未休完部分按上述比例折算，请尽早在年内安排休假'])
+  }
   const detailUrl = adminLink(settings.notification?.serviceOrderAdminBaseUrl, '/attendance')
   const linkBlock = detailUrl
     ? `<p style="margin:18px 0"><a href="${htmlEscape(detailUrl)}" style="${MAIL_BUTTON_STYLE}">打开 OMS 假勤管理</a></p>`
@@ -1091,6 +1111,8 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
     rejected: '本次请假申请未通过审批，请查看驳回原因并按需重新提交。',
     completed: '本次请假申请已完成审批，以下为最终结果和结算后的余额信息。',
     duty_pending_admin: '本月值班津贴（7×24 值班 + 法定节假日值班）已自动提交，请在假勤页「审批」中完成终审。',
+    comp_expiry_reminder: '您有即将到期的调休余额，请在清零日期前安排调休。',
+    annual_carryover_reminder: '年底将至，您的特休余额将于 12 月 31 日晚按规则折算结转次年，请合理安排休假。',
   }
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
