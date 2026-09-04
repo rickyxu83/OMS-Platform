@@ -2629,6 +2629,7 @@ async function createSelfReport(req, res) {
     engineerIds = [],
     installDevices = [],
     parts = [],
+    inspectionDocumentPending = false,
   } = req.body || {}
 
   const effectiveServiceMode = ['remote', 'office'].includes(serviceMode) ? serviceMode : 'onsite'
@@ -2849,8 +2850,11 @@ async function createSelfReport(req, res) {
     )
 
     // issue #7：巡检类自报单提交必须有巡检文档（事务内校验,失败即整体回滚）——
-    // 与 updateSelfReport 的 isInspectionSubmit + hasInspectionDocument 校验口径一致
-    if (isInspectionSubmit && !(await hasInspectionDocument(orderResult.insertId))) {
+    // 与 updateSelfReport 的 isInspectionSubmit + hasInspectionDocument 校验口径一致。
+    // 新建单的前端流程是“先 POST 建单、后上传附件”（上传需要 orderId），此时尚无文档，
+    // 故前端声明 inspectionDocumentPending（有待传巡检文档）时跳过本次校验；
+    // 若附件上传失败，重试会走 PUT（updateSelfReport）重新强校验，防线不丢
+    if (isInspectionSubmit && !inspectionDocumentPending && !(await hasInspectionDocument(orderResult.insertId))) {
       throw badRequest('请先补充必填项：巡检文档')
     }
 
