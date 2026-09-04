@@ -145,12 +145,16 @@ export function SignaturePad({
   className = "",
   canvasClassName = "h-36",
   actionsClassName = "",
+  rotated,
 }: {
   value: string;
   onChange: (value: string) => void;
   className?: string;
   canvasClassName?: string;
   actionsClassName?: string;
+  // 画布是否处于 CSS 90° 旋转展示态：调用方（横屏全屏签名弹窗）明确知道自己的
+  // 布局状态，显式传入比 getBoundingClientRect 几何嗅探可靠（动画/亚像素/方向翻转都不受干扰）
+  rotated?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
@@ -158,6 +162,9 @@ export function SignaturePad({
   // 画布当前像素对应的 value：笔迹结束回传的 value 与本画布内容一致，重绘时跳过
   // （否则会把裁剪图（仅笔迹包围盒，远小于画布）拉伸铺满画布——“第一笔变很大”的根因）
   const drawnValueRef = useRef("");
+  // 上次重绘时的旋转态：方向翻转但画布 CSS 尺寸不变（100dvh×100dvw 互换）时也要强制重绘，
+  // 否则位图保持旧朝向，再补一笔就会按新旋转态导出、把旧笔迹侧着存进去（横屏签名存储旋转 90° 复发根因）
+  const drawnRotatedRef = useRef(false);
   // 异步图片回画令牌：value 变化（尤其是清空）后，旧图片的 onload 不得再回画，避免“清除后残影复活”
   const drawTokenRef = useRef(0);
 
@@ -177,6 +184,8 @@ export function SignaturePad({
   // 画布视觉尺寸与布局尺寸互换。此时落笔坐标做了反向映射，位图本身是侧着的，
   // 导出/回显都需要相应转正，否则存下来的签名会旋转 90°。
   function isQuarterRotated(canvas: HTMLCanvasElement) {
+    // 调用方显式声明优先（弹窗知道自己是否加了 rotate-90）；未声明才几何嗅探兜底
+    if (typeof rotated === "boolean") return rotated;
     const rect = canvas.getBoundingClientRect();
     const { width, height } = canvasCssSize(canvas);
     const hasTransformedBounds = Math.abs(rect.width - width) > 2 || Math.abs(rect.height - height) > 2;
@@ -212,7 +221,9 @@ export function SignaturePad({
     }
 
     const hasTransformedBounds = Math.abs(rectWidth - width) > 2 || Math.abs(rectHeight - height) > 2;
-    const quarterRotated = hasTransformedBounds && Math.abs(rectWidth - height) < 2 && Math.abs(rectHeight - width) < 2;
+    const quarterRotated = typeof rotated === "boolean"
+      ? rotated
+      : hasTransformedBounds && Math.abs(rectWidth - height) < 2 && Math.abs(rectHeight - width) < 2;
     if (quarterRotated) {
       const relativeX = clientX - rect.left;
       const relativeY = clientY - rect.top;
@@ -237,8 +248,9 @@ export function SignaturePad({
     const snapshot = value;
     const targetW = Math.max(1, Math.round(width * ratio));
     const targetH = Math.max(1, Math.round(height * ratio));
-    // 尺寸没变且当前显示正是这份 value（笔迹回传触发的重绘）：像素已正确，直接跳过
-    if (canvas.width === targetW && canvas.height === targetH && drawnValueRef.current === value) return;
+    const rotatedNow = isQuarterRotated(canvas);
+    // 尺寸没变、旋转态没变且当前显示正是这份 value（笔迹回传触发的重绘）：像素已正确，直接跳过
+    if (canvas.width === targetW && canvas.height === targetH && drawnValueRef.current === value && drawnRotatedRef.current === rotatedNow) return;
     canvas.width = targetW;
     canvas.height = targetH;
     const context = canvas.getContext("2d");
@@ -254,6 +266,7 @@ export function SignaturePad({
     context.lineWidth = 2;
     context.strokeStyle = foregroundColor;
     drawnValueRef.current = snapshot;
+    drawnRotatedRef.current = rotatedNow;
     if (snapshot) {
       const image = new Image();
       image.onload = () => {
@@ -261,7 +274,7 @@ export function SignaturePad({
         // 裁剪图是设备像素：换回 CSS 尺寸（÷ratio）后只缩不放，绝不上采样——恢复/重绘不再放大笔迹
         const naturalW = image.width / ratio;
         const naturalH = image.height / ratio;
-        if (isQuarterRotated(canvas)) {
+        if (rotatedNow) {
           // 画布被旋转 90° 展示：把图片反向转进画布，用户看到的才是正的
           const scale = Math.min(1, height / naturalW, width / naturalH);
           const drawWidth = naturalW * scale;
@@ -280,7 +293,7 @@ export function SignaturePad({
       };
       image.src = snapshot;
     }
-  }, [value]);
+  }, [value, rotated]);
 
   useEffect(() => {
     let frame = 0;
@@ -444,6 +457,7 @@ export function FullscreenSignatureDialog({
             className="flex min-h-0 flex-1 flex-col"
             canvasClassName="h-full flex-1"
             actionsClassName="hidden"
+            rotated={signatureViewport.touch && !signatureViewport.landscape}
           />
           <DialogFooter className="shrink-0 flex-row justify-end">
             <Button type="button" variant="outline" onClick={() => setDraftValue("")}>
