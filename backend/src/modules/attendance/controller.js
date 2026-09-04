@@ -3107,16 +3107,71 @@ async function voidRequest(req, res) {
   res.json({ ok: true })
 }
 
+// 调休仅工程师/司机有（产品口径 2026-09-04）：其他角色拒绝调休余额调整
+async function assertCompTimeRole(connection, employeeId, balanceType) {
+  if (balanceType !== 'comp_time') return
+  const [rows] = await connection.execute(
+    `SELECT u.role
+     FROM attendance_employee_profiles p
+     LEFT JOIN users u ON u.id = p.user_id
+     WHERE p.id = :employeeId`,
+    { employeeId },
+  )
+  const role = String(rows[0]?.role || '')
+  if (!['engineer', 'driver'].includes(role)) throw badRequest('该员工无调休余额（仅工程师/司机有调休）')
+}
+
 async function adjustBalance(req, res) {
   await ensureSchema()
   if (!await hasPermission(req.user.role, 'attendance.manage')) throw forbidden()
   const employeeId = Number(req.params.id)
   const balanceType = text(req.body?.balanceType)
   if (!['annual_leave', 'comp_time'].includes(balanceType)) throw badRequest('余额类型不正确')
-  const hasDeltaDays = Object.prototype.hasOwnProperty.call(req.body || {}, 'deltaDays')
+  const body = req.body || {}
+  const note = nullableText(body.note)
+  const unit = balanceType === 'annual_leave' ? '天' : '小时'
+  const targetKey = balanceType === 'annual_leave' ? 'targetDays' : 'targetHours'
+
+  // 目标值模式（2026-09-04 佬裁决：直接“设定为”目标余额，不再让行政做加减心算）：
+  // 服务端在余额锁内读台账算差额入账，杜绝并发下按旧余额算错差额
+  if (Object.prototype.hasOwnProperty.call(body, targetKey)) {
+    const target = Number(body[targetKey])
+    if (!Number.isFinite(target) || target < 0) throw badRequest('目标余额不正确（不能为负数）')
+    assertHalfUnit(target, balanceType === 'annual_leave' ? '特休余额' : '调休余额')
+    const result = { ok: true, unchanged: false, delta: 0 }
+    await transaction(async (connection) => {
+      await lockEmployeeBalance(connection, employeeId)
+      await assertCompTimeRole(connection, employeeId, balanceType)
+      const [rows] = await connection.execute(
+        `SELECT COALESCE(SUM(delta_hours), 0) AS balance
+         FROM attendance_balance_ledger
+         WHERE employee_id = :employeeId AND balance_type = :balanceType`,
+        { employeeId, balanceType },
+      )
+      const current = Number(rows[0]?.balance || 0)
+      const delta = roundBalance(target - current)
+      if (delta === 0) {
+        result.unchanged = true
+        return
+      }
+      result.delta = delta
+      await connection.execute(
+        `INSERT INTO attendance_balance_ledger
+           (employee_id, request_id, balance_type, delta_hours, action, note, created_by)
+         VALUES
+           (:employeeId, NULL, :balanceType, :delta, 'adjust', :note, :createdBy)`,
+        { employeeId, balanceType, delta, note: `${note || '余额设定'}（设定为 ${target} ${unit}，原 ${roundBalance(current)} ${unit}）`, createdBy: req.user.id },
+      )
+    })
+    res.json(result)
+    return
+  }
+
+  // 差额模式（历史兼容，新前端已不再使用）
+  const hasDeltaDays = Object.prototype.hasOwnProperty.call(body, 'deltaDays')
   const deltaAmount = balanceType === 'annual_leave'
-    ? Number(hasDeltaDays ? req.body?.deltaDays : Number(req.body?.deltaHours) / WORK_HOURS_PER_DAY)
-    : Number(req.body?.deltaHours)
+    ? Number(hasDeltaDays ? body.deltaDays : Number(body.deltaHours) / WORK_HOURS_PER_DAY)
+    : Number(body.deltaHours)
   if (!Number.isFinite(deltaAmount) || deltaAmount === 0) {
     throw badRequest(balanceType === 'annual_leave' ? '调整天数不能为 0' : '调整小时数不能为 0')
   }
@@ -3125,9 +3180,9 @@ async function adjustBalance(req, res) {
   } else {
     assertHalfUnit(deltaAmount, '调休调整')
   }
-  const note = nullableText(req.body?.note)
   await transaction(async (connection) => {
     await lockEmployeeBalance(connection, employeeId)
+    await assertCompTimeRole(connection, employeeId, balanceType)
     await connection.execute(
       `INSERT INTO attendance_balance_ledger
          (employee_id, request_id, balance_type, delta_hours, action, note, created_by)

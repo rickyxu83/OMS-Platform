@@ -28,7 +28,7 @@ interface EmployeeDraft {
 }
 interface AdjustDraft {
   balanceType: "comp_time" | "annual_leave";
-  amount: string;
+  target: string;
   note: string;
 }
 function createEmployeeDraft(employee: EmployeeProfile): EmployeeDraft {
@@ -42,8 +42,20 @@ function createEmployeeDraft(employee: EmployeeProfile): EmployeeDraft {
   };
 }
 
-function createAdjustDraft(): AdjustDraft {
-  return { balanceType: "comp_time", amount: "", note: "" };
+/** 调休仅工程师/司机有（产品口径 2026-09-04）：其他角色不显示调休选项 */
+function employeeHasCompTime(employee: EmployeeProfile | null) {
+  return ["engineer", "driver"].includes(String(employee?.role || ""));
+}
+
+function currentBalanceOf(employee: EmployeeProfile, balanceType: AdjustDraft["balanceType"]) {
+  return balanceType === "annual_leave"
+    ? annualBalanceDays(employee)
+    : Math.round(Number(employee.compTimeBalanceHours || 0) * 100) / 100;
+}
+
+function createAdjustDraft(employee: EmployeeProfile): AdjustDraft {
+  const balanceType = employeeHasCompTime(employee) ? "comp_time" : "annual_leave";
+  return { balanceType, target: String(currentBalanceOf(employee, balanceType)), note: "" };
 }
 
 interface EmployeeDialogProps {
@@ -163,12 +175,13 @@ export function EmployeeEditDialog({ employee, onClose, onSaved }: EmployeeDialo
   );
 }
 
-/** 调整余额弹窗：切换余额类型保留已输入金额（历史教训：误触同选项不丢输入） */
+/** 设定余额弹窗（2026-09-04 佬裁决改版）：直接填目标值，差额由服务端在余额锁内读台账计算入账；
+ *  调休仅工程师/司机有，其他角色不显示调休选项 */
 export function AdjustBalanceDialog({ employee, onClose, onSaved }: EmployeeDialogProps) {
   const [draft, setDraft] = useState<AdjustDraft | null>(null);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
-    if (employee) setDraft(createAdjustDraft());
+    if (employee) setDraft(createAdjustDraft(employee));
   }, [employee]);
 
   function patchDraft(patch: Partial<AdjustDraft>) {
@@ -177,25 +190,36 @@ export function AdjustBalanceDialog({ employee, onClose, onSaved }: EmployeeDial
 
   async function submitAdjustBalance() {
     if (!employee || !draft) return;
-    const amount = Number(draft.amount);
-    if (!Number.isFinite(amount) || amount === 0) {
-      toast.error(draft.balanceType === "annual_leave" ? "请填写调整天数（正数增加，负数扣减）" : "请填写调整小时数（正数增加，负数扣减）");
+    const annualAdjust = draft.balanceType === "annual_leave";
+    const unit = annualAdjust ? "天" : "小时";
+    const target = Number(draft.target);
+    if (draft.target.trim() === "" || !Number.isFinite(target) || target < 0) {
+      toast.error("请填写目标余额（不能为负数）");
       return;
     }
-    const annualAdjust = draft.balanceType === "annual_leave";
+    if (Math.abs(target * 2 - Math.round(target * 2)) > 0.0001) {
+      toast.error("目标余额须以 0.5 为单位");
+      return;
+    }
+    const current = currentBalanceOf(employee, draft.balanceType);
+    if (Math.abs(target - current) < 0.0001) {
+      toast.error(`余额已是 ${target} ${unit}，无需调整`);
+      return;
+    }
     setSaving(true);
     try {
-      await api.post(`/attendance/employees/${employee.id}/adjust-balance`, {
+      // 目标值模式：服务端在余额锁内读台账算差额入账（并发安全），前端只传目标值
+      const data = await api.post(`/attendance/employees/${employee.id}/adjust-balance`, {
         balanceType: draft.balanceType,
-        deltaDays: annualAdjust ? amount : undefined,
-        deltaHours: annualAdjust ? undefined : amount,
+        targetDays: annualAdjust ? target : undefined,
+        targetHours: annualAdjust ? undefined : target,
         note: draft.note,
       });
-      toast.success("余额已调整");
+      toast.success(data?.unchanged ? "余额已是目标值" : "余额已设定");
       onClose();
       await onSaved();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "调整失败");
+      toast.error(e instanceof Error ? e.message : "设定失败");
     } finally {
       setSaving(false);
     }
@@ -205,72 +229,84 @@ export function AdjustBalanceDialog({ employee, onClose, onSaved }: EmployeeDial
       <Dialog open={Boolean(employee)} onOpenChange={(open) => { if (!open) onClose(); }}>
         <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
-            <DialogTitle>调整余额</DialogTitle>
+            <DialogTitle>设定余额</DialogTitle>
             <DialogDescription>
-              {employee ? `${employee.employeeName || "-"} · 特休 ${days(annualBalanceDays(employee))} 天 / 调休 ${hours(employee.compTimeBalanceHours)} 小时` : ""}
+              {employee ? `${employee.employeeName || "-"} · 特休 ${days(annualBalanceDays(employee))} 天${employeeHasCompTime(employee) ? ` / 调休 ${hours(employee.compTimeBalanceHours)} 小时` : ""}` : ""}
             </DialogDescription>
           </DialogHeader>
           {employee && draft ? (
             <div className="space-y-4">
+              {employeeHasCompTime(employee) ? (
+                <div className="space-y-2">
+                  <Label>余额类型</Label>
+                  <Select
+                    value={draft.balanceType}
+                    onValueChange={(value) => setDraft((current) => {
+                      if (!current || !employee) return current
+                      const balanceType = value as AdjustDraft["balanceType"]
+                      // 目标值模式：切换类型时目标值换成该类型的当前余额，避免串单位
+                      return balanceType === current.balanceType ? current : { ...current, balanceType, target: String(currentBalanceOf(employee, balanceType)) }
+                    })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="comp_time">调休（按小时）</SelectItem>
+                      <SelectItem value="annual_leave">特休（按天）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  该员工无调休余额（仅工程师/司机有调休），此处仅可设定特休
+                </div>
+              )}
               <div className="space-y-2">
-                <Label>余额类型</Label>
-                <Select
-                  value={draft.balanceType}
-                  onValueChange={(value) => setDraft((current) => {
-                    if (!current) return current
-                    const balanceType = value as AdjustDraft["balanceType"]
-                    // 切换类型保留已输入的金额（单位变化用户自理，不清空避免再度丢失）
-                    return balanceType === current.balanceType ? current : { ...current, balanceType }
-                  })}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="comp_time">调休（按小时）</SelectItem>
-                    <SelectItem value="annual_leave">特休（按天）</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>{draft.balanceType === "annual_leave" ? "调整天数" : "调整小时数"}</Label>
+                <Label>设定为（{draft.balanceType === "annual_leave" ? "天" : "小时"}）</Label>
                 {draft.balanceType === "annual_leave" && employee.annualLeaveSuggestedDays !== null && employee.annualLeaveSuggestedDays !== undefined ? (
                   <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                     <span>按入职日期计算：满 {employee.annualLeaveTierYears ?? "-"} 年档，建议年度 {employee.annualLeaveSuggestedDays} 天（当前余额 {days(annualBalanceDays(employee))} 天）</span>
-                    {(() => {
-                      const delta = Math.round((Number(employee.annualLeaveSuggestedDays) - annualBalanceDays(employee)) * 100) / 100;
-                      return delta !== 0 ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-7"
-                          onClick={() => patchDraft({ amount: String(delta), note: draft.note || `按公式建议额度调整（满 ${employee.annualLeaveTierYears} 年档 ${employee.annualLeaveSuggestedDays} 天）` })}
-                        >
-                          按建议带入（{delta > 0 ? `+${delta}` : delta} 天）
-                        </Button>
-                      ) : <span className="text-emerald-600">余额已与建议额度一致</span>;
-                    })()}
+                    {Math.abs(Number(employee.annualLeaveSuggestedDays) - annualBalanceDays(employee)) > 0.0001 ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7"
+                        onClick={() => patchDraft({ target: String(employee.annualLeaveSuggestedDays), note: draft.note || `按公式建议额度设定（满 ${employee.annualLeaveTierYears} 年档 ${employee.annualLeaveSuggestedDays} 天）` })}
+                      >
+                        设为建议额度（{employee.annualLeaveSuggestedDays} 天）
+                      </Button>
+                    ) : <span className="text-emerald-600">余额已与建议额度一致</span>}
                   </div>
                 ) : null}
-                <div className="flex flex-wrap gap-2">
-                  {["0.5", "1", "-0.5", "-1"].map((preset) => (
-                    <Button
-                      key={preset}
-                      type="button"
-                      size="sm"
-                      variant={draft.amount === preset ? "default" : "outline"}
-                      onClick={() => patchDraft({ amount: preset })}
-                    >
-                      {Number(preset) > 0 ? `+${preset}` : preset}{draft.balanceType === "annual_leave" ? "天" : "小时"}
-                    </Button>
-                  ))}
-                </div>
                 <Input
                   type="number"
                   step="0.5"
-                  placeholder="正数增加，负数扣减"
-                  value={draft.amount}
-                  onChange={(event) => patchDraft({ amount: event.target.value })}
+                  min="0"
+                  placeholder="直接填写目标余额"
+                  value={draft.target}
+                  onChange={(event) => patchDraft({ target: event.target.value })}
                 />
+                {/* 实时预览余额变化：直接设定目标值，不再做加减心算 */}
+                {(() => {
+                  const current = currentBalanceOf(employee, draft.balanceType);
+                  const unit = draft.balanceType === "annual_leave" ? "天" : "小时";
+                  if (draft.target.trim() === "") {
+                    return <p className="text-xs text-muted-foreground">当前余额 {current} {unit}</p>;
+                  }
+                  const target = Number(draft.target);
+                  if (!Number.isFinite(target)) {
+                    return <p className="text-xs text-muted-foreground">当前余额 {current} {unit}</p>;
+                  }
+                  const delta = Math.round((target - current) * 100) / 100;
+                  if (Math.abs(delta) < 0.0001) {
+                    return <p className="text-xs text-muted-foreground">当前 {current} {unit} → 设定为 {target} {unit}（无变化）</p>;
+                  }
+                  return (
+                    <p className={`text-xs ${delta > 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                      当前 {current} {unit} → 设定为 {target} {unit}（{delta > 0 ? `增加 ${delta}` : `减少 ${Math.abs(delta)}`} {unit}）
+                    </p>
+                  );
+                })()}
               </div>
               <div className="space-y-2">
                 <Label>备注</Label>
@@ -286,7 +322,7 @@ export function AdjustBalanceDialog({ employee, onClose, onSaved }: EmployeeDial
             <Button variant="outline" onClick={() => onClose()} disabled={saving}>取消</Button>
             <Button onClick={submitAdjustBalance} disabled={saving}>
               {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
-              确认调整
+              确认设定
             </Button>
           </DialogFooter>
         </DialogContent>
