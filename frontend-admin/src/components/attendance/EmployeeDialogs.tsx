@@ -118,6 +118,7 @@ export function EmployeeEditDialog({ employee, onClose, onSaved }: EmployeeDialo
                     <SelectItem value="taiwan">台籍</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">特休级别默认随籍别，个别调整在考勤设置「特休档位（员工级别）」里维护</p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
@@ -127,6 +128,7 @@ export function EmployeeEditDialog({ employee, onClose, onSaved }: EmployeeDialo
                     value={draft.hireDate}
                     onChange={(event) => patchDraft({ hireDate: event.target.value })}
                   />
+                  <p className="text-xs text-muted-foreground">特休档位以此日期起算（满年对齐自然年底）；需累计以往工龄的特殊员工，由行政将此日期手工前调</p>
                 </div>
                 <div className="space-y-2">
                   <Label>离职日期</Label>
@@ -230,6 +232,25 @@ export function AdjustBalanceDialog({ employee, onClose, onSaved }: EmployeeDial
               </div>
               <div className="space-y-2">
                 <Label>{draft.balanceType === "annual_leave" ? "调整天数" : "调整小时数"}</Label>
+                {draft.balanceType === "annual_leave" && employee.annualLeaveSuggestedDays !== null && employee.annualLeaveSuggestedDays !== undefined ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    <span>按入职日期计算：满 {employee.annualLeaveTierYears ?? "-"} 年档，建议年度 {employee.annualLeaveSuggestedDays} 天（当前余额 {days(annualBalanceDays(employee))} 天）</span>
+                    {(() => {
+                      const delta = Math.round((Number(employee.annualLeaveSuggestedDays) - annualBalanceDays(employee)) * 100) / 100;
+                      return delta !== 0 ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7"
+                          onClick={() => patchDraft({ amount: String(delta), note: draft.note || `按公式建议额度调整（满 ${employee.annualLeaveTierYears} 年档 ${employee.annualLeaveSuggestedDays} 天）` })}
+                        >
+                          按建议带入（{delta > 0 ? `+${delta}` : delta} 天）
+                        </Button>
+                      ) : <span className="text-emerald-600">余额已与建议额度一致</span>;
+                    })()}
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   {["0.5", "1", "-0.5", "-1"].map((preset) => (
                     <Button

@@ -9,10 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { toast } from "sonner";
 import { api } from "@/services/api";
-import { invalidateLeaveTypesCache, type LeaveTypeItem } from "@/pages/attendance-shared";
+import { invalidateLeaveTypesCache, useAnnualLeaveTiers, invalidateAnnualLeaveTiersCache, NATIONALITY_LABELS, type AnnualLeaveTierItem, type EmployeeProfile, type LeaveTypeItem } from "@/pages/attendance-shared";
 
 const QUOTA_HELP = "年度带薪额度（天）：按自然年跟踪该假别已批准天数，申请与审批时提示使用情况；超出额度的部分按「超额减薪比例」在提示与邮件中标注，系统不做强制拦截，以审批人把关为准。当前用于病假（3 天带薪，超额扣 30%）。产假等政策性强假别建议只配「参考天数 + 政策说明」，天数以审批为准。";
 
@@ -57,14 +58,96 @@ function draftOf(item: LeaveTypeItem): LeaveTypeDraft {
   };
 }
 
-/** 考勤设置-假别管理（spec 004）：假别再配置化，政策文案/额度修改不改代码 */
-export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
+/** 考勤设置-假别管理（spec 004）+ 特休档位与成员归属（spec 005 v3：级别即档位表方案，成员在这里维护） */
+export function SettingsLeaveTypes({ canManage, onChanged }: { canManage: boolean; onChanged?: () => void }) {
   const [items, setItems] = useState<LeaveTypeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<LeaveTypeItem | null>(null);
   const [draft, setDraft] = useState<LeaveTypeDraft>(blankDraft);
+
+  // 特休档位表（spec 005 v2）：方案（陆籍/台籍·常规/台籍·特批）× 满 N 年 → 年度天数，支持递增封顶尾档
+  const { items: tiers, schemes } = useAnnualLeaveTiers();
+  const [tierRows, setTierRows] = useState<Array<{ schemeCode: string; minYears: string; days: string; plusPerYear: string; maxDays: string; note: string }>>([]);
+  const [tierScheme, setTierScheme] = useState("mainland");
+  const [tiersDirty, setTiersDirty] = useState(false);
+  const [tiersSaving, setTiersSaving] = useState(false);
+  useEffect(() => {
+    if (!tiersDirty && tiers.length) {
+      setTierRows(tiers.map((tier) => ({
+        schemeCode: tier.schemeCode,
+        minYears: String(tier.minYears),
+        days: String(tier.days),
+        plusPerYear: tier.plusPerYear === null ? "" : String(tier.plusPerYear),
+        maxDays: tier.maxDays === null ? "" : String(tier.maxDays),
+        note: tier.note || "",
+      })));
+    }
+  }, [tiers, tiersDirty]);
+
+  async function saveTiers() {
+    setTiersSaving(true);
+    try {
+      await api.put("/attendance/annual-leave-tiers", {
+        items: tierRows.map((row) => ({
+          schemeCode: row.schemeCode,
+          minYears: Number(row.minYears),
+          days: Number(row.days),
+          plusPerYear: row.plusPerYear.trim() === "" ? null : Number(row.plusPerYear),
+          maxDays: row.maxDays.trim() === "" ? null : Number(row.maxDays),
+          note: row.note.trim(),
+        })),
+      });
+      invalidateAnnualLeaveTiersCache();
+      setTiersDirty(false);
+      toast.success("特休档位表已保存");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "保存档位表失败");
+    } finally {
+      setTiersSaving(false);
+    }
+  }
+
+  function patchTierRow(index: number, patch: Partial<{ minYears: string; days: string; plusPerYear: string; maxDays: string; note: string }>) {
+    setTierRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+    setTiersDirty(true);
+  }
+
+  // 方案成员（spec 005 v3）：员工级别归属在这张卡里维护，员工编辑对话框不再单设
+  const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
+  const [memberSaving, setMemberSaving] = useState(false);
+  const loadEmployees = useCallback(async () => {
+    try {
+      const data = await api.get("/attendance/employees");
+      setEmployees(Array.isArray(data?.items) ? data.items : []);
+    } catch {
+      // 读取失败不阻塞档位表本身
+    }
+  }, []);
+  useEffect(() => { loadEmployees(); }, [loadEmployees]);
+
+  const schemeMembers = employees.filter((employee) => (employee.annualLeaveScheme || "mainland") === tierScheme);
+  const schemeCandidates = employees.filter((employee) => (employee.annualLeaveScheme || "mainland") !== tierScheme && employee.attendanceEnabled !== false);
+
+  async function moveMember(employee: EmployeeProfile, schemeCode: string) {
+    setMemberSaving(true);
+    try {
+      await api.put(`/attendance/employees/${employee.id}`, {
+        employeeName: employee.employeeName,
+        nationality: employee.nationality,
+        attendanceEnabled: employee.attendanceEnabled !== false,
+        annualLeaveRule: schemeCode,
+      });
+      toast.success(`已将「${employee.employeeName}」调整到 ${schemes.find((s) => s.code === schemeCode)?.label || schemeCode}`);
+      await loadEmployees();
+      onChanged?.();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "调整成员失败");
+    } finally {
+      setMemberSaving(false);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -148,6 +231,7 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
   }
 
   return (
+    <div className="space-y-6">
     <Card>
       <CardHeader>
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -191,7 +275,7 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
                       {item.label}
                       {item.systemReserved ? <Badge variant="secondary" className="ml-1.5">内置</Badge> : null}
                       {!item.countsBalance && !item.referenceDays && item.paidQuotaDays === null ? (
-                        <Badge variant="warning" className="ml-1.5">需行政确认</Badge>
+                        <Badge variant="info" className="ml-1.5">申请前问行政</Badge>
                       ) : null}
                       {item.policyNote ? <div className="mt-0.5 max-w-[240px] truncate text-xs font-normal text-muted-foreground" title={item.policyNote}>{item.policyNote}</div> : null}
                     </TableCell>
@@ -306,5 +390,150 @@ export function SettingsLeaveTypes({ canManage }: { canManage: boolean }) {
         </DialogContent>
       </Dialog>
     </Card>
+
+    <Card>
+      <CardHeader>
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-1.5">特休档位（员工级别） <HelpTooltip label="员工的特休级别即这里的方案：编辑员工档案时在「特休档位（级别）」里选择，默认随籍别。档位年限按入职日期计算：满年对齐自然年底（入职当年与次年为 0 档，第三年起满 1 年档）。建议额度 = 员工级别内满年数不超过档位年限的最大一档，含「每年加 N 天」递增与封顶；仅作展示与一键带入，入账由行政在余额控制台确认。台籍·特批仅个别员工由行政手工指定。" /></CardTitle>
+            <CardDescription>员工的级别就是这张表：方案 × 满 N 年 → 年度特休天数；规则变化时直接改表，无需改代码</CardDescription>
+          </div>
+          {canManage ? (
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => { setTierRows([...tierRows, { schemeCode: tierScheme, minYears: "", days: "", plusPerYear: "", maxDays: "", note: "" }]); setTiersDirty(true); }}>
+                <Plus className="mr-2 h-4 w-4" />
+                新增档位
+              </Button>
+              <Button size="sm" onClick={saveTiers} disabled={tiersSaving || !tiersDirty}>
+                {tiersSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                保存档位表
+              </Button>
+            </div>
+          ) : null}
+        </div>
+        <div className="mt-3 flex w-fit gap-1 rounded-lg border bg-muted/40 p-1 text-sm">
+          {schemes.map((scheme) => (
+            <button
+              key={scheme.code}
+              type="button"
+              onClick={() => setTierScheme(scheme.code)}
+              title={scheme.note}
+              className={`h-8 rounded-md px-4 font-medium transition ${tierScheme === scheme.code ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >{scheme.label}</button>
+          ))}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <Table className="min-w-[720px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-28">满年数（≥）</TableHead>
+                <TableHead className="w-28">基础天数</TableHead>
+                <TableHead className="w-28">每年加（可空）</TableHead>
+                <TableHead className="w-28">封顶（可空）</TableHead>
+                <TableHead>备注</TableHead>
+                {canManage ? <TableHead className="w-16 text-right">操作</TableHead> : null}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tierRows.map((row, index) => ({ row, index })).filter(({ row }) => row.schemeCode === tierScheme).map(({ row, index }) => (
+                <TableRow key={index}>
+                  <TableCell>
+                    <Input type="number" min="0" max="100" step="1" value={row.minYears} disabled={!canManage}
+                      onChange={(e) => patchTierRow(index, { minYears: e.target.value })} />
+                  </TableCell>
+                  <TableCell>
+                    <Input type="number" min="0" max="365" step="0.5" value={row.days} disabled={!canManage}
+                      onChange={(e) => patchTierRow(index, { days: e.target.value })} />
+                  </TableCell>
+                  <TableCell>
+                    <Input type="number" min="0" max="30" step="0.5" value={row.plusPerYear} disabled={!canManage} placeholder="-"
+                      onChange={(e) => patchTierRow(index, { plusPerYear: e.target.value })} />
+                  </TableCell>
+                  <TableCell>
+                    <Input type="number" min="0" max="365" step="0.5" value={row.maxDays} disabled={!canManage} placeholder="-"
+                      onChange={(e) => patchTierRow(index, { maxDays: e.target.value })} />
+                  </TableCell>
+                  <TableCell>
+                    <Input value={row.note} disabled={!canManage} maxLength={200}
+                      onChange={(e) => patchTierRow(index, { note: e.target.value })} />
+                  </TableCell>
+                  {canManage ? (
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" aria-label="删除档位"
+                        onClick={() => { setTierRows(tierRows.filter((_, i) => i !== index)); setTiersDirty(true); }}>
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </TableCell>
+                  ) : null}
+                </TableRow>
+              ))}
+              {tierRows.filter((row) => row.schemeCode === tierScheme).length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={canManage ? 6 : 5} className="py-8 text-center text-sm text-muted-foreground">该方案暂无档位</TableCell>
+                </TableRow>
+              ) : null}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="mt-5 space-y-2">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            成员（{schemeMembers.length} 人）
+            <span className="text-xs font-normal text-muted-foreground">未单独指定的员工按籍别自动归入陆籍/台籍·常规</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {schemeMembers.map((employee) => {
+              const defaultScheme = employee.nationality === "taiwan" ? "taiwan" : "mainland";
+              const isDefault = tierScheme === defaultScheme;
+              return (
+                <Badge key={employee.id} variant="secondary" className="gap-1 py-1 pl-2.5 pr-1">
+                  <span>{employee.employeeName || employee.username}</span>
+                  <span className="text-muted-foreground">{NATIONALITY_LABELS[employee.nationality || "mainland"] || "-"}</span>
+                  {canManage && !isDefault ? (
+                    <button
+                      type="button"
+                      className="rounded-sm px-0.5 opacity-70 hover:opacity-100 focus:outline-none"
+                      title="移出（回到籍别默认级别）"
+                      disabled={memberSaving}
+                      onClick={() => moveMember(employee, defaultScheme)}
+                      aria-label={`将 ${employee.employeeName} 移出该级别`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  ) : null}
+                </Badge>
+              );
+            })}
+            {schemeMembers.length === 0 ? <span className="text-xs text-muted-foreground">暂无成员</span> : null}
+          </div>
+          {canManage ? (
+            <div className="max-w-xs">
+              <Select
+                value=""
+                onValueChange={(id) => {
+                  const target = schemeCandidates.find((employee) => String(employee.id) === id);
+                  if (target) moveMember(target, tierScheme);
+                }}
+                disabled={memberSaving || schemeCandidates.length === 0}
+              >
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder="添加成员到该级别…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {schemeCandidates.map((employee) => (
+                    <SelectItem key={employee.id} value={String(employee.id)}>
+                      {employee.employeeName || employee.username}（{NATIONALITY_LABELS[employee.nationality || "mainland"] || "-"}，当前：{schemes.find((s) => s.code === (employee.annualLeaveScheme || "mainland"))?.label || "陆籍"}）
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+    </div>
   );
 }

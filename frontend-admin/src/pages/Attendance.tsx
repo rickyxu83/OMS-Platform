@@ -47,6 +47,7 @@ import {
   annualLeaveRange,
   type LeaveQuotaInfo,
   type LeaveTypeItem,
+  ANNUAL_LEAVE_SCHEME_LABELS,
   applyAnnualLeaveRange,
   createBlankForm,
   dateIndex,
@@ -432,7 +433,9 @@ export function Attendance() {
     const seen = new Set(supervisorPending.map((item) => String(item.id)));
     return [...supervisorPending, ...adminPending.filter((item) => !seen.has(String(item.id)))];
   }, [supervisorPending, adminPending]);
-  const isApprover = canApprove && (!canApply || canAdminApprove || supervisorPending.length > 0);
+  // 代理确认待办：被指定为代理人的工程师/司机没有 attendance.approve 权限，但必须能看到并处理（2026-09-03 修复：待办中心能跳到但考勤页不渲染）
+  const delegateTodos = useMemo(() => supervisorPending.filter((item) => item.status === "pending_delegate"), [supervisorPending]);
+  const isApprover = (canApprove && (!canApply || canAdminApprove || supervisorPending.length > 0)) || delegateTodos.length > 0;
 
   const tabs = useMemo(() => {
     const items: Array<{ key: AttendanceTab; label: string; count?: number }> = [
@@ -1314,9 +1317,13 @@ export function Attendance() {
                   status={<Badge variant={employee.attendanceEnabled === false ? "outline" : "success"}>{employee.attendanceEnabled === false ? "停用" : "启用"}</Badge>}
                   subtitle={`${employee.username || "-"} · ${roleLabel(employee.role)}`}
                   fields={[
-                    { label: "籍别 / 入职", value: `${NATIONALITY_LABELS[employee.nationality || "mainland"] || "-"} · ${formatDate(employee.hireDate)}` },
+                    { label: "级别 / 入职", value: `${ANNUAL_LEAVE_SCHEME_LABELS[employee.annualLeaveScheme || ""] || "陆籍"} · ${formatDate(employee.hireDate)}` },
+                    { label: "特休档位", value: employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined ? "-" : `满 ${employee.annualLeaveTierYears} 年档 · ${employee.annualLeaveSuggestedDays ?? "-"} 天/年` },
                     { label: "特休余额", value: `${days(annualBalanceDays(employee))} 天` },
-                    { label: "调休余额", value: `${hours(employee.compTimeBalanceHours)} 小时` },
+                    { label: "调休余额", value: ["engineer", "driver"].includes(employee.role || "") ? `${hours(employee.compTimeBalanceHours)} 小时` : "-" },
+                    ...(["engineer", "driver"].includes(employee.role || "") && employee.compTimeExpiryPreview && employee.compTimeExpiryPreview.remainingHours > 0
+                      ? [{ label: "季末结转", value: `${employee.compTimeExpiryPreview.quarterLabel} 剩余 ${hours(employee.compTimeExpiryPreview.remainingHours)} 小时 · 可用至 ${employee.compTimeExpiryPreview.expiresAt.slice(5)}` }]
+                      : []),
                   ]}
                   actions={(
                     <>
@@ -1344,7 +1351,8 @@ export function Attendance() {
                     </TableHead>
                     <TableHead>员工</TableHead>
                     <TableHead>状态</TableHead>
-                    <TableHead>籍别 / 入职</TableHead>
+                    <TableHead>级别 / 入职</TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">特休档位 <HelpTooltip label="按入职日期计算：满年对齐自然年底（入职当年与次年 0 档，第三年起满 1 年档）；建议额度来自考勤设置里的特休档位表，仅供参考，入账由行政确认" /></span></TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">特休余额 <HelpTooltip label={ANNUAL_LEAVE_HELP} /></span></TableHead>
                     <TableHead>调休余额</TableHead>
                     <TableHead className="text-right">操作</TableHead>
@@ -1375,11 +1383,41 @@ export function Attendance() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div>{NATIONALITY_LABELS[employee.nationality || "mainland"] || employee.nationality || "-"}</div>
+                        <div>{ANNUAL_LEAVE_SCHEME_LABELS[employee.annualLeaveScheme || ""] || "陆籍"}</div>
                         <div className="text-xs text-muted-foreground">{formatDate(employee.hireDate)} 入职</div>
                       </TableCell>
+                      <TableCell>
+                        {employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined ? (
+                          <span className="text-muted-foreground">-</span>
+                        ) : (
+                          <>
+                            <div className="text-sm font-medium">{ANNUAL_LEAVE_SCHEME_LABELS[employee.annualLeaveScheme || ""] || "陆籍"} · 满 {employee.annualLeaveTierYears} 年档</div>
+                            <div className={`text-xs ${Number(employee.annualLeaveSuggestedDays || 0) !== Math.round(annualBalanceDays(employee) * 100) / 100 ? "text-amber-600" : "text-muted-foreground"}`}>
+                              {employee.annualLeaveSuggestedDays ?? "-"} 天/年
+                            </div>
+                            {employee.annualLeaveCarryoverPreview && employee.annualLeaveCarryoverPreview.balanceDays > 0 ? (
+                              <div className="text-xs text-muted-foreground">
+                                年末结转 ≈ {employee.annualLeaveCarryoverPreview.resultDays} 天（{employee.annualLeaveCarryoverPreview.balanceDays} × {employee.annualLeaveCarryoverPreview.rate}）
+                              </div>
+                            ) : null}
+                          </>
+                        )}
+                      </TableCell>
                       <TableCell><span className="text-base font-semibold">{days(annualBalanceDays(employee))}</span><span className="ml-1 text-xs text-muted-foreground">天</span></TableCell>
-                      <TableCell><span className="text-base font-semibold">{hours(employee.compTimeBalanceHours)}</span><span className="ml-1 text-xs text-muted-foreground">小时</span></TableCell>
+                      <TableCell>
+                        {["engineer", "driver"].includes(employee.role || "") ? (
+                          <>
+                            <span className="text-base font-semibold">{hours(employee.compTimeBalanceHours)}</span><span className="ml-1 text-xs text-muted-foreground">小时</span>
+                            {employee.compTimeExpiryPreview && employee.compTimeExpiryPreview.remainingHours > 0 ? (
+                              <div className="mt-0.5 text-xs text-amber-600">
+                                {employee.compTimeExpiryPreview.quarterLabel} 剩余 {hours(employee.compTimeExpiryPreview.remainingHours)} 小时 · 可用至 {employee.compTimeExpiryPreview.expiresAt.slice(5)}（逾期清零）
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-wrap justify-end gap-2">
                           <Button size="sm" variant="outline" onClick={() => setEditEmployee(employee)}>
@@ -1394,7 +1432,7 @@ export function Attendance() {
                   ))}
                   {employees.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                         {loading ? "正在加载…" : "暂无员工档案"}
                       </TableCell>
                     </TableRow>
@@ -1507,7 +1545,7 @@ export function Attendance() {
           ) : null}
 
           {settingsView === "leaveTypes" ? (
-            <SettingsLeaveTypes canManage={canManage} />
+            <SettingsLeaveTypes canManage={canManage} onChanged={() => load()} />
           ) : null}
 
           {settingsView === "holidays" ? (
