@@ -14,6 +14,8 @@ import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LEAVE_TYPE_LABELS,
+  leaveTypeLabelOf,
+  useLeaveTypes,
   OVERTIME_DAY_TYPE_LABELS,
   SERVICE_MODE_LABELS,
   SERVICE_TYPE_LABELS,
@@ -78,6 +80,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   const [proofFiles, setProofFiles] = useState<File[]>([]);
   const [proofDragging, setProofDragging] = useState(false);
   const [delegates, setDelegates] = useState<EmployeeProfile[]>([]);
+  const leaveTypes = useLeaveTypes();
   const [delegatesLoading, setDelegatesLoading] = useState(false);
   const [overtimeOrders, setOvertimeOrders] = useState<OvertimeServiceOrder[]>([]);
   const [overtimeLoading, setOvertimeLoading] = useState(false);
@@ -208,8 +211,20 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     return "";
   }, [travelSegment, selectedOvertimeOrder, travelDepartureAt, travelReturnAt]);
 
-  const naturalDayLeave = form.requestType === "leave" && ["marriage", "bereavement"].includes(form.leaveType);
+  const activeLeaveType = form.requestType === "leave" ? leaveTypes.find((item) => item.code === form.leaveType) || null : null;
+  // 自然日口径（含六日与法定假）由假别表 includeNonWorkingDays 决定（spec 004；原写死：婚丧假）
+  const naturalDayLeave = form.requestType === "leave" && (activeLeaveType ? activeLeaveType.includeNonWorkingDays : ["marriage", "bereavement"].includes(form.leaveType || ""));
   const annualPreview = form.requestType === "leave" ? workingLeaveSummary(form, holidayDates, naturalDayLeave) : null;
+  // 年度带薪额度提示（spec 004，当前为病假 3 天/超额扣 30%）
+  const leaveQuota = form.requestType === "leave" && form.leaveType ? myProfile?.leaveQuotas?.[form.leaveType] : null;
+  const quotaWillExceedDays = leaveQuota && annualPreview
+    ? Math.max(0, Math.round((leaveQuota.usedDays + Number(annualPreview.workingDays || 0) - leaveQuota.quotaDays) * 100) / 100)
+    : 0;
+  // 产品裁决 2026-09-02：假别未配置参考天数且无带薪额度 = 没有天数依据，申请前需找行政确认
+  const leaveNeedsAdminConfirm = Boolean(
+    activeLeaveType && !activeLeaveType.countsBalance
+    && !activeLeaveType.referenceDays && activeLeaveType.paidQuotaDays === null,
+  );
   // 调休按整小时申请（最小单位 1 小时，产品裁决 2026-09-02）：不走半天槽，独立三个字段
   const [compDate, setCompDate] = useState(() => dateValue());
   const [compStartTime, setCompStartTime] = useState("09:00");
@@ -225,7 +240,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     : null;
   const annualSingleDay = form.annualStartDate === form.annualEndDate;
   const selectedDelegateName = delegates.find((item) => String(item.id) === form.delegateEmployeeId)?.employeeName || "";
-  const proofRequired = form.requestType === "leave" && ["sick", "marriage"].includes(form.leaveType);
+  const proofRequired = form.requestType === "leave" && (activeLeaveType ? activeLeaveType.requiresProof : ["sick", "marriage"].includes(form.leaveType || ""));
   // 草稿中已上传的证明数量（继续提交时可补充，重复计算校验分母）
   const compBalance = Number(myProfile?.compTimeBalanceHours || 0);
   const annualBalance = annualBalanceDays(myProfile);
@@ -295,7 +310,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     }
     if (form.requestType === "leave" && form.leaveType === "personal" && !String(form.reason || "").trim()) return "请填写事假事由";
     if (proofRequired && proofFiles.length === 0) {
-      return form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明";
+      return `${leaveTypeLabelOf(form.leaveType, leaveTypes)}必须上传证明`;
     }
     if (annualPreview && !annualPreview.workingDays) {
       return naturalDayLeave ? "申请范围内没有有效日期" : "申请范围内没有工作日";
@@ -392,7 +407,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   }
 
   const typeLabel = form.requestType === "leave"
-    ? LEAVE_TYPE_LABELS[form.leaveType || ""] || "请假"
+    ? leaveTypeLabelOf(form.leaveType, leaveTypes)
     : form.requestType === "overtime" ? "工单加班" : "调休";
 
   return (
@@ -608,7 +623,10 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   <div className="space-y-2">
                     <Label>假别</Label>
                     <div className="flex flex-wrap gap-2">
-                      {Object.entries(LEAVE_TYPE_LABELS).map(([value, label]) => {
+                      {(leaveTypes.length
+                        ? leaveTypes.filter((item) => item.enabled).map((item) => ({ value: item.code, label: item.label }))
+                        : Object.entries(LEAVE_TYPE_LABELS).map(([value, label]) => ({ value, label }))
+                      ).map(({ value, label }) => {
                         const active = form.leaveType === value;
                         return (
                           <button
@@ -633,6 +651,23 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                         );
                       })}
                     </div>
+                    {activeLeaveType && (activeLeaveType.referenceDays || activeLeaveType.policyNote) ? (
+                      <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                        {activeLeaveType.referenceDays ? <div>参考天数：{activeLeaveType.referenceDays}</div> : null}
+                        {activeLeaveType.policyNote ? <div>{activeLeaveType.policyNote}</div> : null}
+                      </div>
+                    ) : null}
+                    {leaveNeedsAdminConfirm ? (
+                      <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        <span>该假别未明确天数标准，提交前请先与行政确认可休天数。</span>
+                      </div>
+                    ) : null}
+                    {leaveQuota ? (
+                      <div className={`rounded-md border px-3 py-2 text-xs ${quotaWillExceedDays > 0 ? "border-amber-200 bg-amber-50 text-amber-800" : "bg-muted/30 text-muted-foreground"}`}>
+                        本年度带薪{leaveTypeLabelOf(form.leaveType, leaveTypes)}额度 {leaveQuota.quotaDays} 天，已批 {leaveQuota.usedDays} 天
+                        {quotaWillExceedDays > 0 ? `；本次将超出 ${quotaWillExceedDays} 天${leaveQuota.deductionPercent ? `，超出部分按政策扣 ${leaveQuota.deductionPercent}% 计` : ""}` : ""}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -855,13 +890,25 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                 {annualPreview || (form.requestType === "comp_time" && compPreview) ? (
                   <div className={balanceInsufficient
                     ? "rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-                    : "rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground"}>
+                    : quotaWillExceedDays > 0
+                      ? "rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+                      : "rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground"}>
                     <div className="flex items-center justify-between gap-3">
                       <span>本次申请：<b>{form.requestType === "comp_time" ? `${hours(compPreview?.hours || 0)} 小时` : `${days(annualPreview?.workingDays || 0)} 天`}</b></span>
-                      <span className="text-xs">可用：<b>{form.requestType === "comp_time" ? `${hours(compBalance)} 小时` : `${days(annualBalance)} 天`}</b></span>
+                      {form.requestType === "comp_time" ? (
+                        <span className="text-xs">可用调休：<b>{hours(compBalance)} 小时</b></span>
+                      ) : form.leaveType === "annual" ? (
+                        <span className="text-xs">特休余额：<b>{days(annualBalance)} 天</b></span>
+                      ) : leaveQuota ? (
+                        <span className="text-xs">带薪额度剩余：<b>{days(Math.max(0, Math.round((leaveQuota.quotaDays - leaveQuota.usedDays) * 100) / 100))} 天</b></span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">该假别不计系统余额</span>
+                      )}
                     </div>
                     {balanceInsufficient ? (
                       <p className="mt-1 text-xs font-medium">{form.requestType === "comp_time" ? "调休余额不足，请减少时长或先加班积累" : "特休余额不足，请缩短请假天数"}</p>
+                    ) : quotaWillExceedDays > 0 ? (
+                      <p className="mt-1 text-xs font-medium">本次将超出带薪额度 {quotaWillExceedDays} 天{leaveQuota?.deductionPercent ? `，超出部分按政策扣 ${leaveQuota.deductionPercent}% 计` : ""}，系统不拦截，以审批人把关为准</p>
                     ) : null}
                   </div>
                 ) : null}
@@ -969,7 +1016,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       </span>
                     </div>
                     <div className="pt-1 text-xs leading-5 text-muted-foreground">
-                      {naturalDayLeave ? "婚假、丧假按自然日计算，包含周末和国定假日" : "已排除周末和国定假日"}
+                      {naturalDayLeave ? "该假别按自然日计算，包含周末和国定假日" : "已排除周末和国定假日"}
                     </div>
                   </>
                 )}

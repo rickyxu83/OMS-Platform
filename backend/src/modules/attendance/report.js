@@ -2,6 +2,7 @@ const ExcelJS = require('exceljs')
 const { query } = require('../../config/db')
 const { badRequest } = require('../../utils/http-error')
 const { calculateWorkingLeaveRange } = require('./workflow')
+const { leaveTypeMap, payload: leaveTypePayload } = require('./leave-types')
 const { ensureSchema } = require('./controller')
 const duty = require('./duty')
 
@@ -114,7 +115,7 @@ function clipContinuousHours(startAt, endAt, filters) {
   return round((end - start) / 3600000)
 }
 
-function clipLeaveRange(row, filters, holidays) {
+function clipLeaveRange(row, filters, holidays, leaveTypeRows = null) {
   const start = mysqlDate(row.start_at)
   const end = mysqlDate(row.end_at)
   const clippedStart = timestamp(start) < timestamp(filters.startAt) ? `${filters.startDate} 09:00:00` : start
@@ -125,7 +126,7 @@ function clipLeaveRange(row, filters, holidays) {
       startAt: clippedStart,
       endAt: clippedEnd,
       holidays,
-      includeNonWorkingDays: row.request_type === 'leave' && ['marriage', 'bereavement'].includes(row.leave_type),
+      includeNonWorkingDays: row.request_type === 'leave' && leaveTypeIncludesNonWorkingDays(leaveTypeRows, row.leave_type),
     })
     return { hours: round(result.hours), days: round(result.hours / WORK_HOURS_PER_DAY) }
   } catch {
@@ -133,11 +134,18 @@ function clipLeaveRange(row, filters, holidays) {
   }
 }
 
-function requestRangeAmount(row, filters, holidays) {
+// 假别表驱动（spec 004）；无表数据时（单测/旧调用）回退写死婚丧假口径
+function leaveTypeIncludesNonWorkingDays(leaveTypeRows, code) {
+  const row = leaveTypeRows && leaveTypeRows.get ? leaveTypeRows.get(code) : null
+  if (row) return Boolean(row.include_non_working_days)
+  return ['marriage', 'bereavement'].includes(code)
+}
+
+function requestRangeAmount(row, filters, holidays, leaveTypeRows = null) {
   if (row.request_type === 'overtime') {
     return { hours: clipContinuousHours(row.start_at, row.end_at, filters), days: 0 }
   }
-  return clipLeaveRange(row, filters, holidays)
+  return clipLeaveRange(row, filters, holidays, leaveTypeRows)
 }
 
 function employeeStatus(row, endDate) {
@@ -230,7 +238,7 @@ async function loadReportRows(filters) {
   return { employees, requests, balanceRequests, manualLedger, holidays: new Set(holidays.map((row) => mysqlDate(row.holiday_date).slice(0, 10))) }
 }
 
-function buildReportData(filters, rows) {
+function buildReportData(filters, rows, leaveTypeRows = null) {
   const employeeById = new Map(rows.employees.map((employee) => [Number(employee.id), employee]))
   const activeIds = new Set(rows.employees
     .filter((employee) => Boolean(employee.attendance_enabled) && (!employee.hire_date || mysqlDate(employee.hire_date).slice(0, 10) <= filters.endDate))
@@ -251,6 +259,8 @@ function buildReportData(filters, rows) {
   const included = new Set(employees.map((employee) => employee.id))
   const leaveSummary = new Map(employees.map((employee) => [employee.id, {
     ...employee, requestCount: 0, annualDays: 0, sickHours: 0, personalHours: 0, marriageHours: 0, bereavementHours: 0, compTimeHours: 0, totalHours: 0,
+    // 自定义/新假别动态累计（spec 004）：导出报表无需改代码即可出列
+    leaveHoursByType: {},
   }]))
   const overtimeSummary = new Map(employees.map((employee) => [employee.id, {
     ...employee, requestCount: 0, totalHours: 0, compTimeHours: 0, payHours: 0, legalHolidayPayHours: 0, weightedPayHours: 0,
@@ -261,7 +271,7 @@ function buildReportData(filters, rows) {
   for (const row of rows.requests) {
     const employeeId = Number(row.employee_id)
     if (!included.has(employeeId)) continue
-    const amount = requestRangeAmount(row, filters, rows.holidays)
+    const amount = requestRangeAmount(row, filters, rows.holidays, leaveTypeRows)
     if (amount.hours <= 0) continue
     const employee = employeeById.get(employeeId)
     const status = employeeStatus(employee, filters.endDate)
@@ -295,10 +305,11 @@ function buildReportData(filters, rows) {
     else if (row.leave_type === 'personal') summary.personalHours = round(summary.personalHours + amount.hours)
     else if (row.leave_type === 'marriage') summary.marriageHours = round(summary.marriageHours + amount.hours)
     else if (row.leave_type === 'bereavement') summary.bereavementHours = round(summary.bereavementHours + amount.hours)
+    else if (row.leave_type) summary.leaveHoursByType[row.leave_type] = round((summary.leaveHoursByType[row.leave_type] || 0) + amount.hours)
     summary.totalHours = round(summary.totalHours + amount.hours)
     leaveDetails.push({
       employeeId, employeeName: employee.employee_name, status, requestId: Number(row.id),
-      leaveType: row.request_type === 'comp_time' ? LEAVE_LABELS.comp_time : (LEAVE_LABELS[row.leave_type] || row.leave_type || '-'),
+      leaveType: row.request_type === 'comp_time' ? LEAVE_LABELS.comp_time : (row.leave_type_label || LEAVE_LABELS[row.leave_type] || row.leave_type || '-'),
       startAt: mysqlDate(row.start_at), endAt: mysqlDate(row.end_at), hours: amount.hours,
       annualDays: row.leave_type === 'annual' ? amount.days : 0, approvedAt: finalApprovedAt(row),
     })
@@ -326,7 +337,7 @@ function buildReportData(filters, rows) {
     const fullyOccurred = timestamp(row.end_at) <= timestamp(filters.endExclusive)
     const amount = fullyOccurred
       ? { hours: round(row.hours), days: round(Number(row.hours || 0) / WORK_HOURS_PER_DAY) }
-      : requestRangeAmount(row, historyFilters, rows.holidays)
+      : requestRangeAmount(row, historyFilters, rows.holidays, leaveTypeRows)
     const delta = balanceType === 'annual_leave' ? sign * amount.days : sign * amount.hours
     if (!delta) continue
     const eventDate = fullyOccurred ? mysqlDate(row.end_at).slice(0, 10) : filters.endDate
@@ -378,6 +389,7 @@ function buildReportData(filters, rows) {
   return {
     filters,
     employees,
+    leaveTypes: leaveTypeRows ? [...leaveTypeRows.values()].map(leaveTypePayload) : [],
     leaveSummary: [...leaveSummary.values()], leaveDetails,
     overtimeSummary: [...overtimeSummary.values()], overtimeDetails,
     balanceSummary, balanceDetails,
@@ -535,8 +547,13 @@ function buildWorkbook(data) {
     { label: '请假总时数', value: `${leaveTotalHours} 小时` },
     { label: '特休使用', value: `${annualTotalDays} 天` },
   ], 10)
-  let next = addSection(leave, 10, '01  员工汇总', ['员工', '状态', '请假次数', '特休（天）', '病假（小时）', '事假（小时）', '婚假（小时）', '丧假（小时）', '调休（小时）', '请假总时数'],
-    data.leaveSummary.map((row) => [row.name, row.status, row.requestCount, row.annualDays, row.sickHours, row.personalHours, row.marriageHours, row.bereavementHours, row.compTimeHours, row.totalHours]),
+  // 自定义/新假别动态出列（spec 004）：有发生时数才加列
+  const extraLeaveTypes = (data.leaveTypes || []).filter(
+    (type) => !['annual', 'sick', 'personal', 'marriage', 'bereavement'].includes(type.code)
+      && data.leaveSummary.some((row) => Number(row.leaveHoursByType?.[type.code] || 0) > 0),
+  )
+  let next = addSection(leave, 10, '01  员工汇总', ['员工', '状态', '请假次数', '特休（天）', '病假（小时）', '事假（小时）', '婚假（小时）', '丧假（小时）', '调休（小时）', '请假总时数', ...extraLeaveTypes.map((type) => `${type.label}（小时）`)],
+    data.leaveSummary.map((row) => [row.name, row.status, row.requestCount, row.annualDays, row.sickHours, row.personalHours, row.marriageHours, row.bereavementHours, row.compTimeHours, row.totalHours, ...extraLeaveTypes.map((type) => Number(row.leaveHoursByType?.[type.code] || 0))]),
     [18, 10, 12, 12, 13, 13, 13, 13, 13, 14])
   next += 1
   addSection(leave, next, '02  申请明细', ['员工', '状态', '申请编号', '假别', '开始时间', '结束时间', '区间内时长（小时）', '特休折算（天）', '最终审批时间'],
@@ -654,7 +671,8 @@ async function exportReport(req, res) {
   await ensureSchema()
   const filters = parseReportFilters(req.query)
   const rows = await loadReportRows(filters)
-  const data = buildReportData(filters, rows)
+  const leaveTypeRows = await leaveTypeMap()
+  const data = buildReportData(filters, rows, leaveTypeRows)
   const workbook = buildWorkbook(data)
   await addDutyWorksheet(workbook, filters)
   const buffer = await workbook.xlsx.writeBuffer()

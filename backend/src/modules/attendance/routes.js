@@ -25,6 +25,11 @@ router.put('/supervisor-role-rules', requirePermission('attendance.manage'), con
 router.get('/approval-role-rules', requirePermission('attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listApprovalRoleRules)
 router.put('/approval-role-rules', requirePermission('attendance.manage'), controller.updateApprovalRoleRules)
 router.get('/legal-holidays', requirePermission('attendance.apply', 'attendance.approve', 'attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listLegalHolidays)
+// 假别元数据（spec 004）：读取供申请下拉/列表 label；?all=1 含停用项仅 manage 生效
+router.get('/leave-types', requirePermission('attendance.apply', 'attendance.approve', 'attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listLeaveTypes)
+router.post('/leave-types', requirePermission('attendance.manage'), controller.createLeaveTypeHandler)
+router.put('/leave-types/:id', requirePermission('attendance.manage'), controller.updateLeaveTypeHandler)
+router.delete('/leave-types/:id', requirePermission('attendance.manage'), controller.deleteLeaveTypeHandler)
 router.put('/legal-holidays/:date', requirePermission('attendance.manage'), controller.upsertLegalHoliday)
 router.delete('/legal-holidays/:date', requirePermission('attendance.manage'), controller.deleteLegalHoliday)
 router.post('/legal-holidays/sync-preview', requirePermission('attendance.manage'), controller.syncLegalHolidaysPreview)

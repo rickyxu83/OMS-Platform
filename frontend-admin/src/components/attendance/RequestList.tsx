@@ -40,7 +40,17 @@ const OVERTIME_DAY_TYPE_ICONS: Record<string, LucideIcon> = { workday: CalendarD
 // 明细列主内容：标题 + 图标化属性（结果 / 3倍警示 / 日类型），请假与调休仅加粗主文案
 function requestDetailContent(item: AttendanceRequest) {
   if (item.requestType === "leave") {
-    return <span className="text-sm font-medium">{LEAVE_TYPE_LABELS[item.leaveType || ""] || "-"}</span>;
+    const quota = item.leaveQuota;
+    return (
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+        <span className="text-sm font-medium">{item.leaveTypeLabel || LEAVE_TYPE_LABELS[item.leaveType || ""] || "-"}</span>
+        {quota ? (
+          <span className={`inline-flex items-center text-[11px] font-medium ${quota.exceedDays > 0 ? "text-amber-600" : "text-muted-foreground"}`}>
+            带薪额度 {quota.usedDays}/{quota.quotaDays} 天{quota.exceedDays > 0 ? ` · 已超额 ${quota.exceedDays} 天` : ""}
+          </span>
+        ) : null}
+      </span>
+    );
   }
   if (item.requestType === "overtime") {
     const ResultIcon = OVERTIME_RESULT_ICONS[item.overtimeResult || ""];
