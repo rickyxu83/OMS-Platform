@@ -2058,9 +2058,6 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       customerSignature: isOnsite ? form.customerSignature : "",
       customerSignatureFileId: isOnsite && form.customerSignatureFileId ? Number(form.customerSignatureFileId) : null,
       engineerIds: form.engineerIds.map(Number).filter(Boolean),
-      // 新建巡检自报单时附件在 POST 建单成功后才上传（uploadOrderFiles 需要 orderId），
-      // 告知后端建单时暂缓“必须有巡检文档”校验；后续重试走 PUT（updateSelfReport）仍会强校验
-      inspectionDocumentPending: inspectionFiles.length > 0,
       parts: activeParts().map((part) => {
         const actionType = part.actionType || partActionFor(form.serviceMode, payloadServiceType, payloadTimesheetCategory);
         return {
