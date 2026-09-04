@@ -29,7 +29,6 @@ interface EmployeeDraft {
 interface AdjustDraft {
   balanceType: "comp_time" | "annual_leave";
   target: string;
-  note: string;
 }
 function createEmployeeDraft(employee: EmployeeProfile): EmployeeDraft {
   return {
@@ -55,7 +54,7 @@ function currentBalanceOf(employee: EmployeeProfile, balanceType: AdjustDraft["b
 
 function createAdjustDraft(employee: EmployeeProfile): AdjustDraft {
   const balanceType = employeeHasCompTime(employee) ? "comp_time" : "annual_leave";
-  return { balanceType, target: String(currentBalanceOf(employee, balanceType)), note: "" };
+  return { balanceType, target: String(currentBalanceOf(employee, balanceType)) };
 }
 
 interface EmployeeDialogProps {
@@ -213,7 +212,6 @@ export function AdjustBalanceDialog({ employee, onClose, onSaved }: EmployeeDial
         balanceType: draft.balanceType,
         targetDays: annualAdjust ? target : undefined,
         targetHours: annualAdjust ? undefined : target,
-        note: draft.note,
       });
       toast.success(data?.unchanged ? "余额已是目标值" : "余额已设定");
       onClose();
@@ -263,19 +261,8 @@ export function AdjustBalanceDialog({ employee, onClose, onSaved }: EmployeeDial
               <div className="space-y-2">
                 <Label>设定为（{draft.balanceType === "annual_leave" ? "天" : "小时"}）</Label>
                 {draft.balanceType === "annual_leave" && employee.annualLeaveSuggestedDays !== null && employee.annualLeaveSuggestedDays !== undefined ? (
-                  <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                    <span>按入职日期计算：满 {employee.annualLeaveTierYears ?? "-"} 年档，建议年度 {employee.annualLeaveSuggestedDays} 天（当前余额 {days(annualBalanceDays(employee))} 天）</span>
-                    {Math.abs(Number(employee.annualLeaveSuggestedDays) - annualBalanceDays(employee)) > 0.0001 ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-7"
-                        onClick={() => patchDraft({ target: String(employee.annualLeaveSuggestedDays), note: draft.note || `按公式建议额度设定（满 ${employee.annualLeaveTierYears} 年档 ${employee.annualLeaveSuggestedDays} 天）` })}
-                      >
-                        设为建议额度（{employee.annualLeaveSuggestedDays} 天）
-                      </Button>
-                    ) : <span className="text-emerald-600">余额已与建议额度一致</span>}
+                  <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    按入职日期计算：满 {employee.annualLeaveTierYears ?? "-"} 年档，建议年度 {employee.annualLeaveSuggestedDays} 天
                   </div>
                 ) : null}
                 <Input
@@ -307,14 +294,6 @@ export function AdjustBalanceDialog({ employee, onClose, onSaved }: EmployeeDial
                     </p>
                   );
                 })()}
-              </div>
-              <div className="space-y-2">
-                <Label>备注</Label>
-                <Input
-                  placeholder="备注（可选）"
-                  value={draft.note}
-                  onChange={(event) => patchDraft({ note: event.target.value })}
-                />
               </div>
             </div>
           ) : null}
