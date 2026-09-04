@@ -3489,7 +3489,8 @@ async function teamCalendar(req, res) {
 // ===== 年末/季末结算（spec 005 v3，佬 2026-09-03） =====
 
 // 调休季末清零预览：当季入账在下一季末到期；FIFO 口径剩余 = max(0, 当季入账 − max(0, 当季起使用 − 季初结余))
-// 注：作废冲回（void）回滚使用的边缘场景未反向修正，预览与清零口径偏保守（少清零），可接受
+// 口径 2026-09-04 佬裁决：入账/消耗按正负号判定（不再只看 earn/use），
+// 行政手动设定（adjust）同样按创建日所在季度归属、次季末清零
 async function compExpiryPreviewMap(employeeIds) {
   const result = new Map()
   if (!employeeIds.length) return result
@@ -3504,8 +3505,8 @@ async function compExpiryPreviewMap(employeeIds) {
   })
   const rows = await query(
     `SELECT employee_id,
-            COALESCE(SUM(CASE WHEN action = 'earn' AND created_at >= :start THEN delta_hours ELSE 0 END), 0) AS earned_quarter,
-            COALESCE(SUM(CASE WHEN action = 'use' AND created_at >= :start THEN delta_hours ELSE 0 END), 0) AS used_since_quarter,
+            COALESCE(SUM(CASE WHEN delta_hours > 0 AND created_at >= :start THEN delta_hours ELSE 0 END), 0) AS earned_quarter,
+            COALESCE(SUM(CASE WHEN delta_hours < 0 AND created_at >= :start THEN delta_hours ELSE 0 END), 0) AS used_since_quarter,
             COALESCE(SUM(CASE WHEN created_at < :start THEN delta_hours ELSE 0 END), 0) AS pool_before
      FROM attendance_balance_ledger
      WHERE balance_type = 'comp_time' AND employee_id IN (${idList.join(', ')})
@@ -3581,8 +3582,8 @@ async function runCompTimeExpiry(year, quarter, operatorUserId = null) {
     if (Number(existing[0]?.n || 0) > 0) return { skipped: true, count: 0 }
     const [rows] = await connection.execute(
       `SELECT employee_id,
-              COALESCE(SUM(CASE WHEN action = 'earn' AND created_at >= :start AND created_at <= :end THEN delta_hours ELSE 0 END), 0) AS earned_quarter,
-              COALESCE(SUM(CASE WHEN action = 'use' AND created_at >= :start THEN delta_hours ELSE 0 END), 0) AS used_since_quarter,
+              COALESCE(SUM(CASE WHEN delta_hours > 0 AND created_at >= :start AND created_at <= :end THEN delta_hours ELSE 0 END), 0) AS earned_quarter,
+              COALESCE(SUM(CASE WHEN delta_hours < 0 AND created_at >= :start THEN delta_hours ELSE 0 END), 0) AS used_since_quarter,
               COALESCE(SUM(CASE WHEN created_at < :start THEN delta_hours ELSE 0 END), 0) AS pool_before
        FROM attendance_balance_ledger
        WHERE balance_type = 'comp_time'
@@ -3616,6 +3617,8 @@ async function runCompTimeExpiry(year, quarter, operatorUserId = null) {
 }
 
 // 调度入口（每日 23:50）：12-31 跑特休年末折算；季末最后一天跑调休清零（两个任务自身幂等）
+// 调休口径：当季入账次季末清零——季末最后一天到期的是【上一季度】的入账（compExpiryOf 同口径），
+// 修复 2026-09-04 前误在当季末清当季（提前一个季度清零）
 async function annualLeaveSettlementTick() {
   const now = new Date()
   const year = now.getFullYear()
@@ -3625,7 +3628,10 @@ async function annualLeaveSettlementTick() {
   const quarter = quarterOfMonth(month)
   const range = quarterRange(year, quarter)
   const today = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-  if (range.end.slice(0, 10) === today) await runCompTimeExpiry(year, quarter)
+  if (range.end.slice(0, 10) === today) {
+    const prevQuarter = quarter === 1 ? { year: year - 1, quarter: 4 } : { year, quarter: quarter - 1 }
+    await runCompTimeExpiry(prevQuarter.year, prevQuarter.quarter)
+  }
 }
 
 // ===== 假别元数据管理（spec 004） =====

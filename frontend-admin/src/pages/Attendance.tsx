@@ -1323,9 +1323,9 @@ export function Attendance() {
                     ...(employee.annualLeaveCarryoverPreview && employee.annualLeaveCarryoverPreview.balanceDays > 0
                       ? [{ label: "年末结转", value: `≈ ${employee.annualLeaveCarryoverPreview.resultDays} 天（${employee.annualLeaveCarryoverPreview.balanceDays} × ${employee.annualLeaveCarryoverPreview.rate}）` }]
                       : []),
-                    { label: "调休余额", value: ["engineer", "driver"].includes(employee.role || "") ? `${hours(employee.compTimeBalanceHours)} 小时（当季入账次季末清零）` : "-" },
+                    { label: "调休余额", value: ["engineer", "driver"].includes(employee.role || "") ? `${hours(employee.compTimeBalanceHours)} 小时` : "-" },
                     ...(["engineer", "driver"].includes(employee.role || "") && employee.compTimeExpiryPreview && employee.compTimeExpiryPreview.remainingHours > 0
-                      ? [{ label: "次季到期", value: `${employee.compTimeExpiryPreview.quarterLabel} 剩余 ${hours(employee.compTimeExpiryPreview.remainingHours)} 小时 · ${employee.compTimeExpiryPreview.expiresAt.slice(5)} 到期` }]
+                      ? [{ label: "次季到期", value: `${hours(employee.compTimeExpiryPreview.remainingHours)} 小时 · ${employee.compTimeExpiryPreview.expiresAt.slice(5)} 清零` }]
                       : []),
                   ]}
                   actions={(
@@ -1397,10 +1397,9 @@ export function Attendance() {
                         {["engineer", "driver"].includes(employee.role || "") ? (
                           <>
                             <span className="text-base font-semibold">{hours(employee.compTimeBalanceHours)}</span><span className="ml-1 text-xs text-muted-foreground">小时</span>
-                            <div className="mt-0.5 text-xs text-muted-foreground">当季入账 · 次季末清零</div>
                             {employee.compTimeExpiryPreview && employee.compTimeExpiryPreview.remainingHours > 0 ? (
                               <div className="mt-0.5 text-xs text-muted-foreground">
-                                {employee.compTimeExpiryPreview.quarterLabel} 剩余 {hours(employee.compTimeExpiryPreview.remainingHours)} 小时 · {employee.compTimeExpiryPreview.expiresAt.slice(5)} 到期
+                                {hours(employee.compTimeExpiryPreview.remainingHours)} 小时 · {employee.compTimeExpiryPreview.expiresAt.slice(5)} 清零
                               </div>
                             ) : null}
                           </>

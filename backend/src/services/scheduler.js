@@ -1140,7 +1140,7 @@ function startScheduler() {
     }
   })
 
-  // 年末/季末结算（spec 005 v3）：每日 23:50 检查——12-31 特休年末折算（×0.5/0.6 向下取整 0.5 天）；季末最后一天调休当季入账清零（幂等）
+  // 年末/季末结算（spec 005 v3）：每日 23:50 检查——12-31 特休年末折算（×0.5/0.6 向下取整 0.5 天）；季末最后一天调休上一季度入账到期清零（幂等）
   scheduleCron('50 23 * * *', async () => {
     try {
       const { annualLeaveSettlementTick } = require('../modules/attendance/controller')
