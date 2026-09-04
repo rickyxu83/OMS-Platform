@@ -265,34 +265,51 @@ export function SignaturePad({
     context.lineJoin = "round";
     context.lineWidth = 2;
     context.strokeStyle = foregroundColor;
-    drawnValueRef.current = snapshot;
+    if (!snapshot) {
+      // 空签名是同步绘制，直接标记“已显示”
+      drawnValueRef.current = "";
+      drawnRotatedRef.current = rotatedNow;
+      return;
+    }
+    // 图片回画是异步的：onload 真正画上之前不得标记 drawnValueRef，否则布局抖动
+    // （关闭全屏弹窗/进出 Fullscreen/软键盘）触发的下一次 setupCanvas 会误判“已显示”
+    // 提前返回，而本次 onload 又因 drawToken 失效被丢弃——画布空白但提交有数据
+    // （2026-09-04 横屏签名保存后预览空白根因）。onerror 兜底防止坏图反复重试。
+    drawnValueRef.current = "";
     drawnRotatedRef.current = rotatedNow;
-    if (snapshot) {
-      const image = new Image();
-      image.onload = () => {
-        if (drawTokenRef.current !== token) return;
-        // 裁剪图是设备像素：换回 CSS 尺寸（÷ratio）后只缩不放，绝不上采样——恢复/重绘不再放大笔迹
-        const naturalW = image.width / ratio;
-        const naturalH = image.height / ratio;
-        if (rotatedNow) {
-          // 画布被旋转 90° 展示：把图片反向转进画布，用户看到的才是正的
-          const scale = Math.min(1, height / naturalW, width / naturalH);
-          const drawWidth = naturalW * scale;
-          const drawHeight = naturalH * scale;
-          context.save();
-          context.translate(width / 2, height / 2);
-          context.rotate(-Math.PI / 2);
-          context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-          context.restore();
-          return;
-        }
-        const scale = Math.min(1, width / naturalW, height / naturalH);
+    const markDrawn = () => {
+      drawnValueRef.current = snapshot;
+      drawnRotatedRef.current = rotatedNow;
+    };
+    const image = new Image();
+    image.onload = () => {
+      if (drawTokenRef.current !== token) return;
+      // 裁剪图是设备像素：换回 CSS 尺寸（÷ratio）后只缩不放，绝不上采样——恢复/重绘不再放大笔迹
+      const naturalW = image.width / ratio;
+      const naturalH = image.height / ratio;
+      if (rotatedNow) {
+        // 画布被旋转 90° 展示：把图片反向转进画布，用户看到的才是正的
+        const scale = Math.min(1, height / naturalW, width / naturalH);
         const drawWidth = naturalW * scale;
         const drawHeight = naturalH * scale;
-        context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
-      };
-      image.src = snapshot;
-    }
+        context.save();
+        context.translate(width / 2, height / 2);
+        context.rotate(-Math.PI / 2);
+        context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+        context.restore();
+        markDrawn();
+        return;
+      }
+      const scale = Math.min(1, width / naturalW, height / naturalH);
+      const drawWidth = naturalW * scale;
+      const drawHeight = naturalH * scale;
+      context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+      markDrawn();
+    };
+    image.onerror = () => {
+      if (drawTokenRef.current === token) markDrawn();
+    };
+    image.src = snapshot;
   }, [value, rotated]);
 
   useEffect(() => {
@@ -367,6 +384,7 @@ export function SignaturePad({
       if (!dataUrl) dataUrl = source.toDataURL("image/png");
     }
     drawnValueRef.current = dataUrl; // 标记本画布已显示此 value，阻止紧随其后的重绘把它拉伸放大
+    if (canvas) drawnRotatedRef.current = isQuarterRotated(canvas); // 位图朝向同步记录，方向翻转时重绘不被跳过
     onChange(dataUrl);
   }
 
@@ -407,6 +425,7 @@ export function FullscreenSignatureDialog({
   onChange: (value: string) => void;
 }) {
   const [draftValue, setDraftValue] = useState(value);
+  const contentRef = useRef<HTMLDivElement | null>(null);
   const [signatureViewport, setSignatureViewport] = useState(() => ({
     touch: typeof window !== "undefined" ? window.matchMedia("(hover: none), (pointer: coarse)").matches : false,
     landscape: typeof window !== "undefined" ? window.matchMedia("(orientation: landscape)").matches : false,
@@ -415,6 +434,34 @@ export function FullscreenSignatureDialog({
   useEffect(() => {
     if (open) setDraftValue(value);
   }, [open, value]);
+
+  // 触屏设备打开全屏签名时，尝试进入浏览器 Fullscreen 并锁定横屏：
+  // CSS 伪全屏下用户再把手机横过来，浏览器会重新露出地址栏/标签栏压缩可视面积；
+  // Fullscreen 状态下浏览器 chrome 隐藏，且 Android 会自动旋转到横屏、无需手动翻转。
+  // iOS Safari/微信不支持元素级 Fullscreen，请求失败静默降级为现有 CSS 全屏方案。
+  useEffect(() => {
+    if (!open || !signatureViewport.touch) return;
+    const el = contentRef.current as (HTMLDivElement & { webkitRequestFullscreen?: () => Promise<void> | void }) | null;
+    // TS 内置 ScreenOrientation 类型缺 lock/unlock（Screen Orientation API 二阶段方法），显式扩展
+    const orientation = screen.orientation as (ScreenOrientation & {
+      lock?: (orientation: "landscape") => Promise<void>;
+      unlock?: () => void;
+    }) | undefined;
+    const requestFullscreen = el?.requestFullscreen || el?.webkitRequestFullscreen;
+    if (requestFullscreen) {
+      try {
+        Promise.resolve(requestFullscreen.call(el))
+          .then(() => orientation?.lock?.("landscape"))
+          .catch(() => {});
+      } catch { /* 不支持时静默降级 */ }
+    }
+    return () => {
+      try { orientation?.unlock?.(); } catch { /* 不支持时忽略 */ }
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+    };
+  }, [open, signatureViewport.touch]);
 
   useEffect(() => {
     const touchMedia = window.matchMedia("(hover: none), (pointer: coarse)");
@@ -443,6 +490,7 @@ export function FullscreenSignatureDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        ref={contentRef}
         className={dialogClassName}
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
