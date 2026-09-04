@@ -570,6 +570,7 @@ export const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" 
 export const ROLE_LABELS: Record<string, string> = {
   admin: "管理员",
   assistant: "助理",
+  assistant_supervisor: "助理主管",
   dispatcher: "调度",
   operations_director: "运营负责人",
   engineering_supervisor: "工程主管",
@@ -577,6 +578,7 @@ export const ROLE_LABELS: Record<string, string> = {
   sales_supervisor: "业务主管",
   sales: "业务",
   engineer: "工程师",
+  purchaser: "采购",
 };
 
 export const NATIONALITY_LABELS: Record<string, string> = {

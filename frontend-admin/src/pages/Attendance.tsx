@@ -1311,7 +1311,7 @@ export function Attendance() {
                         onCheckedChange={(checked) => setEmployeeSelected(index, checked ? "add" : "remove")}
                       />
                       <span title={employee.employeeName || "-"} className="truncate">{employee.employeeName || "-"}</span>
-                      <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[11px] font-normal">{roleLabel(employee.role)}</Badge>
+                      <span className="shrink-0 text-xs font-normal text-muted-foreground">{roleLabel(employee.role)}</span>
                     </span>
                   )}
                   subtitle={employee.username || "-"}
@@ -1319,13 +1319,13 @@ export function Attendance() {
                     { label: "级别 / 入职", value: `${ANNUAL_LEAVE_SCHEME_LABELS[employee.annualLeaveScheme || ""] || "陆籍"} · ${formatDate(employee.hireDate)}` },
                     { label: "特休余额", value: employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined
                       ? `${days(annualBalanceDays(employee))} 天`
-                      : `${days(annualBalanceDays(employee))} 天（满 ${employee.annualLeaveTierYears} 年档 · 建议 ${employee.annualLeaveSuggestedDays ?? "-"} 天/年）` },
+                      : `${days(annualBalanceDays(employee))} 天（满 ${employee.annualLeaveTierYears} 年档 · ${employee.annualLeaveSuggestedDays ?? "-"} 天/年）` },
                     ...(employee.annualLeaveCarryoverPreview && employee.annualLeaveCarryoverPreview.balanceDays > 0
                       ? [{ label: "年末结转", value: `≈ ${employee.annualLeaveCarryoverPreview.resultDays} 天（${employee.annualLeaveCarryoverPreview.balanceDays} × ${employee.annualLeaveCarryoverPreview.rate}）` }]
                       : []),
-                    { label: "调休余额", value: ["engineer", "driver"].includes(employee.role || "") ? `${hours(employee.compTimeBalanceHours)} 小时` : "-" },
+                    { label: "调休余额", value: ["engineer", "driver"].includes(employee.role || "") ? `${hours(employee.compTimeBalanceHours)} 小时（当季入账次季末清零）` : "-" },
                     ...(["engineer", "driver"].includes(employee.role || "") && employee.compTimeExpiryPreview && employee.compTimeExpiryPreview.remainingHours > 0
-                      ? [{ label: "季末结转", value: `${employee.compTimeExpiryPreview.quarterLabel} 剩余 ${hours(employee.compTimeExpiryPreview.remainingHours)} 小时 · 可用至 ${employee.compTimeExpiryPreview.expiresAt.slice(5)}` }]
+                      ? [{ label: "次季到期", value: `${employee.compTimeExpiryPreview.quarterLabel} 剩余 ${hours(employee.compTimeExpiryPreview.remainingHours)} 小时 · ${employee.compTimeExpiryPreview.expiresAt.slice(5)} 到期` }]
                       : []),
                   ]}
                   actions={(
@@ -1370,9 +1370,9 @@ export function Attendance() {
                         />
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-baseline gap-1.5">
                           <span className="font-medium">{employee.employeeName || "-"}</span>
-                          <Badge variant="outline" className="px-1.5 py-0 text-[11px] font-normal">{roleLabel(employee.role)}</Badge>
+                          <span className="text-xs text-muted-foreground">{roleLabel(employee.role)}</span>
                         </div>
                         <div className="text-xs text-muted-foreground">{employee.username || "-"}</div>
                       </TableCell>
@@ -1383,8 +1383,8 @@ export function Attendance() {
                       <TableCell>
                         <span className="text-base font-semibold">{days(annualBalanceDays(employee))}</span><span className="ml-1 text-xs text-muted-foreground">天</span>
                         {employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined ? null : (
-                          <div className={`mt-0.5 text-xs ${Number(employee.annualLeaveSuggestedDays || 0) !== Math.round(annualBalanceDays(employee) * 100) / 100 ? "text-amber-600" : "text-muted-foreground"}`}>
-                            满 {employee.annualLeaveTierYears} 年档 · 建议 {employee.annualLeaveSuggestedDays ?? "-"} 天/年
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            满 {employee.annualLeaveTierYears} 年档 · {employee.annualLeaveSuggestedDays ?? "-"} 天/年
                           </div>
                         )}
                         {employee.annualLeaveCarryoverPreview && employee.annualLeaveCarryoverPreview.balanceDays > 0 ? (
@@ -1397,9 +1397,10 @@ export function Attendance() {
                         {["engineer", "driver"].includes(employee.role || "") ? (
                           <>
                             <span className="text-base font-semibold">{hours(employee.compTimeBalanceHours)}</span><span className="ml-1 text-xs text-muted-foreground">小时</span>
+                            <div className="mt-0.5 text-xs text-muted-foreground">当季入账 · 次季末清零</div>
                             {employee.compTimeExpiryPreview && employee.compTimeExpiryPreview.remainingHours > 0 ? (
-                              <div className="mt-0.5 text-xs text-amber-600">
-                                {employee.compTimeExpiryPreview.quarterLabel} 剩余 {hours(employee.compTimeExpiryPreview.remainingHours)} 小时 · 可用至 {employee.compTimeExpiryPreview.expiresAt.slice(5)}（逾期清零）
+                              <div className="mt-0.5 text-xs text-muted-foreground">
+                                {employee.compTimeExpiryPreview.quarterLabel} 剩余 {hours(employee.compTimeExpiryPreview.remainingHours)} 小时 · {employee.compTimeExpiryPreview.expiresAt.slice(5)} 到期
                               </div>
                             ) : null}
                           </>
