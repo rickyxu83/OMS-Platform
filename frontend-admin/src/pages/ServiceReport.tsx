@@ -3311,6 +3311,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 <PdfPreview
                   data={attachmentPreviewPdfData}
                   title={attachmentPreviewFile.originalName || "PDF 附件预览"}
+                  fileName={attachmentPreviewFile.originalName || undefined}
                 />
               ) : attachmentPreviewOffice && attachmentPreviewFile ? (
                 <OfficePreviewContent

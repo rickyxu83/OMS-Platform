@@ -1683,7 +1683,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
           <div className="min-h-0 flex-1 overflow-auto bg-muted/20 p-4 sm:p-6">
             {pdfPreview ? (
               pdfPreview.data ? (
-                <PdfPreview data={pdfPreview.data} title={pdfPreview.file.name} />
+                <PdfPreview data={pdfPreview.data} title={pdfPreview.file.name} fileName={pdfPreview.file.name} />
               ) : (
                 <div className="flex min-h-[360px] items-center justify-center gap-2 text-sm text-muted-foreground">
                   <span className="btn-loader" aria-hidden="true" />
