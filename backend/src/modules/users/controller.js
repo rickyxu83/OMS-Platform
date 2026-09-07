@@ -27,6 +27,30 @@ const avatarExtensionByMime = {
   'image/webp': '.webp',
 }
 
+// 用户补传/更新手写签名后，即时回填本人名下所有已 approve 但快照为空的 MR 签核步骤，
+// 让打印页与归档 PDF 立刻带签名，不再等后端重启触发 workflow.js 里的兜底回填。
+// mr_approvals 由 MR 模块惰性建表，表不存在时静默跳过。
+async function backfillMrApprovalSignatureSnapshots(userId, signature) {
+  if (!signature) return
+  try {
+    const tables = await query(
+      `SELECT table_name AS tableName FROM information_schema.tables
+       WHERE table_schema = DATABASE() AND table_name = 'mr_approvals'`,
+    )
+    if (!tables.length) return
+    await query(
+      `UPDATE mr_approvals
+       SET approver_signature_snapshot = :signature
+       WHERE approver_id = :userId
+         AND action = 'approve'
+         AND approver_signature_snapshot IS NULL`,
+      { userId, signature },
+    )
+  } catch (error) {
+    console.warn('[users] MR 签核签名快照回填失败', error?.message)
+  }
+}
+
 const avatarUploadMiddleware = multer({
   storage: multer.diskStorage({
     destination(_req, _file, cb) {
@@ -400,6 +424,9 @@ async function updateMe(req, res) {
   }
 
   await query(`UPDATE users SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = :id`, params)
+  if (engineerSignature !== null && params.engineerSignature) {
+    await backfillMrApprovalSignatureSnapshots(req.user.id, params.engineerSignature)
+  }
   res.status(204).end()
 }
 
