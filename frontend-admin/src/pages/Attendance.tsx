@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ErrorToast } from "@/components/ErrorToast";
+import { PdfPreview } from "@/components/PdfPreview";
 import { ServiceOrderDetailDialog } from "@/components/ServiceOrderDetailDialog";
 import { AttendanceDuty } from "@/pages/AttendanceDuty";
 import { AttendanceApplyDrawer } from "@/pages/AttendanceApplyDrawer";
@@ -92,6 +93,7 @@ interface ProofPreview {
   url: string;
   originalName: string;
   mimeType: string;
+  pdfData?: Uint8Array;
 }
 
 
@@ -622,13 +624,17 @@ export function Attendance() {
     try {
       const blob = await api.download(`/files/${file.id}`);
       const url = URL.createObjectURL(blob);
+      const mimeType = blob.type || file.mimeType || "application/octet-stream";
+      // PDF 改走 pdf.js canvas 预览（360 等浏览器会劫持 blob iframe 成下载），需要原始字节
+      const pdfData = mimeType === "application/pdf" ? new Uint8Array(await blob.arrayBuffer()) : undefined;
       setProofImageSize(null);
       setProofPreview((current) => {
         if (current?.url) URL.revokeObjectURL(current.url);
         return {
           url,
           originalName: file.originalName || `proof-${file.id}`,
-          mimeType: blob.type || file.mimeType || "application/octet-stream",
+          mimeType,
+          pdfData,
         };
       });
     } catch (e) {
@@ -1633,7 +1639,15 @@ export function Attendance() {
                     </a>
                   </div>
                 </div>
-              ) : proofPreview.mimeType === "application/pdf" || proofPreview.mimeType.startsWith("text/") ? (
+              ) : proofPreview.mimeType === "application/pdf" ? (
+                proofPreview.pdfData ? (
+                  <PdfPreview data={proofPreview.pdfData} title={proofPreview.originalName} fileName={proofPreview.originalName} />
+                ) : (
+                  <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <span className="btn-loader" aria-hidden="true" />正在加载 PDF…
+                  </div>
+                )
+              ) : proofPreview.mimeType.startsWith("text/") ? (
                 <iframe title={proofPreview.originalName} src={proofPreview.url} className="h-full w-full rounded-lg border bg-background" />
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-4 rounded-lg border bg-background px-6 text-center">

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ZoomIn, ZoomOut } from "lucide-react";
+import { Download, ZoomIn, ZoomOut } from "lucide-react";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 interface PdfPreviewProps {
   data: Uint8Array;
   title?: string;
+  fileName?: string;
 }
 
 interface PdfPageProps {
@@ -75,7 +76,7 @@ function PdfPage({ document, pageNumber, containerWidth, zoom }: PdfPageProps) {
   );
 }
 
-export function PdfPreview({ data, title = "PDF 附件预览" }: PdfPreviewProps) {
+export function PdfPreview({ data, title = "PDF 附件预览", fileName }: PdfPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -103,6 +104,13 @@ export function PdfPreview({ data, title = "PDF 附件预览" }: PdfPreviewProps
     setError("");
     setZoom(1);
 
+    // 360 等旧 Chromium 内核（<119）缺 Promise.withResolvers，pdf.js v6 无法运行——明确提示并给下载兜底
+    if (typeof (Promise as unknown as { withResolvers?: unknown }).withResolvers !== "function") {
+      setError("当前浏览器内核过旧，不支持在线预览 PDF。请切换到极速模式，或使用 Chrome / Edge 浏览器");
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
+
     void import("pdfjs-dist").then((pdfjs) => {
       if (cancelled) return null;
       pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -125,6 +133,18 @@ export function PdfPreview({ data, title = "PDF 附件预览" }: PdfPreviewProps
   }, [data]);
 
   const pageNumbers = document ? Array.from({ length: document.numPages }, (_, index) => index + 1) : [];
+
+  const downloadFile = () => {
+    const blob = new Blob([data.slice()], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = fileName || "document.pdf";
+    window.document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div ref={containerRef} className="flex min-h-[360px] flex-col overflow-hidden rounded-lg border bg-slate-200" aria-label={title}>
@@ -149,8 +169,11 @@ export function PdfPreview({ data, title = "PDF 附件预览" }: PdfPreviewProps
             正在渲染 PDF…
           </div>
         ) : error ? (
-          <div className="flex min-h-[300px] items-center justify-center px-6 text-center text-sm text-destructive">
-            PDF 预览失败：{error}。请下载文件后查看。
+          <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 px-6 text-center text-sm">
+            <div className="text-destructive">PDF 预览失败：{error}</div>
+            <Button type="button" variant="outline" size="sm" onClick={downloadFile}>
+              <Download className="mr-1 h-4 w-4" />下载文件查看
+            </Button>
           </div>
         ) : document && containerWidth ? (
           <div data-pdf-rendered-pages={document.numPages} className="space-y-4">
