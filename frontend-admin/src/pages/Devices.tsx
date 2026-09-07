@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Search, Plus, RefreshCw, Server, Trash2, Check, Pencil, RotateCcw, Edit3, Download, Upload, MoreHorizontal, FileSpreadsheet, ChevronDown, Paperclip, Merge, TriangleAlert, X, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PdfPreview } from "@/components/PdfPreview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -191,6 +192,7 @@ export function Devices() {
     canViewOrderDetail ? `/service-orders?orderId=${orderId}` : `/service-report?preview=${orderId}`
   );
   const [devices, setDevices] = useState<Device[]>([]);
+  const [attachmentPdfPreview, setAttachmentPdfPreview] = useState<{ name: string; data: Uint8Array } | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [parties, setParties] = useState<MaintenanceParty[]>([]);
   const [loading, setLoading] = useState(true);
@@ -969,7 +971,12 @@ export function Devices() {
       const blob = await api.download(`/files/${file.id}`);
       const url = URL.createObjectURL(blob);
       const mime = String(file.mimeType || blob.type || "");
-      if (mime.includes("pdf") || mime.startsWith("image/")) {
+      if (mime.includes("pdf")) {
+        // PDF 改走 pdf.js canvas 弹窗预览：360 等浏览器会把 blob 新窗口/iframe 劫持成下载
+        const data = new Uint8Array(await blob.arrayBuffer());
+        URL.revokeObjectURL(url);
+        setAttachmentPdfPreview({ name: file.originalName || `附件-${file.id}.pdf`, data });
+      } else if (mime.startsWith("image/")) {
         window.open(url, "_blank");
         window.setTimeout(() => URL.revokeObjectURL(url), 60000);
       } else {
@@ -3909,6 +3916,21 @@ export function Devices() {
               </div>
             </DialogFooter>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(attachmentPdfPreview)} onOpenChange={(open) => { if (!open) setAttachmentPdfPreview(null); }}>
+        <DialogContent className="flex h-[88vh] max-w-[min(96vw,1100px)] flex-col overflow-hidden p-0">
+          <DialogHeader className="border-b px-5 py-4">
+            <DialogTitle>附件预览</DialogTitle>
+            <DialogDescription className="truncate" title={attachmentPdfPreview?.name || "-"}>{attachmentPdfPreview?.name || "-"}</DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-auto bg-muted/30 p-4">
+            {attachmentPdfPreview ? <PdfPreview data={attachmentPdfPreview.data} title={attachmentPdfPreview.name} fileName={attachmentPdfPreview.name} /> : null}
+          </div>
+          <DialogFooter className="border-t px-5 py-3">
+            <Button variant="outline" onClick={() => setAttachmentPdfPreview(null)}>关闭</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
