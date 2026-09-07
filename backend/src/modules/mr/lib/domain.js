@@ -366,7 +366,8 @@ function computeApprovalSteps(order, items) {
     { seq: 1, key: 'assistant', label: '助理', role: STEP_ROLES.assistant },
     { seq: 2, key: 'sales', label: '业务负责人', role: STEP_ROLES.sales },
   ]
-  if (order.installOptions.includes('敦阳')) steps.push({ seq: steps.length + 1, key: 'engineering', label: '工程会签', role: STEP_ROLES.engineering })
+  // 装机或维护承担方含“敦阳”均需工程会签（2026-09-07 佬裁决：维护是敦阳也要流转工程部主管）
+  if (order.installOptions.includes('敦阳') || order.maintenanceOptions.includes('敦阳')) steps.push({ seq: steps.length + 1, key: 'engineering', label: '工程会签', role: STEP_ROLES.engineering })
   // 业务主管（处级主管）发起的 MR 单：跳过“处级单位”自签步骤（签核人即本人），无条件签核至运营负责人（副总经理）
   const isDepartmentSupervisor = order.salesOwnerRole === 'sales_supervisor'
   if (!isDepartmentSupervisor) steps.push({ seq: steps.length + 1, key: 'supervisor', label: '处级单位', role: STEP_ROLES.supervisor })

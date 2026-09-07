@@ -1578,8 +1578,8 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                 onChange={(value) => patch({ maintenanceOptions: value })}
               />
             </div>
-            {editable && (calculated.installOptions || []).includes('敦阳') ? (
-              <p className="mt-3 text-xs text-muted-foreground">装机承担方包含“敦阳”时，签核流程将增加工程会签步骤。</p>
+            {editable && ((calculated.installOptions || []).includes('敦阳') || (calculated.maintenanceOptions || []).includes('敦阳')) ? (
+              <p className="mt-3 text-xs text-muted-foreground">装机或维护承担方包含“敦阳”时，签核流程将增加工程会签步骤。</p>
             ) : null}
           </SectionCard>
 
