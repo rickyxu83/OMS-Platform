@@ -101,6 +101,18 @@ function validBody(overrides = {}) {
 }
 
 {
+  // 维护承担方含“敦阳”同样需要工程会签（2026-09-07 佬裁决）
+  const { order, items } = normalizeOrder(validBody({ installOptions: ['供应商'], maintenanceOptions: ['敦阳'] }))
+  assert.deepStrictEqual(computeApprovalSteps(order, items).map((step) => step.key), ['assistant', 'sales', 'engineering', 'supervisor'])
+}
+
+{
+  // 装机维护均不含敦阳：无工程会签
+  const { order, items } = normalizeOrder(validBody({ installOptions: ['供应商'], maintenanceOptions: ['其他'] }))
+  assert.deepStrictEqual(computeApprovalSteps(order, items).map((step) => step.key), ['assistant', 'sales', 'supervisor'])
+}
+
+{
   const { order, items } = normalizeOrder(validBody({
     pricingMode: 3,
     items: [{ name: '低毛利设备', qty: 1, unitPrice: 100, vendor: '厂商', costInclTax: 91, taxRate: 6 }],
