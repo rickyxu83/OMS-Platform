@@ -129,7 +129,9 @@ function Signatures({ order, formal }: { order: MrOrder; formal: boolean }) {
   const approvals = order.approvals || []
   // 业务主管（处级主管）发起的 MR 单：流程跳过“处级单位”自签步骤，占位框一并隐藏
   const allRoles = order.salesOwnerRole === 'sales_supervisor' ? SIGNATURE_ROLES.filter(([key]) => key !== 'supervisor') : SIGNATURE_ROLES
-  const roles = formal ? allRoles.filter(([key]) => approval(approvals, key)) : allRoles
+  // 签核链已生成（提交后，含正式态）只渲染链上真实步骤，链外角色（如无需工程会签）不再出现占位框；
+  // 纯草稿尚无签核链时保留全部占位框，供预览版面
+  const roles = formal || approvals.length ? allRoles.filter(([key]) => approval(approvals, key)) : allRoles
   return <div className="a-signatures" style={{ gridTemplateColumns: `repeat(${Math.max(1, roles.length)}, 1fr)` }}>{roles.map(([key, label]) => {
     const item = approval(approvals, key)
     const name = item?.approverName || item?.assigneeName || (formal ? '' : '—')
