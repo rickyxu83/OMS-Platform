@@ -273,6 +273,9 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
     { label: '整单毛利率', raw: totals.marginRate, value: percent(totals.marginRate, emptyText) },
   ].filter((fact) => !formal || hasValue(fact.raw))
   const topLine = (label: string, value: unknown) => formal && !hasValue(value) ? null : <span>{hasValue(value) ? text(value, emptyText) : `${label} · ${emptyText}`}</span>
+  // 发票类型 / 开票内容：头部裸值不易辨认（2026-09-04 佬反馈预览里像没展示），带标签显示，与后端 PDF 头部一致
+  const invoiceLine = [order.invoiceType, order.billingContent].filter(hasValue).join(' · ')
+  const invoiceTopLine = formal && !hasValue(invoiceLine) ? null : <span>{hasValue(invoiceLine) ? `发票类型 / 开票内容：${invoiceLine}` : `发票类型 / 开票内容 · ${emptyText}`}</span>
   return (
     <div className={`mr-print-page ${embedded ? 'is-embedded' : ''}`}>
       <style>{styles}</style>
@@ -287,7 +290,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
         <div className="a-orderbar">
           <div><small>客户 / CUSTOMER</small><b>{text(order.customerName, emptyText)}</b>{topLine('客户 P/O', order.customerPo)}</div>
           <div><small>交付 / DELIVERY</small><b>{text(order.latestDeliveryDate, emptyText)}</b>{topLine('交付地点', order.deliveryLocation)}</div>
-          <div><small>交易条款 / TERMS</small><b>{text(order.paymentTerms, emptyText)}</b>{topLine('发票类型 / 开票内容', [order.invoiceType, order.billingContent].filter(hasValue).join(' · '))}</div>
+          <div><small>交易条款 / TERMS</small><b>{text(order.paymentTerms, emptyText)}</b>{invoiceTopLine}</div>
           <div><small>状态 / STATUS</small><b>{STATUS[status] || status}</b><span>V{versionLabel}</span></div>
         </div>
         <Section index="01" title={`采购与销售明细 · ${order.items?.length || 0} 个品项`}>
