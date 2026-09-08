@@ -1,5 +1,13 @@
 import type { MrItem, MrOrder } from '../types'
 
+// 供应商为敦阳（含繁体/英文写法）表示内部承担、无需采购（2026-09-08 佬裁决），
+// 与后端 mr/lib/domain.js 的 isInternalVendor 同口径
+const INTERNAL_VENDOR_RE = /(敦阳|敦陽|stark|dunyang)/i
+
+export function isInternalVendor(vendor?: string | null) {
+  return INTERNAL_VENDOR_RE.test(String(vendor || '').trim())
+}
+
 export function defaultCostTaxRate(invoiceType?: string | null) {
   return String(invoiceType || '').startsWith('6%') ? 6 : 13
 }

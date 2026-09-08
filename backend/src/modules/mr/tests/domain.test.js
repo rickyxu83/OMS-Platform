@@ -1,5 +1,5 @@
 const assert = require('assert')
-const { normalizeOrder, validateSubmission, totals, computeApprovalSteps } = require('../domain')
+const { normalizeOrder, validateSubmission, totals, computeApprovalSteps, isInternalVendor } = require('../domain')
 
 function validBody(overrides = {}) {
   return {
@@ -298,6 +298,18 @@ function validBody(overrides = {}) {
   // 旧版频率+每期金额的数据自动视为分期
   assert.equal(schedule.order.grossProfitRecognitions[0].type, 'installments')
   assert.equal(schedule.order.taiwanBusinessTransfers[0].type, 'installments')
+}
+
+// 供应商为敦阳（内部承担）判定：无需采购（2026-09-08 佬裁决）
+{
+  assert.equal(isInternalVendor('敦阳'), true)
+  assert.equal(isInternalVendor('敦阳（宁波）科技有限公司'), true)
+  assert.equal(isInternalVendor('敦陽科技'), true)
+  assert.equal(isInternalVendor('STARK (NINGBO) TECHNOLOGY INC.'), true)
+  assert.equal(isInternalVendor('dunyang'), true)
+  assert.equal(isInternalVendor('宽泰'), false)
+  assert.equal(isInternalVendor(''), false)
+  assert.equal(isInternalVendor(null), false)
 }
 
 console.log('mr domain OK')

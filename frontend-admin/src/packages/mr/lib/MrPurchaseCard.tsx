@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { submitMrPurchase } from '../client'
 import type { MrOrder } from '../types'
+import { isInternalVendor } from './form-logic'
 import { SectionCard } from './mr-ui'
 
 const PURCHASE_STATUS: Record<string, { label: string; className: string }> = {
@@ -31,8 +32,11 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
   const items = order.items || []
   const status = String(order.purchaseStatus || '')
   const editable = Boolean(order.permissions?.canPurchase) && ['pending', 'done'].includes(status)
-  // 无供应商的品项没有采购对象，视为无需采购，不参与填写与多选
-  const hasVendor = (item: { vendor?: string | null }) => String(item.vendor || '').trim() !== ''
+  // 无供应商或供应商为敦阳（内部承担）的品项没有外部采购对象，视为无需采购，不参与填写与多选
+  const hasVendor = (item: { vendor?: string | null }) => {
+    const vendor = String(item.vendor || '').trim()
+    return vendor !== '' && !isInternalVendor(vendor)
+  }
   const vendorItemCount = items.filter(hasVendor).length
 
   useEffect(() => {
