@@ -69,6 +69,7 @@ const {
   validateSubmission,
   totals,
   computeApprovalSteps,
+  isInternalVendor,
 } = require('../domain')
 const { resolveSubmissionCustomer } = require('../customer-resolution')
 const {
@@ -894,12 +895,15 @@ async function decide(req, res, action) {
     )
     if (!pending[0]) {
       becameApproved = true
-      // 全部品项均无供应商时自动标记无需采购，不再派发采购待办
+      // 全部品项均无外部供应商（未填或敦阳内部承担）时自动标记无需采购，不再派发采购待办
       const [vendorRows] = await connection.execute(
-        'SELECT COUNT(*) AS count FROM mr_items WHERE mr_id = :id AND TRIM(COALESCE(vendor, \'\')) <> \'\'',
+        'SELECT vendor FROM mr_items WHERE mr_id = :id',
         { id: req.params.id },
       )
-      const needsPurchase = Number(vendorRows[0]?.count || 0) > 0
+      const needsPurchase = vendorRows.some((row) => {
+        const vendor = String(row.vendor || '').trim()
+        return vendor !== '' && !isInternalVendor(vendor)
+      })
       // 有合同但签核时合同流程未走完（暂无编号）：签核照常完成，采购挂起，待助理补填合同编号后流转
       const waitingContract = needsPurchase && Number(order.hasContract) === 1 && !order.contractNo
       await connection.execute(
@@ -915,7 +919,7 @@ async function decide(req, res, action) {
           purchaseStatus: waitingContract ? 'waiting_contract' : needsPurchase ? 'pending' : 'skipped',
           purchaseNote: waitingContract
             ? '有合同但合同编号未填写，待助理补填合同编号后流转采购'
-            : needsPurchase ? null : '全部品项均无供应商，系统自动标记无需采购',
+            : needsPurchase ? null : '全部品项均无外部供应商（未填或敦阳内部承担），系统自动标记无需采购',
         },
       )
       await connection.execute(
@@ -1176,13 +1180,14 @@ async function submitPurchase(req, res) {
     for (const item of itemRows) {
       const value = byId.get(Number(item.id))
       if (value === undefined) throw badRequest('请完整提交所有品项的采购订单号')
-      const hasVendor = String(item.vendor || '').trim() !== ''
-      // 无供应商的品项没有采购对象，视为无需采购，不强制填写采购订单号
-      if (hasVendor && !value) throw badRequest('有供应商的品项都需填写采购订单号；无供应商的品项视为无需采购')
-      if (!hasVendor && !value) continue
+      const vendorText = String(item.vendor || '').trim()
+      // 无供应商或供应商为敦阳（内部承担）的品项没有外部采购对象，视为无需采购，不强制填写采购订单号
+      const needPurchase = vendorText !== '' && !isInternalVendor(vendorText)
+      if (needPurchase && !value) throw badRequest('有外部供应商的品项都需填写采购订单号；供应商为敦阳或未填的品项视为无需采购')
       const companyValue = byCompanyPartNo.get(Number(item.id)) || ''
       const shipmentValue = byShipmentNo.get(Number(item.id)) || ''
       // 公司料号、出货单号为采购执行数据，选填不校验
+      if (!value && !companyValue && !shipmentValue) continue
       const before = String(item.purchase_order_no || '')
       if (before !== value) auditChanges.push({ rowNo: item.row_no, name: item.name, field: 'purchaseOrderNo', before: before || null, after: value })
       const beforeCompany = String(item.company_part_no || '')
@@ -1886,7 +1891,7 @@ async function importQuotation(req, res) {
       if (requestedRole && aiDocumentType && aiDocumentType !== requestedDocumentType) {
         parsed.warnings.push(`AI 识别该文件为“${aiDocumentType === 'sales_quote' ? '销售报价' : '供应商报价'}”，与所选分区（${requestedRole === 'sales' ? '销售报价' : '供应商报价'}）不一致，请确认分区是否正确`)
       }
-      const hasExternalVendor = parsed.sheets.some((sheet) => sheet.vendor && !/(敦阳|敦陽|stark|dunyang)/i.test(String(sheet.vendor)))
+      const hasExternalVendor = parsed.sheets.some((sheet) => sheet.vendor && !isInternalVendor(sheet.vendor))
       if (requestedRole === 'purchase' && !hasExternalVendor && ['.xls', '.xlsx'].includes(extension)) {
         try {
           const images = await extractWorkbookImages(file.buffer, extension)
@@ -1902,7 +1907,7 @@ async function importQuotation(req, res) {
             const vendor = candidates[0] || ''
             parsed = {
               ...parsed,
-              sheets: parsed.sheets.map((sheet) => ({ ...sheet, vendor: sheet.vendor && !/(敦阳|敦陽|stark|dunyang)/i.test(String(sheet.vendor)) ? sheet.vendor : vendor, notes: [...(Array.isArray(sheet.notes) ? sheet.notes : sheet.notes ? [sheet.notes] : []), ...imageTexts] })),
+              sheets: parsed.sheets.map((sheet) => ({ ...sheet, vendor: sheet.vendor && !isInternalVendor(sheet.vendor) ? sheet.vendor : vendor, notes: [...(Array.isArray(sheet.notes) ? sheet.notes : sheet.notes ? [sheet.notes] : []), ...imageTexts] })),
               warnings: [...(parsed.warnings || []), vendor ? `已从工作簿图片识别供应商：${vendor}` : '工作簿包含图片，但未能可靠识别供应商，请人工填写'],
             }
           }

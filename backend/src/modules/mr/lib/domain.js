@@ -18,6 +18,14 @@ function text(value, max = 500) {
   return String(value ?? '').trim().slice(0, max) || null
 }
 
+// 供应商为敦阳（含繁体/英文写法）表示内部承担、无需采购（2026-09-08 佬裁决）。
+// 与报价导入的内部供应商判定同口径，采购环节据此跳过采购订单号必填。
+const INTERNAL_VENDOR_RE = /(敦阳|敦陽|stark|dunyang)/i
+
+function isInternalVendor(vendor) {
+  return INTERNAL_VENDOR_RE.test(String(vendor || '').trim())
+}
+
 function normalizedLabel(value, max = 32) {
   const normalized = text(value, max)
   return normalized === '厂商' ? '供应商' : normalized === '其它' ? '其他' : normalized
@@ -384,4 +392,5 @@ module.exports = {
   validateSubmission,
   totals,
   computeApprovalSteps,
+  isInternalVendor,
 }
