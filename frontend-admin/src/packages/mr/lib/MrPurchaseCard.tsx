@@ -211,7 +211,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
                       {item.description ? <div className="truncate break-words text-xs text-muted-foreground" title={item.description}>{item.description}</div> : null}
                     </TableCell>
                     <TableCell className="whitespace-normal">
-                      {editable && !noVendor ? (
+                      {editable ? (
                         <Input
                           value={draft[String(item.id)]?.companyPartNo ?? ''}
                           placeholder="公司料号"
