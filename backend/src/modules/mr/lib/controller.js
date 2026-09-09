@@ -781,6 +781,10 @@ async function decide(req, res, action) {
       && req.user.role === 'assistant_supervisor'
       && assistantIds.includes(Number(expectedCurrentAssignee.id))
     if (!supervisorReplacing && expectedCurrentAssignee.id !== Number(req.user.id)) throw forbidden('该签核待办已转交')
+    // 手写签名门禁：签核意见须连同本人手写签名一起归档，未设置签名禁止签核
+    if (action === 'approve' && !req.user.engineer_signature) {
+      throw badRequest('签核前请先设置手写签名：右上角头像 → 我的设置 → 手写签名')
+    }
     if (action === 'approve' && current.step_key !== 'assistant' && Number(order.versionNo || 0) === 0) {
       const legacyDetail = await loadCalculatedOrder(connection, order)
       const legacySteps = computeApprovalSteps(legacyDetail, legacyDetail.items)

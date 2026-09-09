@@ -881,6 +881,11 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
 
   const confirmDecision = async () => {
     if (!id || !decision || (decision !== 'approve' && !reason.trim())) return
+    if (decision === 'approve' && user && user.hasEngineerSignature === false) {
+      setError('签核前请先设置手写签名：右上角头像 → 我的设置 → 手写签名')
+      setDecision(null)
+      return
+    }
     setBusy(true)
     try {
       const next = decision === 'approve'

@@ -20,6 +20,7 @@ import { ResponsiveCard, ResponsiveList } from '@/components/ResponsiveList'
 import { EmptyState } from '@/components/EmptyState'
 import { Skeleton } from '@/components/Skeleton'
 import { approveMr, listApprovalTasks, rejectMr } from '@/packages/mr/client'
+import { useAuth } from '@/contexts/AuthContext'
 import { matchesSearchText } from '@/lib/text-i18n'
 import type { ApprovalTask } from '@/packages/mr/types'
 
@@ -169,6 +170,7 @@ function taskMatchesKeyword(task: ApprovalTask, keyword: string) {
 }
 
 export function ApprovalTasks() {
+  const { user } = useAuth()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [view, setView] = useState<View>(() => {
@@ -259,6 +261,10 @@ export function ApprovalTasks() {
 
   async function quickApprove(task: ApprovalTask) {
     if (!window.confirm(`确认同意「${task.title}」的签核？`)) return
+    if (user && user.hasEngineerSignature === false) {
+      toast.error('签核前请先设置手写签名：右上角头像 → 我的设置 → 手写签名')
+      return
+    }
     setActingTaskId(task.id)
     try {
       const next = await approveMr(task.businessId)

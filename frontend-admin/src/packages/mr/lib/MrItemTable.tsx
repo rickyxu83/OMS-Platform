@@ -219,7 +219,7 @@ export function MrItemTable({
                 <tr>
                   <th scope="col" className="w-16 px-3 py-2 text-left font-medium">序号</th>
                   <th scope="col" className="px-3 py-2 text-left font-medium">品名及描述</th>
-                  <th scope="col" className="w-20 px-3 py-2 text-right font-medium">数量</th>
+                  <th scope="col" className="w-14 px-1.5 py-2 text-right font-medium">数量</th>
                   <th scope="col" className="w-32 px-3 py-2 text-right font-medium">未税单价</th>
                   <th scope="col" className="w-36 px-3 py-2 text-right font-medium">未税小计</th>
                   <th scope="col" className="w-24 px-3 py-2 text-right font-medium">毛利率</th>
@@ -255,7 +255,7 @@ export function MrItemTable({
                           <span className="mt-0.5 block break-words text-xs text-muted-foreground">{item.oemSpec || '未填写原厂规格'}</span>
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-right tabular-nums">{item.qty ?? '-'}</td>
+                      <td className="px-1.5 py-3 text-right tabular-nums">{item.qty ?? '-'}</td>
                       <td className="px-3 py-3 text-right tabular-nums">{item.unitPrice == null ? '-' : money(item.unitPrice)}</td>
                       <td className="px-3 py-3 text-right tabular-nums">¥ {money(item.subtotal)}</td>
                       <td className={`px-3 py-3 text-right tabular-nums ${low ? 'font-medium text-red-600' : ''}`}>{percent(item.marginRate)}</td>
