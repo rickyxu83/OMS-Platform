@@ -105,7 +105,7 @@ function ItemTable({ items, emptyText, formal }: { items: MrItem[]; emptyText: s
       if (!partNo && !spec) return emptyText
       return <span>{partNo ? <strong>{partNo}</strong> : null}{spec ? <small>{spec}</small> : null}</span>
     } },
-    { key: 'description', label: '品名及描述', weight: 22, align: 'left', optional: false, present: (item: MrItem) => hasValue(item.name) || hasValue(item.description), render: (item: MrItem) => <span><strong>{text(item.name || item.description, emptyText)}</strong>{item.name && item.description && item.name !== item.description ? <small>{item.description}</small> : null}</span> },
+    { key: 'description', label: '品名及描述', weight: 21, align: 'left', optional: false, present: (item: MrItem) => hasValue(item.name) || hasValue(item.description), render: (item: MrItem) => <span><strong>{text(item.name || item.description, emptyText)}</strong>{item.name && item.description && item.name !== item.description ? <small>{item.description}</small> : null}</span> },
     { key: 'warrantyInstall', label: '保固 / 装机', weight: 9, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.warrantyService) || hasValue(item.installBy), render: (item: MrItem) => {
       const warranty = hasValue(item.warrantyService) ? String(item.warrantyService) : ''
       const install = hasValue(item.installBy) ? String(item.installBy) : ''
@@ -127,7 +127,7 @@ function ItemTable({ items, emptyText, formal }: { items: MrItem[]; emptyText: s
       {hasValue(item.purchaseOrderNo) ? <small>采购 {item.purchaseOrderNo}</small> : null}
     </span> },
     // 出货单号列固定保留并独立成列：系统已填则印出，未填留白供出货时手写
-    { key: 'shipment', label: '出货单号', weight: 7, align: 'left', optional: false, present: () => true, render: (item: MrItem) => text(item.shipmentNo, '') },
+    { key: 'shipment', label: '出货单号', weight: 8, align: 'left', optional: false, present: () => true, render: (item: MrItem) => text(item.shipmentNo, '') },
   ]
   const columns = definitions.filter((column) => !formal || !column.optional || items.some(column.present))
   const totalWeight = columns.reduce((sum, column) => sum + column.weight, 0)

@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 45
+const PDF_FORMAT_VERSION = 46
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -110,9 +110,13 @@ function options(input) {
   return Array.isArray(input) && input.length ? input.join('、') : ''
 }
 
+// 全局字号放大 20%：用户反馈归档 PDF 字体较网页预览偏小。
+// 所有文字经 text() 渲染，此处统一缩放；行高/卡片高度由 heightOfString 实测处同步缩放（见下方各测量点）
+const FONT_SCALE = 1.2
+
 function text(doc, fonts, content, x, y, options = {}) {
   const { size = 8, bold = false, color = '#111827', ...rest } = options
-  doc.font(bold ? fonts.bold : fonts.regular).fontSize(size).fillColor(color).text(value(content), x, y, rest)
+  doc.font(bold ? fonts.bold : fonts.regular).fontSize(Math.round(size * FONT_SCALE * 10) / 10).fillColor(color).text(value(content), x, y, rest)
 }
 
 function line(doc, x1, y1, x2, y2, color = BORDER) {
@@ -150,7 +154,7 @@ function summary(doc, fonts, order, y) {
   cells.forEach((cell, index) => {
     const x = left + width * index
     text(doc, fonts, cell.label, x + 6, y + 3, { size: 6.3, color: MUTED, width: width - 12, ellipsis: true })
-    text(doc, fonts, cell.main, x + 6, y + 13, { size: 8.5, bold: true, width: width - 12, height: 12, ellipsis: true })
+    text(doc, fonts, cell.main, x + 6, y + 13, { size: 8.5, bold: true, width: width - 12, height: 14, ellipsis: true })
     if (cell.sub) text(doc, fonts, cell.sub, x + 6, y + 25, { size: 6, color: MUTED, width: width - 12, ellipsis: true })
   })
   line(doc, left, y + 36, right, y + 36, '#e5e7eb')
@@ -169,7 +173,7 @@ function itemColumns(items) {
   const definitions = [
     { key: 'index', label: '序号', weight: 3, align: 'center', optional: false, present: () => true, content: (_item, index) => index + 1 },
     { key: 'partMerged', label: '公司料号 / 原厂规格', weight: 12, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'companyPartNo', 'company_part_no')) || hasValue(itemField(item, 'oemSpec', 'oem_spec')), content: (item) => [itemField(item, 'companyPartNo', 'company_part_no'), itemField(item, 'oemSpec', 'oem_spec')].filter(hasValue).join('\n') },
-    { key: 'description', label: '品名及描述', weight: 22, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
+    { key: 'description', label: '品名及描述', weight: 21, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
     { key: 'warrantyInstall', label: '保固 / 装机', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')) || hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => [itemField(item, 'warrantyService', 'warranty_service'), hasValue(itemField(item, 'installBy', 'install_by')) ? `装机：${itemField(item, 'installBy', 'install_by')}` : ''].filter(hasValue).join('\n') },
     { key: 'qty', label: '数量', weight: 4, align: 'center', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
     { key: 'unitPrice', label: '未税单价', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
@@ -184,7 +188,7 @@ function itemColumns(items) {
       hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')) ? `采购 ${itemField(item, 'purchaseOrderNo', 'purchase_order_no')}` : '',
     ].filter(hasValue).join('\n') },
     // 出货单号列固定保留并独立成列：系统已填则印出，未填留白供出货时手写
-    { key: 'shipment', label: '出货单号', weight: 7, align: 'left', optional: false, present: () => true, content: (item) => itemField(item, 'shipmentNo', 'shipment_no') },
+    { key: 'shipment', label: '出货单号', weight: 8, align: 'left', optional: false, present: () => true, content: (item) => itemField(item, 'shipmentNo', 'shipment_no') },
   ]
   const visible = definitions.filter((column) => !column.optional || items.some(column.present))
   const available = PAGE.width - PAGE.margin * 2
@@ -209,7 +213,7 @@ function itemHeader(doc, fonts, columns, y) {
 }
 
 function itemRowHeight(doc, fonts, item, index, columns) {
-  doc.font(fonts.regular).fontSize(7)
+  doc.font(fonts.regular).fontSize(7 * FONT_SCALE)
   return Math.max(30, ...columns.map((column) => doc.heightOfString(value(column.content(item, index)), { width: column.width - 6, lineGap: 1 }) + 10))
 }
 
@@ -356,11 +360,11 @@ function noteEntries(order, includeVoidReason) {
 }
 
 function detailCardHeight(doc, fonts, entries, columns, colWidth) {
-  let height = 22
+  let height = 24
   for (let start = 0; start < entries.length; start += columns) {
     const row = entries.slice(start, start + columns)
-    doc.font(fonts.regular).fontSize(6.8)
-    height += Math.min(42, Math.max(24, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 16, lineGap: 1 }) + 16)))
+    doc.font(fonts.regular).fontSize(6.8 * FONT_SCALE)
+    height += Math.min(46, Math.max(26, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 16, lineGap: 1 }) + 16)))
   }
   return height + 3
 }
@@ -371,11 +375,11 @@ function drawDetailCard(doc, fonts, group, entries, x, y, width) {
   const height = detailCardHeight(doc, fonts, entries, columns, colWidth)
   doc.circle(x + 12, y + 12, 2.3).fill(PURPLE)
   text(doc, fonts, group, x + 20, y + 6, { size: 7.8, bold: true, color: '#111827', width: width - 30 })
-  let rowY = y + 22
+  let rowY = y + 24
   for (let start = 0; start < entries.length; start += columns) {
     const row = entries.slice(start, start + columns)
-    doc.font(fonts.regular).fontSize(6.8)
-    const rowHeight = Math.min(42, Math.max(24, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 16, lineGap: 1 }) + 16)))
+    doc.font(fonts.regular).fontSize(6.8 * FONT_SCALE)
+    const rowHeight = Math.min(46, Math.max(26, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 16, lineGap: 1 }) + 16)))
     row.forEach(([label, content], index) => {
       const cellX = x + 9 + index * colWidth
       text(doc, fonts, label, cellX, rowY + 1, { size: 6.1, color: MUTED, width: colWidth - 16 })
@@ -388,8 +392,8 @@ function drawDetailCard(doc, fonts, group, entries, x, y, width) {
 
 function noteCardHeight(doc, fonts, entries, width) {
   const contentWidth = width - 142
-  doc.font(fonts.regular).fontSize(7)
-  return 22 + entries.reduce((sum, [, content]) => sum + Math.min(45, Math.max(22, doc.heightOfString(value(content), { width: contentWidth, lineGap: 1 }) + 9)), 0) + 3
+  doc.font(fonts.regular).fontSize(7 * FONT_SCALE)
+  return 24 + entries.reduce((sum, [, content]) => sum + Math.min(50, Math.max(24, doc.heightOfString(value(content), { width: contentWidth, lineGap: 1 }) + 9)), 0) + 3
 }
 
 function drawNoteCard(doc, fonts, entries, x, y, width) {
@@ -397,10 +401,10 @@ function drawNoteCard(doc, fonts, entries, x, y, width) {
   doc.roundedRect(x, y, width, height, 6).fill('#f8f8fb')
   doc.rect(x, y + 7, 3, height - 14).fill(PURPLE)
   text(doc, fonts, '备注与其他', x + 12, y + 6, { size: 7.8, bold: true, color: PURPLE })
-  let rowY = y + 22
+  let rowY = y + 24
   entries.forEach(([label, content], index) => {
-    doc.font(fonts.regular).fontSize(7)
-    const rowHeight = Math.min(45, Math.max(22, doc.heightOfString(value(content), { width: width - 142, lineGap: 1 }) + 9))
+    doc.font(fonts.regular).fontSize(7 * FONT_SCALE)
+    const rowHeight = Math.min(50, Math.max(24, doc.heightOfString(value(content), { width: width - 142, lineGap: 1 }) + 9))
     if (index) line(doc, x + 12, rowY, x + width - 12, rowY, '#e5ddec')
     text(doc, fonts, label, x + 12, rowY + 6, { size: 6.6, bold: true, color: PURPLE, width: 104 })
     text(doc, fonts, content, x + 122, rowY + 6, { size: 7, width: width - 142, height: rowHeight - 8, lineGap: 1, ellipsis: true })
@@ -486,9 +490,9 @@ function signatureImage(doc, dataUrl, x, y, width, height) {
 
 function approvalBoxHeight(doc, fonts, rows) {
   const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, rows.length)
-  doc.font(fonts.regular).fontSize(6)
+  doc.font(fonts.regular).fontSize(6 * FONT_SCALE)
   const reasonHeight = Math.max(0, ...rows.filter((approval) => hasValue(approval.reason)).map((approval) => doc.heightOfString(value(approval.reason), { width: width - 10, align: 'center' })))
-  return 48 + (reasonHeight ? Math.ceil(reasonHeight) + 6 : 0)
+  return 54 + (reasonHeight ? Math.ceil(reasonHeight) + 6 : 0)
 }
 
 function approvals(doc, fonts, rows, y) {
@@ -514,7 +518,7 @@ function approvals(doc, fonts, rows, y) {
     text(doc, fonts, action, x + 8, y + 11, { size: 6.5, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: textWidth, align: 'left' })
     text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName, x + 8, y + 22, { size: 6.5, bold: true, width: textWidth, align: 'left' })
     text(doc, fonts, time(approval.decidedAt || approval.decided_at), x + 8, y + 31, { size: 5.5, color: MUTED, width: textWidth, align: 'left' })
-    if (hasValue(approval.reason)) text(doc, fonts, approval.reason, x + 8, y + 40, { size: 6, color: MUTED, width: width - 16, height: boxHeight - 42, align: 'left' })
+    if (hasValue(approval.reason)) text(doc, fonts, approval.reason, x + 8, y + 40, { size: 6, color: MUTED, width: width - 16, height: boxHeight - 44, align: 'left' })
   })
   return y + boxHeight + 8
 }
