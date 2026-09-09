@@ -127,10 +127,11 @@ function header(doc, fonts, order, title = '客户订购申请单（境内单）
   const left = PAGE.margin
   const right = PAGE.width - PAGE.margin
   const logoImage = getLogoBuffer()
-  if (logoImage) doc.image(logoImage, left, 18, { width: 26, height: 26 })
-  const textLeft = left + (logoImage ? 34 : 0)
-  text(doc, fonts, 'STARK (NINGBO) TECHNOLOGY INC.', textLeft, 20, { size: 7, color: MUTED })
-  text(doc, fonts, '敦阳（宁波）科技有限公司', textLeft, 30, { size: 13, bold: true, color: '#402080' })
+  // LOGO 随全局字号同步放大（×1.2 = 31pt），页眉带高不变
+  if (logoImage) doc.image(logoImage, left, 15.5, { width: 31, height: 31 })
+  const textLeft = left + (logoImage ? 39 : 0)
+  text(doc, fonts, 'STARK (NINGBO) TECHNOLOGY INC.', textLeft, 19.5, { size: 7, color: MUTED })
+  text(doc, fonts, '敦阳（宁波）科技有限公司', textLeft, 29.5, { size: 13, bold: true, color: '#402080' })
   text(doc, fonts, title, 280, 24, { size: 17, bold: true, color: '#111827', width: 282, align: 'center' })
   text(doc, fonts, `V${Number(order.versionNo || order.version_no || 0)}`, right - 112, 21, { size: 9, bold: true, width: 112, align: 'right' })
   text(doc, fonts, `Ctrl.No: ${value(order.ctrlNo || order.ctrl_no)}`, right - 190, 34, { size: 9, width: 190, align: 'right' })
