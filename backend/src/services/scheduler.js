@@ -1204,8 +1204,16 @@ function startScheduler() {
 
     scheduleCron('*/2 * * * *', async () => {
       try {
-        const result = await processMrArchives(5)
-        if (result.processed) console.log(`[scheduler] MR archives processed: ready=${result.archived}, failed=${result.failed}`)
+        // 自适应批量：日常审批归档（积压 ≤10）保持每批 5 张保护服务；版式升级等大批量场景提速到 25 张/批，
+        // 避免数百张重归档要排几小时队（2026-09-10 佬反馈）
+        const [{ backlog }] = await query(
+          `SELECT COUNT(*) AS backlog FROM mr_orders
+           WHERE status IN ('approved', 'voided') AND archive_status IN ('pending', 'failed')
+             AND (archive_next_attempt_at IS NULL OR archive_next_attempt_at <= NOW())`,
+        )
+        const limit = Number(backlog) > 10 ? 25 : 5
+        const result = await processMrArchives(limit)
+        if (result.processed) console.log(`[scheduler] MR archives processed: ready=${result.archived}, failed=${result.failed}, backlog=${backlog}, limit=${limit}`)
       } catch (error) {
         console.error('[scheduler] MR archive check failed', error?.message)
       }
