@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { AlertTriangle, ArrowLeft, BellRing, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, Paperclip, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Undo2, Upload, X, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { SHOW_MR_QUOTE_V2 } from '@/lib/feature-flags'
@@ -148,6 +148,35 @@ function changeValue(value: unknown) {
   if (value === true) return '是'
   if (value === false) return '否'
   return String(value)
+}
+
+/** 后端校验错误字段名与 patch() 键不一致时的别名（后端沿用历史中文命名） */
+const ERROR_FIELD_ALIASES: Record<string, string> = { '装机Options': 'installOptions', '维护Options': 'maintenanceOptions' }
+
+/** 错误清单按字段逐个核销（issue #130）：仅移除本次 patch 覆盖到的错误项，未解决的保留供逐项对照 */
+function errorClearedByPatch(error: ValidationError, value: Partial<MrOrder>, previous: MrOrder | null) {
+  const raw = String(error.field || '')
+  if (!raw) return false
+  const field = ERROR_FIELD_ALIASES[raw] || raw
+  return Object.keys(value).some((key) => {
+    if (key === 'items') {
+      if (field === 'items') return true
+      const match = /^items\.(\d+)(?:\.(\w+))?$/.exec(field)
+      if (!match) return false
+      const index = Number(match[1])
+      const sub = match[2]
+      const prevItems = previous?.items || []
+      const nextItems = value.items || []
+      // 行数变化（增删行）时品项错误索引可能平移，保留待重新提交校验
+      if (prevItems.length !== nextItems.length) return false
+      if (!sub) return true
+      const prev = prevItems[index] as Record<string, unknown> | undefined
+      const next = nextItems[index] as Record<string, unknown> | undefined
+      if (!prev || !next) return false
+      return JSON.stringify(prev[sub] ?? null) !== JSON.stringify(next[sub] ?? null)
+    }
+    return field === key || field.startsWith(`${key}.`)
+  })
 }
 
 const ATTACHMENT_ACCEPT = '.pdf,.xls,.xlsx,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.zip,.csv,.txt'
@@ -378,6 +407,12 @@ function AutoFill({ active, children }: { active: boolean; children: ReactNode }
 export function MrFormPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  // 预览页返回时带回的未保存编辑（issue #128）：仅消费一次，优先于服务器版本恢复
+  const resumeRef = useRef<{ order: MrOrder; dirty: boolean } | null>((() => {
+    const state = location.state as { resumeOrder?: MrOrder; resumeDirty?: boolean } | null
+    return state?.resumeOrder ? { order: state.resumeOrder, dirty: Boolean(state.resumeDirty) } : null
+  })())
   const { user, hasPermission } = useAuth()
   const { lang } = useLanguage()
   // 当前界面语言（简/繁）影响客户首字母索引分组；用 ref 供主加载闭包读取，避免 lang 变化触发整单重载丢失未保存内容
@@ -499,7 +534,10 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
         invoiceRecipientMail: order.invoiceRecipientMail || defaultContact.email || '',
       } : order
       if (sequence !== loadSequence.current) return
-      setForm(hydratedOrder)
+      // 预览往返：带回的编辑快照优先于服务器版本，未保存内容不丢失；仅消费一次，后续 load（如删除附件后）仍用服务器版本
+      const resume = resumeRef.current
+      resumeRef.current = null
+      setForm(resume?.order || hydratedOrder)
       setEditing(false)
       setConstants(optionData)
       setCustomers(references.customers)
@@ -507,7 +545,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
       setSalespeople(references.salespeople)
       setSalesPrefs(references.salesPreferences || { customers: [], vendors: [] })
       setContacts(customer?.contacts || [])
-      setDirty(false)
+      setDirty(Boolean(resume?.dirty))
     } catch (err) {
       if (sequence === loadSequence.current) setError((err as Error).message || 'MR 申请加载失败')
     } finally {
@@ -585,7 +623,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
   const patch = (value: Partial<MrOrder>) => {
     setForm((current) => current ? { ...current, ...value } : current)
     setDirty(true)
-    setErrors([])
+    setErrors((current) => current.length ? current.filter((item) => !errorClearedByPatch(item, value, form)) : current)
   }
 
   const changePricingMode = (nextMode: number) => {
@@ -723,17 +761,20 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
   const patchContactField = (field: 'purchaser' | 'recipient' | 'invoiceRecipient', value: string) => {
     const contact = contactByName(linkedContacts, value)
     const next: Partial<MrOrder> = { [field]: value }
-    if (field === 'purchaser') {
-      next.purchaserTel = contact?.phone || ''
-      next.purchaserMail = contact?.email || ''
-    }
-    if (field === 'recipient') {
-      next.recipientTel = contact?.phone || ''
-      next.recipientMail = contact?.email || ''
-    }
-    if (field === 'invoiceRecipient') {
-      next.invoiceRecipientTel = contact?.phone || ''
-      next.invoiceRecipientMail = contact?.email || ''
+    // 仅匹配到已有联系人（含下拉选择）时才带出电话/邮箱；未匹配（手填新联系人）时保留已填内容，避免清空返工（issue #129）
+    if (contact) {
+      if (field === 'purchaser') {
+        next.purchaserTel = contact.phone || ''
+        next.purchaserMail = contact.email || ''
+      }
+      if (field === 'recipient') {
+        next.recipientTel = contact.phone || ''
+        next.recipientMail = contact.email || ''
+      }
+      if (field === 'invoiceRecipient') {
+        next.invoiceRecipientTel = contact.phone || ''
+        next.invoiceRecipientMail = contact.email || ''
+      }
     }
     patch(next)
   }
@@ -1116,6 +1157,19 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
     if (itemIndex !== null) setFocusItemIndex(itemIndex)
     goToSection(section)
     setFlashSection(section)
+    // 普通字段：滚动后定位并高亮具体输入框（品项行走上方 focusItemIndex 弹窗机制）（issue #130）
+    if (itemIndex === null && item.field) {
+      const selector = `[data-mr-field="${CSS.escape(ERROR_FIELD_ALIASES[item.field] || item.field)}"]`
+      window.setTimeout(() => {
+        const target = document.querySelector(selector)
+        if (!target) return
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        target.classList.add('mr-field-flash')
+        window.setTimeout(() => target.classList.remove('mr-field-flash'), 2000)
+        const control = target.querySelector('input:not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly]), select:not([disabled]), button:not([disabled])')
+        if (control instanceof HTMLElement) control.focus({ preventScroll: true })
+      }, 350)
+    }
   }
 
   if (loading) {
@@ -1166,7 +1220,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
   const approvalDocumentToolbar = (
     <div className="mr-print-toolbar">
       <div><strong className="block text-sm text-foreground">签核文件预览</strong><span>未填写的选填字段会标记为“未填写”；正式归档文件将隐藏空白字段。</span></div>
-      <Button onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: form || calculated } })}>
+      <Button onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: form || calculated, resumeDirty: dirty } })}>
         <Eye className="mr-2 size-4" />全屏预览
       </Button>
     </div>
@@ -1175,7 +1229,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
   return (
     <div className="min-h-full bg-muted/30">
       {/* 快照带出字段的紫色高亮渐隐动画（播一次后渐隐，「自动」徽标常驻） */}
-      <style>{`@keyframes mr-autofill-flash{0%{box-shadow:0 0 0 3px rgba(109,91,208,.30);background-color:rgba(109,91,208,.07)}100%{box-shadow:0 0 0 0 rgba(109,91,208,0);background-color:transparent}}.mr-autofill-flash{animation:mr-autofill-flash 2.4s ease-out}`}</style>
+      <style>{`@keyframes mr-autofill-flash{0%{box-shadow:0 0 0 3px rgba(109,91,208,.30);background-color:rgba(109,91,208,.07)}100%{box-shadow:0 0 0 0 rgba(109,91,208,0);background-color:transparent}}.mr-autofill-flash{animation:mr-autofill-flash 2.4s ease-out}@keyframes mr-field-flash{0%{box-shadow:0 0 0 3px rgba(217,119,6,.45);background-color:rgba(217,119,6,.08)}100%{box-shadow:0 0 0 0 rgba(217,119,6,0);background-color:transparent}}.mr-field-flash{animation:mr-field-flash 2s ease-out}`}</style>
       <ErrorToast message={error} />
       <datalist id="mr-contact-phone-options">{contactChoices.filter((contact) => contact.phone).map((contact) => <option key={`phone-${contact.id || contact.phone}`} value={contact.phone || ''}>{contact.name || ''}</option>)}</datalist>
       <datalist id="mr-contact-mail-options">{contactChoices.filter((contact) => contact.email).map((contact) => <option key={`mail-${contact.id || contact.email}`} value={contact.email || ''}>{contact.name || ''}</option>)}</datalist>
@@ -1196,7 +1250,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             {status !== 'in_review' ? (
-              <Button variant="outline" onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: calculated } })}>
+              <Button variant="outline" onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: calculated, resumeDirty: dirty } })}>
                 <Eye className="mr-2 size-4" />预览
               </Button>
             ) : null}
@@ -1334,7 +1388,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
 
           <SectionCard id="identity" title="客户与单号" icon={SECTION_ICON('identity')} flash={flashSection === 'identity'}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <Field label="客户名称" editable={editable} readonlyText={textValue(calculated.customerName)} className="xl:col-span-2">
+              <Field label="客户名称" fieldKey="customerName" editable={editable} readonlyText={textValue(calculated.customerName)} className="xl:col-span-2">
                 <div className="relative">
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1373,7 +1427,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
           <SectionCard id="trade" title="交易信息" icon={SECTION_ICON('trade')} description="当前计价模式和发票类型同时适用于报价导入及手动录入。" flash={flashSection === 'trade'}>
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="计价与发票">
-                <Field label="计价模式" editable={editable} readonlyText={PRICING_LABELS[Number(calculated.pricingMode)] || '-'} help="决定金额分摊方式：多项系统集成＝整单未税总计按各品项成本占比分摊；单项系统集成＝固定拆为主项 99%＋技术服务 1%；开明细＝各品项小计加总即为总计，不做整单分摊。切换模式会重算品项单价与必填规则。">
+                <Field label="计价模式" fieldKey="pricingMode" editable={editable} readonlyText={PRICING_LABELS[Number(calculated.pricingMode)] || '-'} help="决定金额分摊方式：多项系统集成＝整单未税总计按各品项成本占比分摊；单项系统集成＝固定拆为主项 99%＋技术服务 1%；开明细＝各品项小计加总即为总计，不做整单分摊。切换模式会重算品项单价与必填规则。">
                   <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border bg-background p-1">
                     {constants.pricingModes.map((mode) => (
                       <Button key={mode.value} type="button" size="sm" variant={Number(calculated.pricingMode) === mode.value ? 'default' : 'ghost'} onClick={() => changePricingMode(mode.value)}>
@@ -1383,7 +1437,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                   </div>
                 </Field>
                 <div className="grid gap-4 sm:grid-cols-3">
-                  <Field label="发票类型" editable={editable} readonlyText={textValue(calculated.invoiceType)}>
+                  <Field label="发票类型" fieldKey="invoiceType" editable={editable} readonlyText={textValue(calculated.invoiceType)}>
                     <AutoFill active={autoFilled.includes('invoiceType')}>
                     <Select
                       value={calculated.invoiceType || ''}
@@ -1394,7 +1448,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                     </Select>
                     </AutoFill>
                   </Field>
-                  <Field required={Number(calculated.pricingMode) === 1 || Number(calculated.pricingMode) === 2} label="未税总计" editable={editable} readonlyText={`¥ ${money(calculated.totalExcludingTax)}`}>
+                  <Field required={Number(calculated.pricingMode) === 1 || Number(calculated.pricingMode) === 2} label="未税总计" fieldKey="totalExcludingTax" editable={editable} readonlyText={`¥ ${money(calculated.totalExcludingTax)}`}>
                     <Input
                       type="number"
                       min={0}
@@ -1405,7 +1459,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                       onChange={(e) => patch({ totalExcludingTax: asNumber(e.target.value) })}
                     />
                   </Field>
-                  <Field label="项目分类" editable={editable} readonlyText={textValue(calculated.caseCategory)}>
+                  <Field label="项目分类" fieldKey="caseCategory" editable={editable} readonlyText={textValue(calculated.caseCategory)}>
                     <Select value={calculated.caseCategory || ''} onValueChange={(value) => patch({ caseCategory: value })}>
                       <SelectTrigger><SelectValue placeholder="选择项目分类" /></SelectTrigger>
                       <SelectContent>{constants.CASE_CATEGORIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
@@ -1427,7 +1481,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
 
               <SubPanel title="合同与罚则">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field required label="是否有合同" editable={editable} readonlyText={choiceValue(calculated.hasContract, '有合同', '无合同')} className="sm:col-span-2">
+                  <Field required label="是否有合同" fieldKey="hasContract" editable={editable} readonlyText={choiceValue(calculated.hasContract, '有合同', '无合同')} className="sm:col-span-2">
                     <BinaryChoice value={calculated.hasContract} yes="有合同" no="无合同" onChange={(value) => patch(Number(value) === 1 ? { hasContract: 1 } : { hasContract: 0, contractNo: '', penaltyContent: '' })} />
                   </Field>
                   <Field label="合同编号（有合同时选填）" editable={editable && Number(calculated.hasContract) === 1} readonlyText={calculated.contractNo ? textValue(calculated.contractNo) : (Number(calculated.hasContract) === 1 ? '合同流程中，待补编号' : '-')} className="sm:col-span-2">
@@ -1448,7 +1502,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
             description={`共 ${calculated.items?.length || 0} 个品项`}
           actions={editable || calculated.quotationFiles?.length ? (
               <div className="flex items-center gap-2">
-                {editable && itemSetupReady ? (
+                {editable && itemSetupReady && Number(calculated.pricingMode) !== 2 ? (
                   <Button variant="outline" size="sm" onClick={addItem}>
                     <Plus className="mr-2 size-4" />添加品项
                   </Button>
@@ -1499,7 +1553,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="开票信息">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="开票方式" editable={editable} readonlyText={textValue(calculated.invoiceProcess)}>
+                  <Field label="开票方式" fieldKey="invoiceProcess" editable={editable} readonlyText={textValue(calculated.invoiceProcess)}>
                     <AutoFill active={autoFilled.includes('invoiceProcess')}>
                     <Select value={calculated.invoiceProcess || ''} onValueChange={(value) => patch({ invoiceProcess: value })}>
                       <SelectTrigger><SelectValue placeholder="选择开票方式" /></SelectTrigger>
@@ -1507,14 +1561,14 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                     </Select>
                     </AutoFill>
                   </Field>
-                  <Field label="开票/收款时间" editable={editable} readonlyText={textValue(calculated.billingTiming)}>
+                  <Field label="开票/收款时间" fieldKey="billingTiming" editable={editable} readonlyText={textValue(calculated.billingTiming)}>
                     <Input value={calculated.billingTiming || ''} placeholder="如：预计1月开票、4月收款" onChange={(e) => patch({ billingTiming: e.target.value })} />
                   </Field>
-                  <Field label="开票内容" editable={editable} readonlyText={textValue(calculated.billingContent)} className="sm:col-span-2">
+                  <Field label="开票内容" fieldKey="billingContent" editable={editable} readonlyText={textValue(calculated.billingContent)} className="sm:col-span-2">
                     <Input value={calculated.billingContent || ''} placeholder="如：系统集成服务费 / 设备销售" onChange={(e) => patch({ billingContent: e.target.value })} />
                   </Field>
                   <div className="grid gap-4 sm:grid-cols-3 sm:col-span-2 border-t pt-4">
-                    <Field label="发票收件人" editable={editable} readonlyText={textValue(calculated.invoiceRecipient)}>
+                    <Field label="发票收件人" fieldKey="invoiceRecipient" editable={editable} readonlyText={textValue(calculated.invoiceRecipient)}>
                       <AutoFill active={autoFilled.includes('invoiceRecipient')}><SmartCombobox
                         value={calculated.invoiceRecipient || ''}
                         readOnly={!editable}
@@ -1523,10 +1577,10 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                         onChange={(value) => patchContactField('invoiceRecipient', value)}
                       /></AutoFill>
                     </Field>
-                    <Field label="发票收件电话" editable={editable} readonlyText={textValue(calculated.invoiceRecipientTel)}>
+                    <Field label="发票收件电话" fieldKey="invoiceRecipientTel" editable={editable} readonlyText={textValue(calculated.invoiceRecipientTel)}>
                       <AutoFill active={autoFilled.includes('invoiceRecipientTel')}><Input list="mr-contact-phone-options" value={calculated.invoiceRecipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('invoiceRecipientTel', e.target.value)} /></AutoFill>
                     </Field>
-                    <Field label="发票收件邮箱" editable={editable} readonlyText={textValue(calculated.invoiceRecipientMail)}>
+                    <Field label="发票收件邮箱" fieldKey="invoiceRecipientMail" editable={editable} readonlyText={textValue(calculated.invoiceRecipientMail)}>
                       <AutoFill active={autoFilled.includes('invoiceRecipientMail')}><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.invoiceRecipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('invoiceRecipientMail', e.target.value)} /></AutoFill>
                     </Field>
                   </div>
@@ -1534,7 +1588,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
               </SubPanel>
               <SubPanel title="付款信息">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="付款条件" editable={editable} readonlyText={textValue(calculated.paymentTerms)}>
+                  <Field label="付款条件" fieldKey="paymentTerms" editable={editable} readonlyText={textValue(calculated.paymentTerms)}>
                     <AutoFill active={autoFilled.includes('paymentTerms')}>
                     <Select value={calculated.paymentTerms || ''} onValueChange={(value) => patch({ paymentTerms: value })}>
                       <SelectTrigger><SelectValue placeholder="选择付款条件" /></SelectTrigger>
@@ -1543,14 +1597,14 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                     </AutoFill>
                   </Field>
                   {calculated.paymentTerms === '其他' ? (
-                    <Field required={calculated.paymentTerms === '其他'} label="付款条件说明" editable={editable} readonlyText={textValue(calculated.paymentOther)}>
+                    <Field required={calculated.paymentTerms === '其他'} label="付款条件说明" fieldKey="paymentOther" editable={editable} readonlyText={textValue(calculated.paymentOther)}>
                       <AutoFill active={autoFilled.includes('paymentOther')}>
                       <Input value={calculated.paymentOther || ''} placeholder="如：验收后 60 天" onChange={(e) => patch({ paymentOther: e.target.value })} />
                       </AutoFill>
                     </Field>
                   ) : null}
                   <div className="grid gap-4 sm:grid-cols-3 sm:col-span-2 border-t pt-4">
-                    <Field required label="采购联系人" editable={editable} readonlyText={textValue(calculated.purchaser)} help="客户侧商务对接人，谈单与付款流程联系他">
+                    <Field required label="采购联系人" fieldKey="purchaser" editable={editable} readonlyText={textValue(calculated.purchaser)} help="客户侧商务对接人，谈单与付款流程联系他">
                       <AutoFill active={autoFilled.includes('purchaser')}><SmartCombobox
                         value={calculated.purchaser || ''}
                         readOnly={!editable}
@@ -1559,10 +1613,10 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                         onChange={(value) => patchContactField('purchaser', value)}
                       /></AutoFill>
                     </Field>
-                    <Field label="采购联系电话" editable={editable} readonlyText={textValue(calculated.purchaserTel)}>
+                    <Field label="采购联系电话" fieldKey="purchaserTel" editable={editable} readonlyText={textValue(calculated.purchaserTel)}>
                       <AutoFill active={autoFilled.includes('purchaserTel')}><Input list="mr-contact-phone-options" value={calculated.purchaserTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('purchaserTel', e.target.value)} /></AutoFill>
                     </Field>
-                    <Field label="采购联系邮箱" editable={editable} readonlyText={textValue(calculated.purchaserMail)}>
+                    <Field label="采购联系邮箱" fieldKey="purchaserMail" editable={editable} readonlyText={textValue(calculated.purchaserMail)}>
                       <AutoFill active={autoFilled.includes('purchaserMail')}><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.purchaserMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('purchaserMail', e.target.value)} /></AutoFill>
                     </Field>
                   </div>
@@ -1574,7 +1628,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
           <SectionCard id="delivery" title="交付、验收与服务" icon={SECTION_ICON('delivery')} flash={flashSection === 'delivery'}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div className="grid gap-4 sm:grid-cols-3 md:col-span-2 xl:col-span-4 rounded-lg border bg-muted/20 p-4">
-                <Field required label="收货人" editable={editable} readonlyText={textValue(calculated.recipient)}>
+                <Field required label="收货人" fieldKey="recipient" editable={editable} readonlyText={textValue(calculated.recipient)}>
                   <AutoFill active={autoFilled.includes('recipient')}><SmartCombobox
                     value={calculated.recipient || ''}
                     readOnly={!editable}
@@ -1583,10 +1637,10 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                     onChange={(value) => patchContactField('recipient', value)}
                   /></AutoFill>
                 </Field>
-                <Field label="收货联系电话" editable={editable} readonlyText={textValue(calculated.recipientTel)}>
+                <Field label="收货联系电话" fieldKey="recipientTel" editable={editable} readonlyText={textValue(calculated.recipientTel)}>
                   <AutoFill active={autoFilled.includes('recipientTel')}><Input list="mr-contact-phone-options" value={calculated.recipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('recipientTel', e.target.value)} /></AutoFill>
                 </Field>
-                <Field label="收货邮箱" editable={editable} readonlyText={textValue(calculated.recipientMail)}>
+                <Field label="收货邮箱" fieldKey="recipientMail" editable={editable} readonlyText={textValue(calculated.recipientMail)}>
                   <AutoFill active={autoFilled.includes('recipientMail')}><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.recipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('recipientMail', e.target.value)} /></AutoFill>
                 </Field>
                 <Field label="交付地点" editable={editable} readonlyText={textValue(calculated.deliveryLocation)} className="sm:col-span-3" help="仅填写收货地址；收货人与联系电话见上方">
@@ -1595,25 +1649,26 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                   </AutoFill>
                 </Field>
               </div>
-              <Field label="最晚交付日期" editable={editable} readonlyText={textValue(calculated.latestDeliveryDate)}>
+              <Field label="最晚交付日期" fieldKey="latestDeliveryDate" editable={editable} readonlyText={textValue(calculated.latestDeliveryDate)}>
                 <Input type="date" value={calculated.latestDeliveryDate || ''} onChange={(e) => patch({ latestDeliveryDate: e.target.value })} />
               </Field>
-              <Field label="是否允许分批交付" editable={editable} readonlyText={choiceValue(calculated.splitDelivery, '允许', '不允许')}>
+              <Field label="是否允许分批交付" fieldKey="splitDelivery" editable={editable} readonlyText={choiceValue(calculated.splitDelivery, '允许', '不允许')}>
                 <BinaryChoice value={calculated.splitDelivery} yes="允许" no="不允许" onChange={(value) => patch({ splitDelivery: value })} />
               </Field>
-              <Field label="验收条件" editable={editable} readonlyText={textValue(calculated.acceptance)}>
+              <Field label="验收条件" fieldKey="acceptance" editable={editable} readonlyText={textValue(calculated.acceptance)}>
                 <Select value={calculated.acceptance || ''} onValueChange={(value) => patch({ acceptance: value })}>
                   <SelectTrigger><SelectValue placeholder="选择验收条件" /></SelectTrigger>
                   <SelectContent>{constants.ACCEPTANCE_TYPES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
               {calculated.acceptance === '其他' ? (
-                <Field required={calculated.acceptance === '其他'} label="验收说明" editable={editable} readonlyText={textValue(calculated.acceptanceOther)}>
+                <Field required={calculated.acceptance === '其他'} label="验收说明" fieldKey="acceptanceOther" editable={editable} readonlyText={textValue(calculated.acceptanceOther)}>
                   <Input value={calculated.acceptanceOther || ''} placeholder="请说明验收方式/标准" onChange={(e) => patch({ acceptanceOther: e.target.value })} />
                 </Field>
               ) : null}
               <WorkOptions
                 label="装机承担方"
+                fieldKey="installOptions"
                 value={calculated.installOptions || []}
                 choices={constants.WORK_OPTIONS}
                 editable={editable}
@@ -1621,6 +1676,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
               />
               <WorkOptions
                 label="维护承担方"
+                fieldKey="maintenanceOptions"
                 value={calculated.maintenanceOptions || []}
                 choices={constants.WORK_OPTIONS}
                 editable={editable}

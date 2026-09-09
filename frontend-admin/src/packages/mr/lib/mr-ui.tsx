@@ -88,6 +88,7 @@ const REQUIRED_FIELD_LABELS = new Set([
   '验收条件',
   '装机承担方',
   '维护承担方',
+  '是否允许分批交付',
   '品名及描述',
   '数量',
   '未税单价',
@@ -159,6 +160,7 @@ export function Field({
   required,
   help,
   className = '',
+  fieldKey,
 }: {
   label: string
   children?: ReactNode
@@ -167,6 +169,8 @@ export function Field({
   required?: boolean
   help?: string
   className?: string
+  /** 后端校验字段名：渲染为 data-mr-field，供错误清单点击定位/高亮具体输入框（issue #130） */
+  fieldKey?: string
 }) {
   const showRequired = required ?? REQUIRED_FIELD_LABELS.has(label)
   const labelContent = (
@@ -178,14 +182,14 @@ export function Field({
   )
   if (!editable) {
     return (
-      <div className={`min-w-0 space-y-1 ${className}`}>
+      <div data-mr-field={fieldKey} className={`min-w-0 space-y-1 ${className}`}>
         <div className="text-xs text-muted-foreground">{help ? <span className="inline-flex items-center gap-1">{labelContent}</span> : labelContent}</div>
         <div className="min-h-6 text-sm break-words whitespace-pre-wrap">{readonlyText ?? children}</div>
       </div>
     )
   }
   return (
-    <div role="group" aria-label={label} className={`min-w-0 space-y-1.5 ${className}`}>
+    <div role="group" aria-label={label} data-mr-field={fieldKey} className={`min-w-0 space-y-1.5 rounded-md ${className}`}>
       {help ? <Label className="flex items-center gap-1">{labelContent}</Label> : <Label>{labelContent}</Label>}
       {children}
     </div>
@@ -222,6 +226,7 @@ export function WorkOptions({
   choices,
   onChange,
   className = '',
+  fieldKey,
 }: {
   label: string
   value: string[]
@@ -230,6 +235,7 @@ export function WorkOptions({
   choices: string[]
   onChange: (value: string[]) => void
   className?: string
+  fieldKey?: string
 }) {
   const toggle = (choice: string, checked: boolean) => {
     if (!checked) return onChange(value.filter((item) => item !== choice))
@@ -238,7 +244,7 @@ export function WorkOptions({
     onChange([...new Set(value.filter((item) => item !== 'NO').concat(choice))])
   }
   return (
-    <Field label={label} required={required} editable={editable} readonlyText={value.join('、') || '-'} className={className}>
+    <Field label={label} required={required} editable={editable} readonlyText={value.join('、') || '-'} className={className} fieldKey={fieldKey}>
       <div className="flex min-h-9 flex-wrap items-center gap-x-4 gap-y-2 rounded-md border bg-background px-3 py-2">
         {choices.map((choice) => (
           <label key={choice} className="flex items-center gap-2 text-sm">
@@ -279,7 +285,7 @@ export function SmartCombobox({
 
   // 外部值变化（如选择客户后自动回填联系人）时同步文本框
   useEffect(() => { setText(value) }, [value])
-  useEffect(() => { setOpen(false) }, [value])
+  // 注意：不要随 value 变化关闭下拉——输入过程中 value 每字都变，关掉会导致联想下拉随输入关闭（issue #129）
 
   // 点击外部关闭（portal 下拉渲染在 body，需一并排除，否则点选项会被误判为点外部）
   useEffect(() => {

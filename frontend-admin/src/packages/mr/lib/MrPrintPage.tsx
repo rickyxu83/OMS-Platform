@@ -337,7 +337,8 @@ export function MrPrintPage() {
   const { id } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
-  const previewOrder = (location.state as { previewOrder?: MrOrder } | null)?.previewOrder || null
+  const previewState = (location.state as { previewOrder?: MrOrder; resumeDirty?: boolean } | null)
+  const previewOrder = previewState?.previewOrder || null
   const [order, setOrder] = useState<MrOrder | null>(previewOrder)
   const [error, setError] = useState('')
   useEffect(() => { if (!id || previewOrder) return; let active = true; getMr(id).then((value) => { if (active) setOrder(value) }).catch((err) => { if (active) setError((err as Error).message || 'MR 加载失败') }); return () => { active = false } }, [id, previewOrder])
@@ -345,8 +346,9 @@ export function MrPrintPage() {
   if (!order && !error) return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 className="size-6 animate-spin" /></div>
   if (!order) return <div className="p-8 text-destructive">{error}</div>
   const normalizedId = String(id || '').replace(/^\/+|\/+$/g, '')
-  const goBack = () => navigate(normalizedId ? `/mr/${normalizedId}` : '/mr', { replace: true })
-  const exitPreview = () => { if (window.history.length > 1) window.history.back(); else goBack() }
+  // 从填单页带 previewOrder 进来的预览：返回时把编辑内容随 history state 带回，填单页优先恢复它而不是重新读服务器版本（issue #128）
+  const goBack = () => navigate(normalizedId ? `/mr/${normalizedId}` : '/mr', { replace: true, state: previewOrder ? { resumeOrder: order, resumeDirty: Boolean(previewState?.resumeDirty) } : undefined })
+  const exitPreview = () => { if (previewOrder) { goBack(); return } if (window.history.length > 1) window.history.back(); else goBack() }
   const canWithdraw = Boolean(order.permissions?.canWithdraw)
   const withdraw = () => {
     if (!id) return
