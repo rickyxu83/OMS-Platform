@@ -19,7 +19,7 @@ function text(value, max = 500) {
 }
 
 // 供应商为敦阳（含繁体/英文写法）表示内部承担、无需采购（2026-09-08 佬裁决）。
-// 与报价导入的内部供应商判定同口径，采购环节据此跳过采购订单号必填。
+// 与报价导入的内部供应商判定同口径，采购环节据此跳过采购单号必填。
 const INTERNAL_VENDOR_RE = /(敦阳|敦陽|stark|dunyang)/i
 
 function isInternalVendor(vendor) {

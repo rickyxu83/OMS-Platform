@@ -133,7 +133,7 @@ async function ensureWorkflowTables() {
       CONSTRAINT fk_mr_purchase_tasks_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
-  // 任务类型：purchase=采购订单号填写；contract_no=合同编号补填（有合同但签核时暂无编号）
+  // 任务类型：purchase=采购单号填写；contract_no=合同编号补填（有合同但签核时暂无编号）
   await addMissingColumns('mr_purchase_tasks', [
     ['task_type', "VARCHAR(16) NOT NULL DEFAULT 'purchase' AFTER mr_id"],
   ])
@@ -588,7 +588,7 @@ async function createPurchaseTask(connection, order, purchaser, initiatorUserId,
      VALUES (:mrId, :title, :assigneeId, :initiatorId, :detailPath)`,
     {
       mrId: order.id,
-      title: `${order.customerName || '未选客户'} · 采购订单号填写`.slice(0, 255),
+      title: `${order.customerName || '未选客户'} · 采购单号填写`.slice(0, 255),
       assigneeId: purchaser.id,
       initiatorId: initiatorUserId,
       detailPath: `/mr/${order.id}`,
@@ -725,7 +725,7 @@ const MERGED_TASKS_SUBQUERY = `
               t.title, t.assignee_user_id, t.initiator_user_id, t.status, t.detail_path,
               t.completed_at, t.created_at, t.updated_at,
               assignee.real_name AS assignee_name, initiator.real_name AS initiator_name,
-              o.status AS business_status, CASE WHEN t.task_type = 'contract_no' THEN '合同编号补填' ELSE '采购订单号填写' END AS current_step_label, o.customer_name, o.ctrl_no
+              o.status AS business_status, CASE WHEN t.task_type = 'contract_no' THEN '合同编号补填' ELSE '采购单号填写' END AS current_step_label, o.customer_name, o.ctrl_no
        FROM mr_purchase_tasks t
        LEFT JOIN users assignee ON assignee.id = t.assignee_user_id
        LEFT JOIN users initiator ON initiator.id = t.initiator_user_id

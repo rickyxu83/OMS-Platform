@@ -33,12 +33,12 @@ async function main() {
   const permissions = getDefaultPermissionMatrix()
   assert.strictEqual(permissions.admin['mr.approve'], false)
   assert.strictEqual(permissions.assistant['mr.approve'], true)
-  assert.strictEqual(permissions.purchaser['mr.purchase'], true, '采购角色默认可填写采购订单号')
+  assert.strictEqual(permissions.purchaser['mr.purchase'], true, '采购角色默认可填写采购单号')
   assert.strictEqual(permissions.purchaser['mr.view'], true, '采购角色默认可查看订购申请')
   assert.strictEqual(permissions.purchaser['workspace.admin'], true, '采购角色默认可进入管理工作台')
-  assert.strictEqual(permissions.admin['mr.purchase'], true, '管理员默认可填写采购订单号')
-  assert.strictEqual(permissions.sales['mr.purchase'], false, '业务不可填写采购订单号')
-  assert.strictEqual(permissions.assistant['mr.purchase'], false, '助理不可填写采购订单号')
+  assert.strictEqual(permissions.admin['mr.purchase'], true, '管理员默认可填写采购单号')
+  assert.strictEqual(permissions.sales['mr.purchase'], false, '业务不可填写采购单号')
+  assert.strictEqual(permissions.assistant['mr.purchase'], false, '助理不可填写采购单号')
   await assert.rejects(
     resolvePurchaser({ async execute() { return [[]] } }),
     /采购角色未配置在职人员/,

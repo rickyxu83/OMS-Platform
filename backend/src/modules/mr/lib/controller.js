@@ -331,7 +331,7 @@ async function loadDetail(id, user) {
     items: Array.isArray(frozenSnapshot.items) ? frozenSnapshot.items : items,
     totals: frozenSnapshot.totals || liveTotals,
   } : { ...merged, totals: liveTotals }
-  // 冻结快照的品项缺少数据库 id，且不含审批后由采购填写的公司料号、采购订单号、出货单号；
+  // 冻结快照的品项缺少数据库 id，且不含审批后由采购填写的公司料号、采购单号、出货单号；
   // 按 rowNo 叠加实时 id 与执行数据，归档 PDF 仍保持审批时快照不变
   const liveItemByRowNo = new Map(rawItems.map((raw) => [Number(raw.rowNo), raw]))
   const displayedItems = (displayed.items || []).map((item) => {
@@ -514,7 +514,7 @@ async function list(req, res) {
     where.push('o.purchase_status = :purchaseStatus')
     params.purchaseStatus = purchaseStatus
   }
-  // 全文搜索：单头（客户/Ctrl.NO/客户P/O/备注）+ 品项明细（品名/描述/原厂规格/料号/供应商/采购订单号/出货单号）
+  // 全文搜索：单头（客户/Ctrl.NO/客户P/O/备注）+ 品项明细（品名/描述/原厂规格/料号/供应商/采购单号/出货单号）
   // 设备型号查单场景：型号命中 oem_spec/description/name 的品项即可定位所属 MR 单
   const q = String(req.query.q || '').trim()
   if (q) {
@@ -1168,7 +1168,7 @@ async function submitPurchase(req, res) {
   let wasDone = false
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
-    if (order.status !== 'approved') throw badRequest('仅已通过的 MR 可以填写采购订单号')
+    if (order.status !== 'approved') throw badRequest('仅已通过的 MR 可以填写采购单号')
     if (!['pending', 'done'].includes(String(order.purchaseStatus || ''))) throw badRequest('当前 MR 不在采购订单填写环节')
     if (!canPurchase(order, req.user)) throw forbidden('当前采购填写任务不属于你')
     wasDone = String(order.purchaseStatus || '') === 'done'
@@ -1179,11 +1179,11 @@ async function submitPurchase(req, res) {
     const updates = []
     for (const item of itemRows) {
       const value = byId.get(Number(item.id))
-      if (value === undefined) throw badRequest('请完整提交所有品项的采购订单号')
+      if (value === undefined) throw badRequest('请完整提交所有品项的采购单号')
       const vendorText = String(item.vendor || '').trim()
-      // 无供应商或供应商为敦阳（内部承担）的品项没有外部采购对象，视为无需采购，不强制填写采购订单号
+      // 无供应商或供应商为敦阳（内部承担）的品项没有外部采购对象，视为无需采购，不强制填写采购单号
       const needPurchase = vendorText !== '' && !isInternalVendor(vendorText)
-      if (needPurchase && !value) throw badRequest('有外部供应商的品项都需填写采购订单号；供应商为敦阳或未填的品项视为无需采购')
+      if (needPurchase && !value) throw badRequest('有外部供应商的品项都需填写采购单号；供应商为敦阳或未填的品项视为无需采购')
       const companyValue = byCompanyPartNo.get(Number(item.id)) || ''
       const shipmentValue = byShipmentNo.get(Number(item.id)) || ''
       // 公司料号、出货单号为采购执行数据，选填不校验
@@ -1232,7 +1232,7 @@ async function submitPurchase(req, res) {
         }),
       },
     )
-    // 触发重新归档：归档 PDF 取审批冻结快照 + 实时采购订单号
+    // 触发重新归档：归档 PDF 取审批冻结快照 + 实时采购单号
     await connection.execute(
       `UPDATE mr_orders SET archive_status = 'pending', archive_attempts = 0, archive_next_attempt_at = NOW(), archive_error = NULL
        WHERE id = :mrId`,

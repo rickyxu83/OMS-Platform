@@ -635,7 +635,7 @@ export function QuotationImportDialog({
                   <label className="text-sm font-medium" htmlFor="quotation-batch-source">复制来源</label>
                   <div className="flex flex-wrap gap-2"><select id="quotation-batch-source" className="h-9 min-w-56 border bg-background px-3 text-sm" value={batchSourceIndex} onChange={(event) => setBatchSourceIndex(Number(event.target.value))}>{previewItems.map((item, index) => <option key={`${item.oemSpec}-${index}`} value={index}>{index + 1} · {item.name || item.oemSpec || '未命名品项'}</option>)}</select><Button type="button" size="sm" onClick={applyBatch}><Check className="mr-2 size-4" />应用至 {selectedRows.size} 个品项</Button></div>
                   <span className="text-xs text-muted-foreground">复制字段</span>
-                  <div className="flex flex-wrap gap-4">{(['vendor', 'warrantyService', 'installBy'] as const).map((field) => <label key={field} className="flex items-center gap-2 text-sm"><Checkbox checked={batchFields[field]} onCheckedChange={(checked) => setBatchFields((current) => ({ ...current, [field]: Boolean(checked) }))} />{{ vendor: '供应商', warrantyService: '保固与服务', installBy: '品项装机方' }[field]}</label>)}</div>
+                  <div className="flex flex-wrap gap-4">{(['vendor', 'warrantyService', 'installBy'] as const).map((field) => <label key={field} className="flex items-center gap-2 text-sm"><Checkbox checked={batchFields[field]} onCheckedChange={(checked) => setBatchFields((current) => ({ ...current, [field]: Boolean(checked) }))} />{{ vendor: '供应商', warrantyService: '保固与服务', installBy: '装机方' }[field]}</label>)}</div>
                 </div>
               ) : null}
               <div className="max-h-[480px] divide-y overflow-y-auto border">
@@ -661,7 +661,7 @@ export function QuotationImportDialog({
                           <Input value={item.oemSpec || ''} placeholder="原厂/OEM 规格型号，选填" aria-label={`第 ${index + 1} 项原厂规格`} onChange={(event) => patchItem(index, { oemSpec: event.target.value })} />
                           <VendorCombobox value={item.vendor || ''} onChange={(vendorName) => patchItem(index, { vendor: vendorName })} placeholder="供应商完整名称，选填" vendors={vendors} aria-label={`第 ${index + 1} 项供应商`} />
                           <Input value={item.warrantyService || ''} placeholder="如：一年保固 / 三年上门" aria-label={`第 ${index + 1} 项保固与服务`} onChange={(event) => patchItem(index, { warrantyService: event.target.value })} />
-                          <Input value={item.installBy || ''} placeholder="如：敦阳 / 供应商 / 第三方" aria-label={`第 ${index + 1} 项品项装机方`} onChange={(event) => patchItem(index, { installBy: event.target.value })} />
+                          <Input value={item.installBy || ''} placeholder="如：敦阳 / 供应商 / 第三方" aria-label={`第 ${index + 1} 项装机方`} onChange={(event) => patchItem(index, { installBy: event.target.value })} />
                           {!item.purchaseOnly && item.costInclTax == null && purchaseOnlyCandidates.length ? (
                             <div className="md:col-span-3">
                               <Select onValueChange={(value) => adoptCost(index, Number(value))}>
@@ -691,7 +691,7 @@ export function QuotationImportDialog({
                             </div>
                           ) : null}
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground md:col-span-3">
-                            <span>采购成本（不含税） <b className="text-foreground">{amount(excludingTax(item))}</b></span>
+                            <span>采购成本（未税） <b className="text-foreground">{amount(excludingTax(item))}</b></span>
                             {item.costSource ? <span>成本来源 {item.costSource}</span> : null}
                             {item.vendor && vendors.some((vendor) => vendor.name === item.vendor) ? <span className="text-emerald-700">已关联 OMS 供应商目录</span> : null}
                           </div>
@@ -719,7 +719,7 @@ export function QuotationImportDialog({
                           <div className="mt-1 text-xs text-muted-foreground">含税小计 {amount(includingTax(salesSubtotal(item), invoiceTaxRate))}</div>
                         </div>
                         <div className={item.costReviewFields?.length ? 'text-sm font-medium text-amber-700 tabular-nums' : 'text-sm tabular-nums'}>
-                          <div>采购成本（不含税） {amount(excludingTax(item))}</div>
+                          <div>采购成本（未税） {amount(excludingTax(item))}</div>
                           <div className="mt-1 text-xs text-muted-foreground">采购成本（含税） {amount(item.costInclTax)}</div>
                         </div>
                       </div>

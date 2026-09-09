@@ -52,7 +52,7 @@ async function archiveContext(mrId) {
     { mrId, cycle: version.cycle },
   )
   const snapshot = jsonValue(version.snapshot, {})
-  // 采购执行数据（公司料号/采购订单号/出货单号）是审批后填写的：归档时从 mr_items 实时叠加到快照品项上（按 row_no 对应），
+  // 采购执行数据（公司料号/采购单号/出货单号）是审批后填写的：归档时从 mr_items 实时叠加到快照品项上（按 row_no 对应），
   // 审批内容（品名/价格/签核）仍取冻结快照，保证归档 PDF 与审批一致
   if (Array.isArray(snapshot.items) && liveItems.length) {
     const liveByRowNo = new Map(liveItems.map((item) => [Number(item.row_no), { companyPartNo: item.company_part_no, purchaseOrderNo: item.purchase_order_no, shipmentNo: item.shipment_no }]))
@@ -74,7 +74,7 @@ async function archiveContext(mrId) {
       versionNo: Number(version.version_no),
       customerCode: order.customer_code,
       salesOwnerName: order.sales_owner_name,
-      // 合同编号为签核通过后由助理补填的数据：归档时实时叠加到冻结快照上（与采购订单号同理），
+      // 合同编号为签核通过后由助理补填的数据：归档时实时叠加到冻结快照上（与采购单号同理），
       // 保证补填后重新生成的归档 PDF 带上合同编号
       contractNo: order.contract_no || snapshot.contractNo || null,
       quotationFiles: files,

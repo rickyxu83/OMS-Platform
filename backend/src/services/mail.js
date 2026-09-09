@@ -1178,13 +1178,13 @@ async function sendMrApprovalMail(order, recipient, event = 'task') {
     owner_transfer: 'MR 业务负责人已变更，请重新核对',
     reject: 'MR 已驳回并退回修改',
     approved: 'MR 已全部签核通过',
-    purchase_task: 'MR 已签核通过，待你填写采购订单号',
-    purchase_transfer: '采购订单号填写待办已转交给你',
+    purchase_task: 'MR 已签核通过，待你填写采购单号',
+    purchase_transfer: '采购单号填写待办已转交给你',
     contract_no_task: 'MR 已签核通过，待你补填合同编号（补填后流转采购）',
     contract_no_transfer: '合同编号补填待办已转交给你',
     contract_no_filled: '合同编号已补填，MR 已流转采购',
     purchase_assignment_error: 'MR 采购人配置异常，采购环节已暂停',
-    purchase_done: '采购订单号已填写',
+    purchase_done: '采购单号已填写',
     withdraw: '业务负责人已撤回 MR',
     void: 'MR 已作废',
     assignment_error: 'MR 签核人配置异常，签核流程已暂停',
@@ -1205,7 +1205,7 @@ async function sendMrApprovalMail(order, recipient, event = 'task') {
     return `
     <tr>
       <td style="border:1px solid #cbd5e1;padding:6px;text-align:center">${index + 1}</td>
-      <td style="border:1px solid #cbd5e1;padding:6px"><strong>${htmlEscape(item.name || '-')}</strong><br>${htmlEscape(item.description || '-')}<br><small>保固与服务：${htmlEscape(item.warrantyService || item.warranty_service || '-')}；品项装机方：${htmlEscape(item.installBy || item.install_by || '-')}</small></td>
+      <td style="border:1px solid #cbd5e1;padding:6px"><strong>${htmlEscape(item.name || '-')}</strong><br>${htmlEscape(item.description || '-')}<br><small>保固与服务：${htmlEscape(item.warrantyService || item.warranty_service || '-')}；装机方：${htmlEscape(item.installBy || item.install_by || '-')}</small></td>
       <td style="border:1px solid #cbd5e1;padding:6px">${htmlEscape(item.companyPartNo || item.company_part_no || '-')}<br><small>${htmlEscape(item.oemSpec || item.oem_spec || '-')}</small></td>
       <td style="border:1px solid #cbd5e1;padding:6px;text-align:right">${htmlEscape(item.qty ?? '-')}</td>
       <td style="border:1px solid #cbd5e1;padding:6px;text-align:right">¥ ${mrMoney(item.unitPrice ?? item.unit_price)}<br><strong>¥ ${mrMoney(item.subtotal)}</strong></td>
@@ -1253,13 +1253,13 @@ async function sendMrApprovalMail(order, recipient, event = 'task') {
           <thead><tr style="background:#4e386e;color:#fff">
             <th style="padding:7px">#</th><th style="padding:7px">品名及描述 / 履约信息</th><th style="padding:7px">公司料号 / 原厂规格</th>
             <th style="padding:7px">数量</th><th style="padding:7px">未税单价 / 未税小计</th><th style="padding:7px">供应商</th>
-            <th style="padding:7px">采购成本 / 采购税率</th><th style="padding:7px">采购订单号 / 采购成本来源</th>
+            <th style="padding:7px">采购成本 / 采购税率</th><th style="padding:7px">采购单号 / 采购成本来源</th>
           </tr></thead><tbody>${rows || '<tr><td colspan="8" style="padding:12px;text-align:center">暂无品项</td></tr>'}</tbody>
         </table>
       </div>
       <table style="border-collapse:collapse;margin-top:14px;width:100%;max-width:680px">
         <tr><td style="padding:6px;background:#f1f5f9">未税总计</td><td style="padding:6px;text-align:right">¥ ${mrMoney(sales)}</td></tr>
-        <tr><td style="padding:6px;background:#f1f5f9">采购成本（不含税）</td><td style="padding:6px;text-align:right">¥ ${mrMoney(cost)}</td></tr>
+        <tr><td style="padding:6px;background:#f1f5f9">采购成本（未税）</td><td style="padding:6px;text-align:right">¥ ${mrMoney(cost)}</td></tr>
         <tr><td style="padding:6px;background:#f1f5f9">毛利额</td><td style="padding:6px;text-align:right">¥ ${mrMoney(grossProfit)}</td></tr>
         <tr><td style="padding:6px;background:#f1f5f9">整单毛利率</td><td style="padding:6px;text-align:right">${margin === null ? '-' : `${margin.toFixed(2)}%`}</td></tr>
       </table>
