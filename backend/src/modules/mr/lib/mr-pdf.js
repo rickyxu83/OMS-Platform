@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 48
+const PDF_FORMAT_VERSION = 49
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -161,7 +161,7 @@ function summary(doc, fonts, order, y) {
   const cells = [
     { label: '客户 / CUSTOMER', main: value(order.customerName || order.customer_name, '-') },
     { label: '交付 / DELIVERY', main: value(order.latestDeliveryDate || order.latest_delivery_date, '-') },
-    { label: '业务负责人 / SALES', main: value(orderField(order, 'salesOwnerName', 'sales_owner_name'), '-') },
+    { label: '项目分类 / CATEGORY', main: value(orderField(order, 'caseCategory', 'case_category'), '-') },
     { label: '状态 / STATUS', main: statusLabel },
   ]
   cells.forEach((cell, index) => {
@@ -169,8 +169,9 @@ function summary(doc, fonts, order, y) {
     text(doc, fonts, cell.label, x + 6, y + 2, { size: 6.3, color: MUTED, width: width - 12, ellipsis: true })
     text(doc, fonts, cell.main, x + 6, y + 11.5, { size: 8.5, bold: true, width: width - 12, height: 13, ellipsis: true })
   })
-  line(doc, left, y + 26, right, y + 26, '#e5e7eb')
-  return y + 32
+  // 摘要底部分隔线与主值文字留足间距（原 y+26 视觉上贴字）
+  line(doc, left, y + 29, right, y + 29, '#e5e7eb')
+  return y + 35
 }
 
 function itemField(item, camel, snake = camel) {
@@ -286,9 +287,9 @@ function orderField(order, camel, snake = camel) {
   return order[camel] ?? order[snake]
 }
 
-// 页眉四栏已展示 客户/交付/业务负责人/状态：以下字段不再重复进资料区；
+// 页眉四栏已展示 客户/交付/项目分类/状态：以下字段不再重复进资料区；
 // 客户 P/O、交付地点、付款条件、发票类型、开票内容 已归入下方资料区（用户反馈 2026-09-09）
-const HEADER_DUPLICATES = new Set(['客户名称', '业务负责人', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期'])
+const HEADER_DUPLICATES = new Set(['客户名称', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期'])
 
 const DETAIL_GROUPS = [
   ['客户与合同', ['客户联系人', '客户 P/O', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期']],
@@ -602,16 +603,8 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
     }
     y = itemRow(doc, fonts, item, index, columns, y, bottom - y)
   })
-  // 签名区防孤儿页：仅当当前页剩余空间已不足一小截（<150pt）、且整段能放进新页时，才把
-  // “合计+资料+签核”整段移到新页；剩余空间尚可时让合计与资料卡片自然续排（资料区内部、
-  // 签核区各有分页保护），避免表格后剩半页空白却整段跳到新页
+  // 合计紧跟明细表落本页；签名孤儿由 details 的 reserveBottom 预留机制防住，不再整段搬页
   const approvalSpace = approvalRows.length ? approvalBoxHeight(doc, fonts, approvalRows) + 24 : 0
-  const tailSpace = 5 + 41 + detailsHeight(doc, fonts, order, items, Boolean(watermarkLabel)) + approvalSpace
-  const freshPageCapacity = (PAGE.height - 45) - 62
-  if (y + tailSpace > bottom && bottom - y < 150 && tailSpace <= freshPageCapacity) {
-    doc.addPage()
-    y = header(doc, fonts, order, '客户订购申请单 · 签核归档')
-  }
   if (y + 45 > bottom) {
     doc.addPage()
     y = header(doc, fonts, order, '客户订购申请单 · 签核归档')

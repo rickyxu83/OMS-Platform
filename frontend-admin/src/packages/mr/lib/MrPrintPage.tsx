@@ -8,8 +8,8 @@ import type { MrApproval, MrItem, MrOrder } from '../types'
 const STATUS: Record<string, string> = { draft: '草稿', in_review: '签核中', approved: '已通过', rejected: '已驳回', voided: '已作废' }
 const PRICING: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
 const SIGNATURE_ROLES = [['assistant', '助理'], ['sales', '业务负责人'], ['engineering', '工程会签'], ['supervisor', '处级单位'], ['vp', '副总经理']] as const
-// 页眉订货条四栏已展示 客户/交付/业务负责人/状态；客户 P/O、交付地点、付款条件、发票类型、开票内容归入资料区（2026-09-09 用户反馈）
-const HEADER_DUPLICATES = new Set(['客户名称', '业务负责人', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期'])
+// 页眉订货条四栏已展示 客户/交付/项目分类/状态；客户 P/O、交付地点、付款条件、发票类型、开票内容归入资料区（2026-09-09 用户反馈）
+const HEADER_DUPLICATES = new Set(['客户名称', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期'])
 const FACT_GROUPS = [
   ['客户与合同', ['客户联系人', '客户 P/O', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期']],
   ['交易与开票', ['计价模式', '发票类型', '开票方式', '开票内容', '开票/收款时间', '付款条件', '付款条件说明']],
@@ -302,7 +302,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
         <div className="a-orderbar">
           <div><small>客户 / CUSTOMER</small><b>{text(order.customerName, emptyText)}</b></div>
           <div><small>交付 / DELIVERY</small><b>{text(order.latestDeliveryDate, emptyText)}</b></div>
-          <div><small>业务负责人 / SALES</small><b>{text(order.salesOwnerName, emptyText)}</b></div>
+          <div><small>项目分类 / CATEGORY</small><b>{text(order.caseCategory, emptyText)}</b></div>
           <div><small>状态 / STATUS</small><b>{STATUS[status] || status}</b></div>
         </div>
         <Section index="01" title={`采购与销售明细 · ${order.items?.length || 0} 个品项`}>
