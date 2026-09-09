@@ -296,6 +296,8 @@ function displayUserName(user: Record<string, any> | null | undefined) {
 }
 
 const IS_TEST_SERVER = String(import.meta.env.VITE_APP_ENVIRONMENT || "").toLowerCase() === "test";
+// 部署时由 deploy.sh 注入：当前环境挂的是哪个分支哪个 commit（覆盖问题的部署后可见性）
+const DEPLOY_REF = [import.meta.env.VITE_DEPLOY_BRANCH, import.meta.env.VITE_DEPLOY_COMMIT].filter(Boolean).join("@");
 
 export function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate();
@@ -582,7 +584,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold leading-tight">测试开发服务器</p>
                   <p className="truncate text-[11px] font-medium leading-snug text-amber-900/90">
-                    仅供测试，请勿录入正式业务数据
+                    仅供测试，请勿录入正式业务数据{DEPLOY_REF ? ` · 当前部署：${DEPLOY_REF}` : ""}
                   </p>
                 </div>
               </div>

@@ -171,6 +171,62 @@ enforce_main_for_production() {
 
 enforce_main_for_production
 
+# 覆盖预警（多线并行护栏）：远端 .deployed-ref 记录当前部署的分支+commit，
+# 若远端包含不在当前分支的提交（别人未合并的工作），红灯列出并要求显式确认。
+# DEPLOY_FORCE=1 跳过确认；DEPLOY_OVERWRITE_CHECK=0 完全关闭检查。
+check_deploy_overwrite() {
+  [ "${DEPLOY_OVERWRITE_CHECK:-1}" = "1" ] || return 0
+  local marker
+  marker="$(ssh "$SSH_TARGET" "cat '$REMOTE_ROOT/.deployed-ref' 2>/dev/null || true")"
+  if [ -z "$marker" ]; then
+    skip "远端无部署标记（首次部署或旧脚本部署），跳过覆盖检查"
+    return 0
+  fi
+  local remote_branch remote_commit local_branch local_head
+  remote_branch="$(echo "$marker" | awk '{print $1}')"
+  remote_commit="$(echo "$marker" | awk '{print $2}')"
+  local_branch="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+  local_head="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+  if [ "$remote_branch" = "$local_branch" ] && [ "$remote_commit" = "$local_head" ]; then
+    ok "部署标记一致（$remote_branch @ ${remote_commit:0:8}），无覆盖风险"
+    return 0
+  fi
+  if [ "$remote_branch" = "$local_branch" ]; then
+    skip "同分支部署（远端 ${remote_commit:0:8} → 本地 ${local_head:0:8}）"
+    return 0
+  fi
+  git -C "$ROOT_DIR" fetch origin --quiet 2>/dev/null || true
+  if git -C "$ROOT_DIR" cat-file -e "$remote_commit" 2>/dev/null \
+    && git -C "$ROOT_DIR" merge-base --is-ancestor "$remote_commit" HEAD; then
+    ok "远端当前为 $remote_branch @ ${remote_commit:0:8}，其提交已全部包含在当前分支，可安全覆盖"
+    return 0
+  fi
+  err "覆盖预警：${SSH_TARGET} 当前部署的是 $remote_branch @ ${remote_commit:0:8}，其中包含不在当前分支（$local_branch）里的提交："
+  if git -C "$ROOT_DIR" cat-file -e "$remote_commit" 2>/dev/null; then
+    git -C "$ROOT_DIR" log --oneline "HEAD..$remote_commit" 2>/dev/null | head -10 | sed 's/^/    /' >&2
+  else
+    echo "    （远端提交 $remote_commit 本地不存在，无法列出差异；可能对方未推送）" >&2
+  fi
+  echo "" >&2
+  echo "  确认要覆盖对方的未合并工作：DEPLOY_FORCE=1 重新执行；否则先协调部署顺序。" >&2
+  if [ "${DEPLOY_FORCE:-}" = "1" ]; then
+    skip "DEPLOY_FORCE=1，强制覆盖继续"
+    return 0
+  fi
+  exit 1
+}
+
+# 部署成功后写远端标记（分支 + commit + 时间），供下次部署的覆盖检查使用
+write_deploy_marker() {
+  local branch commit
+  branch="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+  commit="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || echo unknown)"
+  ssh "$SSH_TARGET" "printf '%s %s %s\n' '$branch' '$commit' \"\$(date -Iseconds)\" > '$REMOTE_ROOT/.deployed-ref'" \
+    && skip "部署标记已更新：$branch @ ${commit:0:8}"
+}
+
+check_deploy_overwrite
+
 if [ -n "$DEPLOY_PROFILE" ]; then
   skip "使用部署 profile：$DEPLOY_PROFILE"
 fi
@@ -284,6 +340,9 @@ deploy_backend() {
 # 3. 前端：本地构建 + 上传 dist
 # ============================================================
 build_admin() {
+  # 注入当前部署的分支与 commit，测试服横幅展示“现在挂的是谁的分支”（覆盖问题的部署后可见性）
+  export VITE_DEPLOY_BRANCH="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+  export VITE_DEPLOY_COMMIT="$(git -C "$ROOT_DIR" rev-parse --short=8 HEAD 2>/dev/null || echo '')"
   (cd "$ROOT_DIR/frontend-admin" && npm run build)
 }
 
@@ -353,3 +412,5 @@ case "$DEPLOY_TARGET" in
     exit 2
     ;;
 esac
+
+write_deploy_marker
