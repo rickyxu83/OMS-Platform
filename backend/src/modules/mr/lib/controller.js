@@ -63,7 +63,7 @@ const { applyQuotationLayoutRule } = require('./quotation-layout-rules')
 const { mergeQuotations } = require('./quotation-merge')
 const { recognizeQuotationWithAi, applyAiEntityKeys } = require('./quotation-ai-parser')
 const { applyStructuredRules } = require('./quotation-rules')
-const { coachChat, coachDistill } = require('./quote-coach')
+const { coachChat, coachDistill, normalizeRuleCard } = require('./quote-coach')
 const {
   constants,
   STEP_ROLES,
@@ -1810,6 +1810,8 @@ async function importQuotation(req, res) {
     parsed = null
     let systemItemCount = 0
     let aiItemCount = 0
+    // AI 结果因疑似截断漏项被降级（未替换规则结果）时置 true，避免重复报条数不一致警告（issue #136）
+    let aiDegraded = false
     let aiDocumentType = null
     parsed = extension === '.pdf'
         ? await parsePdf(file.buffer, name)
@@ -1891,12 +1893,22 @@ async function importQuotation(req, res) {
           if (aiResult?.sheets?.length && aiResult.sheets[0].items.length) {
             aiItemCount = aiResult.sheets[0].items.length
             aiDocumentType = aiResult.documentType
-            recognitionMethod = aiResult.recognitionMethod
             const modeLabel = aiResult.recognitionMethod === 'ai_vision' ? 'AI 视觉' : 'AI 文本'
-            parsed = {
-              ...parsed,
-              ...aiResult,
-              warnings: [...(parsed.warnings || []), `已通过${modeLabel}识别，请在预览中核对品项`],
+            const truncationWarnings = aiResult.truncated
+              ? [`「${name}」内容过长，发送给 AI 的文本已按上限截断，AI 可能漏项，请核对品项数量（必要时分拆文件导入）`]
+              : []
+            // AI 品项数显著少于规则识别（典型：长报价输入/输出截断漏项）时不整体替换，降级保留规则结果并显著提示（issue #136）
+            const significantLoss = systemItemCount > 0 && aiItemCount < systemItemCount && aiItemCount <= Math.floor(systemItemCount * 0.7)
+            if (significantLoss) {
+              aiDegraded = true
+              parsed = { ...parsed, warnings: [...(parsed.warnings || []), ...truncationWarnings, `⚠️ AI 识别仅返回 ${aiItemCount} 项，明显少于系统识别的 ${systemItemCount} 项（疑似长报价截断漏项）；已保留系统识别结果，请重点核对品项数量`] }
+            } else {
+              recognitionMethod = aiResult.recognitionMethod
+              parsed = {
+                ...parsed,
+                ...aiResult,
+                warnings: [...(parsed.warnings || []), ...truncationWarnings, `已通过${modeLabel}识别，请在预览中核对品项`],
+              }
             }
           } else {
             parsed = { ...parsed, warnings: [...(parsed.warnings || []), 'AI 识别未返回有效品项，已保留系统识别结果'] }
@@ -1948,7 +1960,7 @@ async function importQuotation(req, res) {
           parsed = { ...parsed, warnings: [...(parsed.warnings || []), '工作簿图片识别失败，供应商请人工核对'] }
         }
       }
-      if (aiItemCount && systemItemCount > 0 && aiItemCount !== systemItemCount) {
+      if (aiItemCount && systemItemCount > 0 && aiItemCount !== systemItemCount && !aiDegraded) {
         parsed.warnings.push(`AI 识别 ${aiItemCount} 项与系统识别 ${systemItemCount} 项不一致，请仔细核对`)
       }
       parsed = await applyQuotationLayoutRule(parsed, name, requestedRole)
@@ -2479,33 +2491,30 @@ async function deleteRecognitionRule(req, res) {
 
 /** 教练对话一轮：body.items 为当前预览品项（不脱敏，价格字段不发 AI——快照构造时已裁剪），body.messages 为会话历史 */
 async function quoteCoachChat(req, res) {
-  const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 50) : []
+  const allItems = Array.isArray(req.body?.items) ? req.body.items : []
+  // 发给 AI 的快照上限 50 项；变换只作用于快照内品项，尾部未涉及品项返回时原样拼回，避免超 50 项报价丢项（issue #137）
+  const items = allItems.slice(0, 50)
   const messages = Array.isArray(req.body?.messages) ? req.body.messages.slice(-12) : []
   if (!messages.length || messages[messages.length - 1]?.role !== 'user') throw badRequest('缺少用户消息')
   const result = await coachChat(items, messages)
+  if (result.items && allItems.length > 50) result.items = [...result.items, ...allItems.slice(50)]
   res.json(result)
 }
 
-/** 蒸馏并入库：会话满意后沉淀为规则（创建即生效，设置页可停用） */
+/** 蒸馏并入库：会话满意后沉淀为规则（创建即生效，设置页可停用）；确认路径以用户确认的草稿为准，不再二次蒸馏（issue #139） */
 async function quoteCoachDistill(req, res) {
   await ensureTables()
   const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 50) : []
   const messages = Array.isArray(req.body?.messages) ? req.body.messages.slice(-12) : []
-  if (messages.length < 2) throw badRequest('对话太少，请先描述你想要的效果')
-  const card = await coachDistill(items, messages)
   // 两段式：未带 confirmedCard 时仅返回蒸馏草稿（前端弹确认卡）；用户微调后带 confirmedCard 重调才入库
   const confirmed = req.body?.confirmedCard
   if (!confirmed || typeof confirmed !== 'object') {
+    if (messages.length < 2) throw badRequest('对话太少，请先描述你想要的效果')
+    const card = await coachDistill(items, messages)
     return res.json({ ok: true, draft: card })
   }
-  const final = {
-    scopeType: ['category', 'vendor', 'global'].includes(confirmed.scopeType) ? confirmed.scopeType : card.scopeType,
-    scopeValue: String(confirmed.scopeValue ?? card.scopeValue).trim().slice(0, 128),
-    actionType: card.actionType,
-    params: card.params,
-    ruleText: String(confirmed.ruleText ?? card.ruleText).trim().slice(0, 512),
-    promptText: String(card.promptText || '').slice(0, 500),
-  }
+  // 确认入库：actionType/params/promptText 与 ruleText 全部取自用户确认的草稿（白名单校验复用蒸馏归一化），AI 非确定性不再影响已确认内容
+  const final = normalizeRuleCard(confirmed)
   if (!final.ruleText) throw badRequest('规则描述不能为空')
   const insert = await query(
     `INSERT INTO mr_recognition_rules (scope_type, scope_value, action_type, params, rule_text, prompt_text, source, enabled, created_by)
@@ -2520,7 +2529,7 @@ async function quoteCoachDistill(req, res) {
       userId: req.user.id,
     },
   )
-  res.status(201).json({ ok: true, id: Number(insert.insertId), card: final, draft: card })
+  res.status(201).json({ ok: true, id: Number(insert.insertId), card: final })
 }
 
 module.exports = {

@@ -10,7 +10,7 @@ process.env.AI_API_URL = 'http://stub.local/chat'
 process.env.AI_API_KEY = 'stub-key'
 process.env.AI_MODEL = 'stub-model'
 
-const { coachChat } = require('../quote-coach')
+const { coachChat, applyTransform, normalizeRuleCard } = require('../quote-coach')
 
 /** 构造 fetch stub：依次返回给定的 AI content 文本 */
 function stubFetch(contents) {
@@ -70,6 +70,30 @@ async function main() {
   const r3 = await coachChat(items, history, { fetchImpl: s3.fetchImpl })
   assert.equal(r3.transformApplied, true)
   assert.equal(s3.calls.length, 1, '直接命中不追问')
+
+  // 场景 4（issue #137）：item_edit 改料号——AI 无论用 part_no/partNo/oemSpec 哪个名字，都统一落到前端读写的 oemSpec
+  const s4 = stubFetch([
+    JSON.stringify({ reply: '已修改料号。', transform: { type: 'item_edit', edits: [{ index: 0, fields: { part_no: 'SR665 V3' } }] } }),
+  ])
+  const r4 = await coachChat(items, history, { fetchImpl: s4.fetchImpl })
+  assert.equal(r4.transformApplied, true)
+  assert.equal(r4.items[0].oemSpec, 'SR665 V3', 'part_no 映射到 oemSpec，界面即时生效')
+  assert.equal(r4.changes[0].field, 'oemSpec')
+  const direct = applyTransform([{ name: 'x', oemSpec: '旧料号' }], { type: 'item_edit', edits: [{ index: 0, fields: { partNo: 'PN-2', vendor: '新供应商', qty: 5 } }] })
+  assert.equal(direct.items[0].oemSpec, 'PN-2', 'partNo 同样映射到 oemSpec')
+  assert.equal(direct.items[0].vendor, '新供应商')
+  assert.equal(direct.items[0].qty, undefined, '数量字段不在白名单，不允许 AI 改')
+
+  // 场景 5（issue #139）：normalizeRuleCard 白名单收敛——确认入库的 actionType/params/promptText 以确认草稿为准
+  const card = normalizeRuleCard({ scopeType: 'vendor', scopeValue: 'HPE', actionType: 'summarize_components', params: { keep: ['cpu', 'hacker'] }, ruleText: '只保留 CPU', promptText: '不应出现' })
+  assert.equal(card.actionType, 'summarize_components')
+  assert.deepEqual(card.params, { keep: ['cpu'] }, '非法 keep 类别被过滤')
+  assert.equal(card.promptText, '', 'summarize_components 不带 promptText')
+  const promptCard = normalizeRuleCard({ scopeType: 'planet', actionType: 'prompt_rule', ruleText: '描述规则', promptText: '注入指令' })
+  assert.equal(promptCard.scopeType, 'global', '非法 scopeType 收敛为 global')
+  assert.equal(promptCard.promptText, '注入指令')
+  const fallback = normalizeRuleCard({ actionType: 'prompt_rule', ruleText: '只有描述' })
+  assert.equal(fallback.promptText, '只有描述', 'promptText 缺失时回退 ruleText')
 
   console.log('quote-coach auto-retry tests passed')
 }

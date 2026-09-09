@@ -29,7 +29,7 @@ const COACH_SYSTEM = [
   '1. 用户想精简整机品项的组件明细（如“只要 CPU/内存/硬盘”）→ 先看品项快照的 bomCount：',
   '   - bomCount > 0（品项带结构化 BOM）→ summarize_components，keep 从 [cpu, memory, disk, raid, nic, psu, rail, warranty, software] 中选',
   '   - bomCount = 0（品项没有 BOM 行，配置写在品名/描述文本里）→ **改用 item_edit 直接改写 description**：从品名和描述中提取用户点名的类别，重写成“规格 ×数量”清单（如 “AMD EPYC 9354 32C 处理器 ×2；64GB DDR5 内存 ×8；960GB SSD ×3”），未点名的信息一律不写。规格与数量必须忠于原文，禁止编造',
-  '2. 用户想改写某个品项的品名/描述/料号/供应商 → item_edit，edits 按品项序号（index 从 0 开始）给出新字段值；只许改 name/description/part_no/vendor，严禁改数量与价格',
+  '2. 用户想改写某个品项的品名/描述/料号/供应商 → item_edit，edits 按品项序号（index 从 0 开始）给出新字段值；只许改 name/description/part_no（料号，等同 oemSpec）/vendor，严禁改数量与价格',
   '3. 用户只是提问或当前轮次不需要改预览（如寒暄、询问）→ transform 为 null',
   '4. 用户的描述无法落到上述两类动作时，仍在 reply 里说明你会记住这个偏好，transform 为 null（沉淀阶段会处理）',
 ].join('\n')
@@ -103,8 +103,10 @@ function applyTransform(items, transform) {
       const index = Number(edit?.index)
       if (!Number.isInteger(index) || index < 0 || index >= next.length) continue
       const fields = edit.fields && typeof edit.fields === 'object' ? edit.fields : {}
-      for (const [key, value] of Object.entries(fields)) {
-        if (!EDITABLE_FIELDS.has(key)) continue
+      for (const [rawKey, value] of Object.entries(fields)) {
+        if (!EDITABLE_FIELDS.has(rawKey)) continue
+        // 料号字段统一映射到前端实际读写的 oemSpec（AI 常用 part_no/partNo 命名，直接写入会导致界面不生效）（issue #137）
+        const key = rawKey === 'part_no' || rawKey === 'partNo' ? 'oemSpec' : rawKey
         changes.push({ index, field: key, from: String(next[index][key] ?? '').slice(0, 120), to: String(value ?? '').slice(0, 120) })
         next[index][key] = String(value ?? '').slice(0, 2000)
       }
@@ -172,20 +174,25 @@ async function coachDistill(items, history, { fetchImpl = fetch } = {}) {
   const content = await callAi(messages, env.ai.quoteTimeoutMs, fetchImpl, conn)
   const card = extractJson(content)
   if (!card || !card.ruleText) throw new Error('规则蒸馏失败，请再多描述几轮你想要的效果')
-  const scopeType = ['category', 'vendor', 'global'].includes(card.scopeType) ? card.scopeType : 'global'
-  const actionType = card.actionType === 'summarize_components' && Array.isArray(card.params?.keep) && card.params.keep.length
-    ? 'summarize_components'
-    : 'prompt_rule'
+  return normalizeRuleCard(card)
+}
+
+/** 规则卡归一化（白名单校验）：distill 草稿与用户确认入库共用同一套收敛逻辑，保证「确认的草稿 = 入库的规则」（issue #139） */
+function normalizeRuleCard(card) {
+  const scopeType = ['category', 'vendor', 'global'].includes(card?.scopeType) ? card.scopeType : 'global'
+  const keep = Array.isArray(card?.params?.keep)
+    ? card.params.keep.filter((k) => Object.keys(CATEGORY_LABELS).includes(k) && k !== 'other')
+    : []
+  const actionType = card?.actionType === 'summarize_components' && keep.length ? 'summarize_components' : 'prompt_rule'
+  const ruleText = String(card?.ruleText || '').slice(0, 512)
   return {
     scopeType,
-    scopeValue: String(card.scopeValue || '').slice(0, 128),
+    scopeValue: String(card?.scopeValue || '').slice(0, 128),
     actionType,
-    params: actionType === 'summarize_components'
-      ? { keep: card.params.keep.filter((k) => Object.keys(CATEGORY_LABELS).includes(k) && k !== 'other') }
-      : null,
-    ruleText: String(card.ruleText || '').slice(0, 512),
-    promptText: actionType === 'prompt_rule' ? String(card.promptText || card.ruleText || '').slice(0, 500) : '',
+    params: actionType === 'summarize_components' ? { keep } : null,
+    ruleText,
+    promptText: actionType === 'prompt_rule' ? String(card?.promptText || ruleText || '').slice(0, 500) : '',
   }
 }
 
-module.exports = { coachChat, coachDistill, applyTransform, itemsSnapshot }
+module.exports = { coachChat, coachDistill, applyTransform, itemsSnapshot, normalizeRuleCard }
