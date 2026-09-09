@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 50
+const PDF_FORMAT_VERSION = 51
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -295,8 +295,9 @@ const DETAIL_GROUPS = [
   // 付款条件归合同条款语义；发票收件人归发票语义（2026-09-09 均衡调整，左右列字段数拉平）
   ['客户与合同', ['客户联系人', '客户 P/O', '业务负责人', '项目分类', '合同编号', '付款条件', '付款条件说明', '罚则说明', '填表日期']],
   ['交易与开票', ['计价模式', '发票类型', '开票方式', '开票内容', '开票/收款时间', '发票收件人', '发票收件电话', '发票收件邮箱']],
-  ['交付与验收', ['是否允许分批交付', '验收条件', '验收说明', '装机承担方', '维护承担方', '交付地点', '交付条款', '出货单编号']],
-  ['联系与收件', ['采购联系人', '采购联系电话', '采购联系邮箱', '收货人', '收货联系电话', '收货邮箱']],
+  ['交付与验收', ['是否允许分批交付', '验收条件', '验收说明', '装机承担方', '维护承担方', '交付条款', '出货单编号']],
+  // 交付地点与收货人/收货电话是同一组收货信息，放在一起避免用户重复填写（2026-09-09 佬反馈）
+  ['联系与收件', ['采购联系人', '采购联系电话', '采购联系邮箱', '收货人', '收货联系电话', '收货邮箱', '交付地点']],
 ]
 
 function detailEntries(order, items = []) {
@@ -376,12 +377,32 @@ function noteEntries(order, includeVoidReason) {
   ].filter(([, content]) => hasValue(content))
 }
 
+// 长文本字段独占一整行（地址类在 1/3 格内必然折行，视觉上像被挤断）
+const WIDE_DETAIL_LABELS = new Set(['交付地点'])
+
+function detailCardRows(entries, columns) {
+  const rows = []
+  let current = []
+  for (const entry of entries) {
+    if (WIDE_DETAIL_LABELS.has(entry[0])) {
+      if (current.length) { rows.push(current); current = [] }
+      rows.push([entry])
+    } else {
+      current.push(entry)
+      if (current.length === columns) { rows.push(current); current = [] }
+    }
+  }
+  if (current.length) rows.push(current)
+  return rows
+}
+
 function detailCardHeight(doc, fonts, entries, columns, colWidth) {
   let height = 24
-  for (let start = 0; start < entries.length; start += columns) {
-    const row = entries.slice(start, start + columns)
+  for (const row of detailCardRows(entries, columns)) {
+    const wide = row.length === 1 && WIDE_DETAIL_LABELS.has(row[0][0])
+    const cellWidth = wide ? columns * colWidth : colWidth
     doc.font(fonts.regular).fontSize(6.8 * FONT_SCALE)
-    height += Math.min(46, Math.max(26, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 16, lineGap: 1 }) + 16)))
+    height += Math.min(46, Math.max(26, ...row.map(([, content]) => doc.heightOfString(value(content), { width: cellWidth - 16, lineGap: 1 }) + 16)))
   }
   return height + 3
 }
@@ -393,14 +414,15 @@ function drawDetailCard(doc, fonts, group, entries, x, y, width) {
   doc.circle(x + 12, y + 12, 2.3).fill(PURPLE)
   text(doc, fonts, group, x + 20, y + 6, { size: 7.8, bold: true, color: '#111827', width: width - 30 })
   let rowY = y + 24
-  for (let start = 0; start < entries.length; start += columns) {
-    const row = entries.slice(start, start + columns)
+  for (const row of detailCardRows(entries, columns)) {
+    const wide = row.length === 1 && WIDE_DETAIL_LABELS.has(row[0][0])
+    const cellWidth = wide ? columns * colWidth : colWidth
     doc.font(fonts.regular).fontSize(6.8 * FONT_SCALE)
-    const rowHeight = Math.min(46, Math.max(26, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 16, lineGap: 1 }) + 16)))
+    const rowHeight = Math.min(46, Math.max(26, ...row.map(([, content]) => doc.heightOfString(value(content), { width: cellWidth - 16, lineGap: 1 }) + 16)))
     row.forEach(([label, content], index) => {
       const cellX = x + 9 + index * colWidth
-      text(doc, fonts, label, cellX, rowY + 1, { size: 6.1, color: MUTED, width: colWidth - 16 })
-      text(doc, fonts, content, cellX, rowY + 11, { size: 6.9, bold: true, width: colWidth - 16, height: rowHeight - 13, lineGap: 1, ellipsis: true })
+      text(doc, fonts, label, cellX, rowY + 1, { size: 6.1, color: MUTED, width: cellWidth - 16 })
+      text(doc, fonts, content, cellX, rowY + 11, { size: 6.9, bold: true, width: cellWidth - 16, height: rowHeight - 13, lineGap: 1, ellipsis: true })
     })
     rowY += rowHeight
   }
