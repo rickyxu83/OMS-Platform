@@ -148,11 +148,11 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
         }),
         note: note.trim() || undefined,
       })
-      toast.success('采购订单号已提交')
+      toast.success('采购单号已提交')
       window.dispatchEvent(new Event('mr:approval-changed'))
       onChanged(next)
     } catch (error) {
-      toast.error((error as Error).message || '采购订单号提交失败')
+      toast.error((error as Error).message || '采购单号提交失败')
     } finally {
       setBusy(false)
     }
@@ -162,9 +162,9 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
     <div ref={cardRef}>
     <SectionCard
       id="purchase"
-      title="采购订单号"
+      title="采购单号"
       icon={ShoppingCart}
-      description="MR 签核通过后，由采购为每个品项填写向供应商下单的采购订单号。"
+      description="MR 签核通过后，由采购为每个品项填写向供应商下单的采购单号。"
       actions={<span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${statusMeta.className}`}>{statusMeta.label}</span>}
     >
       <div className="space-y-3 text-sm">
@@ -191,7 +191,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
                   <TableHead>品名 / 描述</TableHead>
                   <TableHead className="w-36">公司料号</TableHead>
                   <TableHead className="w-36">供应商</TableHead>
-                  <TableHead className="w-48">采购订单号</TableHead>
+                  <TableHead className="w-48">采购单号</TableHead>
                   <TableHead className="w-48">出货单号</TableHead>
                 </TableRow>
               </TableHeader>
@@ -229,8 +229,8 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
                       ) : editable ? (
                         <Input
                           value={draft[String(item.id)]?.purchaseOrderNo ?? ''}
-                          placeholder="采购订单号"
-                          aria-label={`第 ${index + 1} 项采购订单号`}
+                          placeholder="采购单号"
+                          aria-label={`第 ${index + 1} 项采购单号`}
                           onChange={(event) => setDraft((current) => ({ ...current, [String(item.id)]: { ...(current[String(item.id)] || blankDraft()), purchaseOrderNo: event.target.value } }))}
                         />
                       ) : (
@@ -262,7 +262,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
         {editable ? (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Input value={batchNo} onChange={(event) => setBatchNo(event.target.value)} placeholder="采购订单号" className="w-64" />
+              <Input value={batchNo} onChange={(event) => setBatchNo(event.target.value)} placeholder="采购单号" className="w-64" />
               <Button type="button" variant="outline" onClick={applyBatch} disabled={busy || !batchNo.trim() || selected.size === 0}>
                 填入所选{selected.size > 0 ? `（已选 ${selected.size} 项）` : ''}
               </Button>
@@ -273,7 +273,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
             <Textarea rows={2} value={note} placeholder="采购备注（选填）" onChange={(event) => setNote(event.target.value)} />
             <div className="flex flex-wrap gap-2">
               <Button type="button" disabled={busy} onClick={() => void submit()}>
-                {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ClipboardPen className="mr-2 size-4" />}提交采购订单号
+                {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ClipboardPen className="mr-2 size-4" />}提交采购单号
               </Button>
             </div>
           </div>

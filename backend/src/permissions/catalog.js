@@ -81,7 +81,7 @@ const RAW_PERMISSION_ENTRIES = Object.freeze([
   ['mr.approve', '签核订购申请', ['assistant', 'sales', 'engineering_supervisor', 'sales_supervisor', 'operations_director']],
   ['mr.delete', '删除订购申请', ['admin', 'assistant', 'sales', 'sales_supervisor']],
   ['mr.void', '作废订购申请', ['admin', 'assistant', 'sales', 'operations_director', 'sales_supervisor']],
-  ['mr.purchase', '填写采购订单号', ['admin', 'purchaser']],
+  ['mr.purchase', '填写采购单号', ['admin', 'purchaser']],
 ])
 
 // 助理主管（assistant_supervisor）继承助理（assistant）的全部权限；

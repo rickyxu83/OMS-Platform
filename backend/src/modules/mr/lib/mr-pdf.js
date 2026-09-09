@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 39
+const PDF_FORMAT_VERSION = 40
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -129,7 +129,7 @@ function header(doc, fonts, order, title = '客户订购申请单（境内单）
   text(doc, fonts, '敦阳（宁波）科技有限公司', textLeft, 30, { size: 13, bold: true, color: '#402080' })
   text(doc, fonts, title, 280, 24, { size: 17, bold: true, color: '#111827', width: 282, align: 'center' })
   text(doc, fonts, `V${Number(order.versionNo || order.version_no || 0)}`, right - 112, 21, { size: 9, bold: true, width: 112, align: 'right' })
-  text(doc, fonts, `单据编号 ${value(order.ctrlNo || order.ctrl_no)}`, right - 190, 34, { size: 9, width: 190, align: 'right' })
+  text(doc, fonts, `Ctrl.No: ${value(order.ctrlNo || order.ctrl_no)}`, right - 190, 34, { size: 9, width: 190, align: 'right' })
   line(doc, left, 50, right, 50, '#111')
   return 58
 }
@@ -172,14 +172,16 @@ function itemColumns(items) {
     { key: 'oemSpec', label: '原厂规格', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'oemSpec', 'oem_spec')), content: (item) => itemField(item, 'oemSpec', 'oem_spec') },
     { key: 'description', label: '品名及描述', weight: 18, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
     { key: 'warranty', label: '保固与服务', weight: 8, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')), content: (item) => itemField(item, 'warrantyService', 'warranty_service') },
-    { key: 'install', label: '品项装机方', weight: 6, align: 'center', optional: true, present: (item) => hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => itemField(item, 'installBy', 'install_by') },
+    { key: 'install', label: '装机方', weight: 6, align: 'center', optional: true, present: (item) => hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => itemField(item, 'installBy', 'install_by') },
     { key: 'qty', label: '数量', weight: 4, align: 'center', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
     { key: 'unitPrice', label: '未税单价', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
     { key: 'subtotal', label: '未税小计 / 毛利率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
     { key: 'vendor', label: '供应商', weight: 8, align: 'center', optional: true, present: (item) => hasValue(item.vendor), content: (item) => abbreviateVendor(item.vendor) },
-    { key: 'costExcludingTax', label: '采购成本（不含税）', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
+    { key: 'costExcludingTax', label: '采购成本（未税）', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
     { key: 'costInclTax', label: '采购成本（含税）', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join('\n') },
-    { key: 'purchase', label: '采购订单号', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')), content: (item) => itemField(item, 'purchaseOrderNo', 'purchase_order_no') },
+    { key: 'purchase', label: '采购单号', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')), content: (item) => itemField(item, 'purchaseOrderNo', 'purchase_order_no') },
+    // 出货单号列固定保留：系统已填则印出，未填留白供出货时手写（与打印页同口径）
+    { key: 'shipment', label: '出货单号', weight: 6, align: 'left', optional: false, present: () => true, content: (item) => itemField(item, 'shipmentNo', 'shipment_no') },
   ]
   const visible = definitions.filter((column) => !column.optional || items.some(column.present))
   const available = PAGE.width - PAGE.margin * 2
@@ -195,7 +197,8 @@ function itemColumns(items) {
 function itemHeader(doc, fonts, columns, y) {
   let x = PAGE.margin
   for (const column of columns) {
-    text(doc, fonts, column.label, x + 3, y + 8, { size: 6.7, bold: true, color: '#475569', width: column.width - 6, align: column.align, lineGap: 0 })
+    // 表头加深加粗加大：打印件上栏位边界更清晰
+    text(doc, fonts, column.label, x + 3, y + 7, { size: 7.2, bold: true, color: '#1f2937', width: column.width - 6, align: column.align, lineGap: 0 })
     x += column.width
   }
   line(doc, PAGE.margin, y + 24, PAGE.width - PAGE.margin, y + 24, '#111827')
@@ -232,7 +235,7 @@ function totals(doc, fonts, order, items, y) {
     ['未税总计', moneyText(sales)],
     ['销售税额', moneyText(totalsValue.vat)],
     ['含税总计', moneyText(totalsValue.salesIncludingTax)],
-    ['采购成本（不含税）', moneyText(cost)],
+    ['采购成本（未税）', moneyText(cost)],
     ['采购成本（含税）', moneyText(totalsValue.costIncludingTax)],
     ['毛利额', moneyText(sales - cost)],
     ['整单毛利率', margin === null ? '' : `${Number(margin).toFixed(2)}%`],
@@ -240,12 +243,22 @@ function totals(doc, fonts, order, items, y) {
   const totalWidth = PAGE.width - PAGE.margin * 2
   const width = totalWidth / Math.max(1, cells.length)
   doc.roundedRect(PAGE.margin, y, totalWidth, 33, 8).fill('#f5f6fa')
+  // “含税总计”单元格淡紫高亮，整段加外框与分隔线，金额区一眼可辨
+  const highlightIndex = cells.findIndex(([label]) => label === '含税总计')
+  if (highlightIndex >= 0) {
+    doc.save()
+    doc.roundedRect(PAGE.margin, y, totalWidth, 33, 8).clip()
+    doc.rect(PAGE.margin + width * highlightIndex, y, width, 33).fill('#e9e2f4')
+    doc.restore()
+  }
   let x = PAGE.margin
   cells.forEach(([label, content], index) => {
     text(doc, fonts, label, x + 10, y + 5, { size: 6.5, color: MUTED })
-    text(doc, fonts, content, x + 10, y + 16, { size: 9, bold: true, color: index === cells.length - 1 ? PURPLE : '#111827', width: width - 14 })
+    text(doc, fonts, content, x + 10, y + 16, { size: 9.5, bold: true, color: index === highlightIndex || index === cells.length - 1 ? PURPLE : '#111827', width: width - 14 })
+    if (index > 0) line(doc, x, y + 6, x, y + 27, '#dfe3ea')
     x += width
   })
+  doc.roundedRect(PAGE.margin, y, totalWidth, 33, 8).strokeColor('#c7cdd8').lineWidth(0.8).stroke()
   return y + 41
 }
 
@@ -391,6 +404,25 @@ function drawNoteCard(doc, fonts, entries, x, y, width) {
     rowY += rowHeight
   })
   return height
+}
+
+// 与 details() 同口径的高度估算：签名区防孤儿页时用来预判“合计+资料+签核”整段高度
+function detailsHeight(doc, fonts, order, items, includeVoidReason = true) {
+  const width = PAGE.width - PAGE.margin * 2
+  const entries = detailEntries(order, items)
+  const notes = noteEntries(order, includeVoidReason)
+  const groupOf = new Map()
+  for (const [group, labels] of DETAIL_GROUPS) for (const label of labels) groupOf.set(label, group)
+  const grouped = DETAIL_GROUPS.map(([group]) => [group, entries.filter(([label]) => groupOf.get(label) === group)]).filter(([, list]) => list.length)
+  const cardGap = 8
+  const cardWidth = (width - cardGap) / 2
+  let height = 17
+  for (let start = 0; start < grouped.length; start += 2) {
+    const cards = grouped.slice(start, start + 2)
+    height += Math.max(...cards.map(([, groupEntries]) => detailCardHeight(doc, fonts, groupEntries, 3, (cardWidth - 18) / 3))) + 7
+  }
+  if (notes.length) height += noteCardHeight(doc, fonts, notes, width) + 7
+  return height + 2
 }
 
 function details(doc, fonts, order, items, y, includeVoidReason = true) {
@@ -545,6 +577,15 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
     }
     y = itemRow(doc, fonts, item, index, columns, y, bottom - y)
   })
+  // 签名区防孤儿页：合计+资料+签核若在当前页排不下、但整体能放进新页，
+  // 则整段移到新页，避免签名条单独占一页（新页顶部的“签核归档”是续页标题）
+  const approvalSpace = approvalRows.length ? approvalBoxHeight(doc, fonts, approvalRows) + 24 : 0
+  const tailSpace = 5 + 41 + detailsHeight(doc, fonts, order, items, Boolean(watermarkLabel)) + approvalSpace
+  const freshPageCapacity = (PAGE.height - 45) - 58
+  if (y + tailSpace > bottom && tailSpace <= freshPageCapacity) {
+    doc.addPage()
+    y = header(doc, fonts, order, '客户订购申请单 · 签核归档')
+  }
   if (y + 45 > bottom) {
     doc.addPage()
     y = header(doc, fonts, order, '客户订购申请单 · 签核归档')

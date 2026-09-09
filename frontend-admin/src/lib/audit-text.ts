@@ -109,7 +109,7 @@ const DETAIL_KEY_LABELS: Record<string, string> = {
   inspectionOccurrenceDate: "巡检日期",
   deletedInstalledDeviceCount: "清理装机设备数",
   skippedInstalledDeviceCount: "跳过装机设备数",
-  purchaseOrderNo: "采购订单号",
+  purchaseOrderNo: "采购单号",
   companyPartNo: "公司料号",
   shipmentNo: "出货单号",
 };
@@ -213,7 +213,7 @@ export function describeAuditLog(log: AuditLogLike) {
       return `为${target}填写合同编号「${text(detail.contractNo) || "-"}」`;
     case "purchase_submit": {
       const ctrlNo = text(detail.ctrlNo);
-      return `提交${target}${ctrlNo ? `（控制编号 ${ctrlNo}）` : ""}的采购订单号`;
+      return `提交${target}${ctrlNo ? `（控制编号 ${ctrlNo}）` : ""}的采购单号`;
     }
     case "purchase_update": {
       const count = Array.isArray(detail.changes) ? detail.changes.length : 0;
