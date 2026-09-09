@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 39
+const PDF_FORMAT_VERSION = 40
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -180,6 +180,8 @@ function itemColumns(items) {
     { key: 'costExcludingTax', label: '采购成本（未税）', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
     { key: 'costInclTax', label: '采购成本（含税）', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join('\n') },
     { key: 'purchase', label: '采购单号', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')), content: (item) => itemField(item, 'purchaseOrderNo', 'purchase_order_no') },
+    // 出货单号列固定保留：系统已填则印出，未填留白供出货时手写（与打印页同口径）
+    { key: 'shipment', label: '出货单号', weight: 6, align: 'left', optional: false, present: () => true, content: (item) => itemField(item, 'shipmentNo', 'shipment_no') },
   ]
   const visible = definitions.filter((column) => !column.optional || items.some(column.present))
   const available = PAGE.width - PAGE.margin * 2
