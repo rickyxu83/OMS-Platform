@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 53
+const PDF_FORMAT_VERSION = 54
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -461,7 +461,7 @@ function drawNoteCard(doc, fonts, entries, x, y, width) {
 function placeBlocks(doc, fonts, order, blocks, y, bottom, countSuffix) {
   const openPage = (block) => {
     doc.addPage()
-    let yy = header(doc, fonts, order, block.pageTitle || '客户订购申请单 · 资料续页')
+    let yy = header(doc, fonts, order, block.pageTitle || '客户订购申请单（境内单）')
     if (block.contTitle) yy = sectionTitle(doc, fonts, yy, '02 订购与交付资料', `${countSuffix}（续）`)
     return yy
   }
@@ -502,7 +502,7 @@ function tailBlocks(doc, fonts, order, items, includeVoidReason, approvalRows) {
 
   const blocks = [{
     height: 46,
-    pageTitle: '客户订购申请单 · 签核归档',
+    pageTitle: '客户订购申请单（境内单）',
     draw: (yy) => totals(doc, fonts, order, items, yy + 5) - yy,
   }]
 
@@ -510,7 +510,7 @@ function tailBlocks(doc, fonts, order, items, includeVoidReason, approvalRows) {
     blocks.push({
       height: 17,
       keepNext: true, // 02 标题粘住首个内容块，标题永不孤悬页尾
-      pageTitle: '客户订购申请单 · 资料续页',
+      pageTitle: '客户订购申请单（境内单）',
       draw: (yy) => sectionTitle(doc, fonts, yy, '02 订购与交付资料', `· 共 ${entries.length + notes.length} 项`) - yy,
     })
     for (let start = 0; start < grouped.length; start += 2) {
@@ -518,7 +518,7 @@ function tailBlocks(doc, fonts, order, items, includeVoidReason, approvalRows) {
       const rowHeight = Math.max(...cards.map(([, list]) => detailCardHeight(doc, fonts, list, 3, (cardWidth - 18) / 3))) + 7
       blocks.push({
         height: rowHeight,
-        pageTitle: '客户订购申请单 · 资料续页',
+        pageTitle: '客户订购申请单（境内单）',
         contTitle: true,
         draw: (yy) => {
           cards.forEach(([group, list], cardIndex) => drawDetailCard(doc, fonts, group, list, left + cardIndex * (cardWidth + cardGap), yy, cardWidth))
@@ -530,7 +530,7 @@ function tailBlocks(doc, fonts, order, items, includeVoidReason, approvalRows) {
       const height = noteCardHeight(doc, fonts, notes, width) + 7
       blocks.push({
         height,
-        pageTitle: '客户订购申请单 · 资料续页',
+        pageTitle: '客户订购申请单（境内单）',
         contTitle: true,
         draw: (yy) => drawNoteCard(doc, fonts, notes, left, yy, width) + 7,
       })
@@ -542,7 +542,7 @@ function tailBlocks(doc, fonts, order, items, includeVoidReason, approvalRows) {
     blocks.push({
       height,
       keepPrev: true, // 签核粘住前一个块（资料区末块或合计条），签核永不单独成页
-      pageTitle: '客户订购申请单 · 签核归档',
+      pageTitle: '客户订购申请单（境内单）',
       draw: (yy) => { approvals(doc, fonts, approvalRows, yy); return height },
     })
   }
@@ -663,7 +663,7 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
     const needed = itemRowHeight(doc, fonts, item, index, columns)
     if (y + needed > bottom) {
       doc.addPage()
-      y = itemHeader(doc, fonts, columns, header(doc, fonts, order, '客户订购申请单 · 明细续页'))
+      y = itemHeader(doc, fonts, columns, header(doc, fonts, order))
     }
     y = itemRow(doc, fonts, item, index, columns, y, bottom - y)
   })
