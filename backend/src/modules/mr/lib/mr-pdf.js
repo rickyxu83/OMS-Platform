@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 54
+const PDF_FORMAT_VERSION = 56
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -231,6 +231,62 @@ function itemRowHeight(doc, fonts, item, index, columns) {
   return Math.max(30, ...columns.map((column) => doc.heightOfString(value(column.content(item, index)), { width: column.width - 6, lineGap: 1 }) + 10))
 }
 
+/** 明细行单格实际行高（两行高差法精确测量，供跨页拆分按整行对齐） */
+function itemLineHeight(doc, fonts) {
+  doc.font(fonts.regular).fontSize(7 * FONT_SCALE)
+  return doc.heightOfString('甲\n甲', { width: 60, lineGap: 1 }) - doc.heightOfString('甲', { width: 60, lineGap: 1 })
+}
+
+/**
+ * 超长明细行跨页拆分绘制（2026-09-10 佬裁决：MR 内容任何情况下不截断）。
+ * 每页用 clip 矩形画出该行落在本页的部分，续页重复表头后以负偏移接着画，
+ * 拆分点按整行文字对齐，不截字、不丢内容。
+ */
+function itemRowSplit(doc, fonts, item, index, columns, y, bottom, order) {
+  const rowHeight = itemRowHeight(doc, fonts, item, index, columns)
+  const lineH = itemLineHeight(doc, fonts)
+  let bandOffset = 0 // 已绘制的行内容高度（行坐标系，0 = 行顶）
+  let first = true
+  while (bandOffset < rowHeight) {
+    const avail = bottom - y
+    // 本页连一行正文都放不下了：翻页重画表头再续
+    if (avail < lineH + 12) {
+      doc.addPage()
+      y = itemHeader(doc, fonts, columns, header(doc, fonts, order))
+      continue
+    }
+    let portion
+    if (first) {
+      // 首页段：顶 padding 5 + 整行正文，底留 2pt 安全边
+      portion = 5 + Math.floor((avail - 7) / lineH) * lineH
+      first = false
+    } else if (bandOffset + (bottom - y) >= rowHeight + 2) {
+      portion = rowHeight - bandOffset // 末段：剩余全部（含底 padding）
+    } else {
+      portion = Math.floor((avail - 2) / lineH) * lineH
+    }
+    portion = Math.min(portion, rowHeight - bandOffset)
+    let x = PAGE.margin
+    columns.forEach((column) => {
+      doc.save()
+      doc.rect(x, y, column.width, portion).clip()
+      // height 必须覆盖“被偏移隐藏的部分 + 本段可见部分”（PDFKit 从文本开头起算 layout，
+      // 给小了会只排出开头几行，续页反而空白）；可见范围由 clip 矩形控制
+      text(doc, fonts, column.content(item, index), x + 3, y + 5 - bandOffset, { size: 7, width: column.width - 6, align: column.align, lineGap: 1, height: rowHeight + bandOffset })
+      doc.restore()
+      x += column.width
+    })
+    y += portion
+    bandOffset += portion
+    if (bandOffset < rowHeight) {
+      doc.addPage()
+      y = itemHeader(doc, fonts, columns, header(doc, fonts, order))
+    }
+  }
+  line(doc, PAGE.margin, y - 1, PAGE.width - PAGE.margin, y - 1, '#eef1f5')
+  return y
+}
+
 function itemRow(doc, fonts, item, index, columns, y, maxHeight = Infinity) {
   const rowHeight = Math.min(itemRowHeight(doc, fonts, item, index, columns), maxHeight)
   let x = PAGE.margin
@@ -401,7 +457,7 @@ function detailCardHeight(doc, fonts, entries, columns, colWidth) {
     const wide = row.length === 1 && WIDE_DETAIL_LABELS.has(row[0][0])
     const cellWidth = wide ? columns * colWidth : colWidth
     doc.font(fonts.regular).fontSize(6.8 * FONT_SCALE)
-    height += Math.min(46, Math.max(26, ...row.map(([, content]) => doc.heightOfString(value(content), { width: cellWidth - 16, lineGap: 1 }) + 16)))
+    height += Math.max(26, ...row.map(([, content]) => doc.heightOfString(value(content), { width: cellWidth - 16, lineGap: 1 }) + 16))
   }
   return height + 3
 }
@@ -417,7 +473,7 @@ function drawDetailCard(doc, fonts, group, entries, x, y, width) {
     const wide = row.length === 1 && WIDE_DETAIL_LABELS.has(row[0][0])
     const cellWidth = wide ? columns * colWidth : colWidth
     doc.font(fonts.regular).fontSize(6.8 * FONT_SCALE)
-    const rowHeight = Math.min(46, Math.max(26, ...row.map(([, content]) => doc.heightOfString(value(content), { width: cellWidth - 16, lineGap: 1 }) + 16)))
+    const rowHeight = Math.max(26, ...row.map(([, content]) => doc.heightOfString(value(content), { width: cellWidth - 16, lineGap: 1 }) + 16))
     row.forEach(([label, content], index) => {
       const cellX = x + 9 + index * colWidth
       text(doc, fonts, label, cellX, rowY + 1, { size: 6.1, color: MUTED, width: cellWidth - 16 })
@@ -431,7 +487,52 @@ function drawDetailCard(doc, fonts, group, entries, x, y, width) {
 function noteCardHeight(doc, fonts, entries, width) {
   const contentWidth = width - 142
   doc.font(fonts.regular).fontSize(7 * FONT_SCALE)
-  return 24 + entries.reduce((sum, [, content]) => sum + Math.min(50, Math.max(24, doc.heightOfString(value(content), { width: contentWidth, lineGap: 1 }) + 9)), 0) + 3
+  return 24 + entries.reduce((sum, [, content]) => sum + Math.max(24, doc.heightOfString(value(content), { width: contentWidth, lineGap: 1 }) + 9), 0) + 3
+}
+
+/** 备注卡跨页拆分（内容不截断）：逐条排，单条超整页时按整行 clip 续页，背景卡按页分段重画 */
+function drawNoteCardSplit(doc, fonts, entries, x, y, width, bottom, openPage) {
+  const startY = y
+  let pageTop = y
+  const closeBg = (toY) => {
+    doc.roundedRect(x, pageTop, width, Math.max(30, toY - pageTop), 6).fill('#f8f8fb')
+    doc.rect(x, pageTop + 7, 3, Math.max(16, toY - pageTop - 14)).fill(PURPLE)
+  }
+  text(doc, fonts, '备注与其他', x + 12, y + 6, { size: 7.8, bold: true, color: PURPLE })
+  let rowY = y + 24
+  const lineH = itemLineHeight(doc, fonts)
+  entries.forEach(([label, content], index) => {
+    doc.font(fonts.regular).fontSize(7 * FONT_SCALE)
+    const entryHeight = Math.max(24, doc.heightOfString(value(content), { width: width - 142, lineGap: 1 }) + 9)
+    if (index) line(doc, x + 12, rowY, x + width - 12, rowY, '#e5ddec')
+    text(doc, fonts, label, x + 12, rowY + 6, { size: 6.6, bold: true, color: PURPLE, width: 104 })
+    let offset = 0
+    while (offset < entryHeight) {
+      const avail = bottom - rowY
+      if (avail < lineH + 10) {
+        closeBg(rowY)
+        y = openPage()
+        pageTop = y
+        rowY = y + 6
+        continue
+      }
+      const portion = Math.min(entryHeight - offset, 6 + Math.floor((avail - 12) / lineH) * lineH)
+      doc.save()
+      doc.rect(x + 122, rowY, width - 142, portion).clip()
+      text(doc, fonts, content, x + 122, rowY + 6 - offset, { size: 7, width: width - 142, lineGap: 1, height: entryHeight + offset })
+      doc.restore()
+      rowY += portion
+      offset += portion
+      if (offset < entryHeight) {
+        closeBg(rowY)
+        y = openPage()
+        pageTop = y
+        rowY = y + 6
+      }
+    }
+  })
+  closeBg(rowY + 3)
+  return rowY + 3 - startY
 }
 
 function drawNoteCard(doc, fonts, entries, x, y, width) {
@@ -442,7 +543,7 @@ function drawNoteCard(doc, fonts, entries, x, y, width) {
   let rowY = y + 24
   entries.forEach(([label, content], index) => {
     doc.font(fonts.regular).fontSize(7 * FONT_SCALE)
-    const rowHeight = Math.min(50, Math.max(24, doc.heightOfString(value(content), { width: width - 142, lineGap: 1 }) + 9))
+    const rowHeight = Math.max(24, doc.heightOfString(value(content), { width: width - 142, lineGap: 1 }) + 9)
     if (index) line(doc, x + 12, rowY, x + width - 12, rowY, '#e5ddec')
     text(doc, fonts, label, x + 12, rowY + 6, { size: 6.6, bold: true, color: PURPLE, width: 104 })
     text(doc, fonts, content, x + 122, rowY + 6, { size: 7, width: width - 142, height: rowHeight - 8, lineGap: 1, ellipsis: true })
@@ -477,6 +578,8 @@ function placeBlocks(doc, fonts, order, blocks, y, bottom, countSuffix) {
       for (const block of cluster) y += block.draw(y)
     } else if (y + clusterHeight > bottom) {
       for (const block of cluster) {
+        // 可拆分块（超长备注卡等）：交由块自身跨页续排，不截断内容
+        if (block.split) { y = block.split(y, bottom, openPage); continue }
         if (y + block.height > bottom) y = openPage(block)
         y += block.draw(y)
       }
@@ -528,12 +631,16 @@ function tailBlocks(doc, fonts, order, items, includeVoidReason, approvalRows) {
     }
     if (notes.length) {
       const height = noteCardHeight(doc, fonts, notes, width) + 7
-      blocks.push({
+      const noteBlock = {
         height,
         pageTitle: '客户订购申请单（境内单）',
         contTitle: true,
         draw: (yy) => drawNoteCard(doc, fonts, notes, left, yy, width) + 7,
-      })
+        // 单卡超整页（如上万字备注）时逐条跨页续排，内容不截断
+        split: null,
+      }
+      noteBlock.split = (yy, btm, openPage) => drawNoteCardSplit(doc, fonts, notes, left, yy, width, btm, () => openPage(noteBlock)) + 7
+      blocks.push(noteBlock)
     }
   }
 
@@ -658,14 +765,31 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
   const bottom = PAGE.height - 45
   let y = summary(doc, fonts, order, header(doc, fonts, order))
   y = sectionTitle(doc, fonts, y, '01 采购与销售明细', `· ${items.length} 个品项`)
+  // 01 标题+表头与首行粘连：当前页连表头带首行数行正文都放不下时整组移新页，不留空表头；
+  // 超长行不截断——页内起拆、跨页续排（2026-09-10 MR-8 反馈 + 佬裁决内容不截断）
+  if (items.length && bottom - (y + 30) < itemLineHeight(doc, fonts) * 3 + 12) {
+    doc.addPage()
+    y = sectionTitle(doc, fonts, header(doc, fonts, order), '01 采购与销售明细', `· ${items.length} 个品项`)
+  }
   y = itemHeader(doc, fonts, columns, y)
   items.forEach((item, index) => {
     const needed = itemRowHeight(doc, fonts, item, index, columns)
-    if (y + needed > bottom) {
-      doc.addPage()
-      y = itemHeader(doc, fonts, columns, header(doc, fonts, order))
+    if (y + needed <= bottom) {
+      y = itemRow(doc, fonts, item, index, columns, y)
+      return
     }
-    y = itemRow(doc, fonts, item, index, columns, y, bottom - y)
+    if (bottom - y >= itemLineHeight(doc, fonts) * 3 + 12) {
+      // 本页还放得下数行正文：页内起拆，跨页续排
+      y = itemRowSplit(doc, fonts, item, index, columns, y, bottom, order)
+      return
+    }
+    doc.addPage()
+    y = itemHeader(doc, fonts, columns, header(doc, fonts, order))
+    if (y + needed > bottom) {
+      y = itemRowSplit(doc, fonts, item, index, columns, y, bottom, order)
+      return
+    }
+    y = itemRow(doc, fonts, item, index, columns, y)
   })
   // 文档尾部（合计/资料区/签核）由块排版引擎统一分页：粘连规则声明在各块上，无特判
   const tail = tailBlocks(doc, fonts, order, items, Boolean(watermarkLabel), approvalRows)

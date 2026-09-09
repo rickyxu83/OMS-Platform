@@ -204,7 +204,15 @@ async function main() {
     items: [{ name: '设备', description: '描述'.repeat(2000), qty: 1, unitPrice: 100, subtotal: 100 }],
   }, [])
   assert.strictEqual(longPdf.subarray(0, 4).toString(), '%PDF', '超长内容 PDF 应能正常生成')
-  assert((longPdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length <= 4, '超长内容应被截断而不是无限分页')
+  const longParser = new PDFParse({ data: longPdf })
+  const longExtracted = await longParser.getText()
+  await longParser.destroy()
+  const longCompact = longExtracted.text.replace(/\s+/g, '')
+  const longPages = (longPdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length
+  // 2026-09-10 佬裁决：MR 内容不截断——超长行/超长备注跨页续排，页数随内容增长但必须有界、内容必须完整
+  assert(longPages > 1 && longPages <= 12, `超长内容应跨页续排且有界（实际 ${longPages} 页）`)
+  assert(!longCompact.includes('…'), '超长内容不得出现截断省略号')
+  assert(longCompact.endsWith('备注备注') || longCompact.includes('备注'.repeat(100)), '超长备注应完整保留')
 
   const voidedOrder = { id: 3, versionNo: 2, customerName: '丙客户', ctrlNo: 'MR-003', voidReason: '审批后作废原因', items: [{ name: '设备', qty: 1, unitPrice: 100, subtotal: 100 }] }
   const approvedRebuild = await pdfBuffer(voidedOrder, [])
