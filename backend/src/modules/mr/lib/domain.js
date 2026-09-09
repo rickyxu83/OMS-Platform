@@ -329,7 +329,7 @@ function validateSubmission(order, items) {
     if (!(item.unitPrice >= 0)) errors.push({ field: `items.${index}.unitPrice`, message: `${label}：未税单价不得小于 0` })
     const serviceRow = order.pricingMode === 2 && index === 1
     if (!serviceRow && !item.vendor) errors.push({ field: `items.${index}.vendor`, message: `${label}：请填写供应商` })
-    if (!(item.costInclTax >= 0)) errors.push({ field: `items.${index}.costInclTax`, message: `${label}：采购成本（含税）不得小于 0` })
+    if (!(item.costInclTax >= 0)) errors.push({ field: `items.${index}.costInclTax`, message: `${label}：采购价（含税）不得小于 0` })
     if (![6, 13].includes(item.taxRate)) errors.push({ field: `items.${index}.taxRate`, message: `${label}：采购税率仅可选择 6% 或 13%` })
     if (['6%普通发票', '6%服务发票'].includes(order.invoiceType) && item.taxRate === 13) errors.push({ field: `items.${index}.taxRate`, message: `${label}：当前发票类型的适用税率为 6%，采购税率仅可选择 6%` })
     if (order.pricingMode === 3 && item.marginRate !== null && item.marginRate < 0) errors.push({ field: `items.${index}.unitPrice`, message: `${label}：毛利率不得为负数` })
@@ -337,14 +337,14 @@ function validateSubmission(order, items) {
 
   if (order.pricingMode === 1 && items.length) {
     const margins = items.map((item) => item.marginRate).filter((value) => value !== null)
-    if (margins.length !== items.length) errors.push({ field: 'items', message: '多项系统集成须完整填写各品项的采购成本，方可计算毛利' })
-    else if (!items.every((item) => item.quotedUnitPrice !== null) && Math.max(...margins) - Math.min(...margins) > 0.01) errors.push({ field: 'items', message: '按采购成本分摊时，多项系统集成的各品项毛利率必须一致' })
+    if (margins.length !== items.length) errors.push({ field: 'items', message: '多项系统集成须完整填写各品项的采购价，方可计算毛利' })
+    else if (!items.every((item) => item.quotedUnitPrice !== null) && Math.max(...margins) - Math.min(...margins) > 0.01) errors.push({ field: 'items', message: '按采购价分摊时，多项系统集成的各品项毛利率必须一致' })
   }
 
   if (order.pricingMode === 2) {
     if (items.length !== 2) errors.push({ field: 'items', message: '单项系统集成只能填写主项和技术服务两项' })
     if (items[1] && !`${items[1].name || ''}${items[1].description || ''}`.includes('服务')) errors.push({ field: 'items.1.name', message: '第二项必须是技术服务' })
-    if (items[1] && Number(items[1].costInclTax) !== 0) errors.push({ field: 'items.1.costInclTax', message: '技术服务项的采购成本（含税）必须为 0' })
+    if (items[1] && Number(items[1].costInclTax) !== 0) errors.push({ field: 'items.1.costInclTax', message: '技术服务项的采购价（含税）必须为 0' })
   }
 
   return errors

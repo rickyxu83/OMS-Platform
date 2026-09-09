@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 43
+const PDF_FORMAT_VERSION = 44
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -174,7 +174,7 @@ function itemColumns(items) {
     { key: 'qty', label: '数量', weight: 4, align: 'center', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
     { key: 'unitPrice', label: '未税单价', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
     { key: 'subtotal', label: '未税小计 / 毛利率', weight: 10, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
-    { key: 'costBoth', label: '采购成本（未税 / 含税）', weight: 12, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) || hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [
+    { key: 'costBoth', label: '采购价（未税 / 含税）', weight: 12, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) || hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [
       hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '',
       [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `含税 ¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join(' · '),
     ].filter(hasValue).join('\n') },
@@ -238,8 +238,8 @@ function totals(doc, fonts, order, items, y) {
     ['未税总计', moneyText(sales)],
     ['销售税额', moneyText(totalsValue.vat)],
     ['含税总计', moneyText(totalsValue.salesIncludingTax)],
-    ['采购成本（未税）', moneyText(cost)],
-    ['采购成本（含税）', moneyText(totalsValue.costIncludingTax)],
+    ['采购价（未税）', moneyText(cost)],
+    ['采购价（含税）', moneyText(totalsValue.costIncludingTax)],
     ['毛利额', moneyText(sales - cost)],
     ['整单毛利率', margin === null ? '' : `${Number(margin).toFixed(2)}%`],
   ].filter(([, content]) => hasValue(content))

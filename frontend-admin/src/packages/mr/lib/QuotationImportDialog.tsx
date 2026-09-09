@@ -538,7 +538,7 @@ export function QuotationImportDialog({
       <DialogContent className="w-[calc(100vw-2rem)] max-h-[92vh] max-w-6xl overflow-y-auto sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>报价文件与品项导入</DialogTitle>
-          <DialogDescription>请在左侧添加销售报价或客户订单，在右侧添加供应商报价。销售报价/客户订单用于识别客户、销售金额、客户 P/O、交付与付款信息；供应商报价用于匹配采购成本。未匹配到销售报价的供应商报价品项（如补充给客户的项目）会作为待填售价品项一并导入，导入后请在“校对品项”中填写售价。</DialogDescription>
+          <DialogDescription>请在左侧添加销售报价或客户订单，在右侧添加供应商报价。销售报价/客户订单用于识别客户、销售金额、客户 P/O、交付与付款信息；供应商报价用于匹配采购价。未匹配到销售报价的供应商报价品项（如补充给客户的项目）会作为待填售价品项一并导入，导入后请在“校对品项”中填写售价。</DialogDescription>
         </DialogHeader>
 
         {!editable && storedFiles.length ? (
@@ -562,7 +562,7 @@ export function QuotationImportDialog({
               {storedSalesFiles.length ? <div className="mt-1 space-y-1">{storedSalesFiles.map(renderStoredFile)}</div> : null}
             </div>
             <div>
-              <FileDropZone title="供应商报价" hint="用于匹配各品项的采购成本；可添加多家供应商文件" files={purchaseFiles} onFiles={(next) => updateFiles('purchase', next)} />
+              <FileDropZone title="供应商报价" hint="用于匹配各品项的采购价；可添加多家供应商文件" files={purchaseFiles} onFiles={(next) => updateFiles('purchase', next)} />
               {storedPurchaseFiles.length ? <div className="mt-1 space-y-1">{storedPurchaseFiles.map(renderStoredFile)}</div> : null}
             </div>
           </div>
@@ -629,7 +629,7 @@ export function QuotationImportDialog({
             ) : null}
 
             <section>
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-medium">识别出的报价品项（<AnimatedInteger value={previewItems.length} animationKey={previewAnimationKey} /> 个）</h3><span className="text-xs text-muted-foreground">销售金额及采购成本均以不含税金额为核算口径，并列示含税金额供核对。</span></div><Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={() => { setEditMode((value) => !value); setSelectedRows(new Set()) }}><Pencil className="mr-2 size-4" />{editMode ? '完成校对' : '校对品项'}</Button></div>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-medium">识别出的报价品项（<AnimatedInteger value={previewItems.length} animationKey={previewAnimationKey} /> 个）</h3><span className="text-xs text-muted-foreground">销售金额及采购价均以不含税金额为核算口径，并列示含税金额供核对。</span></div><Button type="button" variant={editMode ? 'secondary' : 'outline'} size="sm" onClick={() => { setEditMode((value) => !value); setSelectedRows(new Set()) }}><Pencil className="mr-2 size-4" />{editMode ? '完成校对' : '校对品项'}</Button></div>
               {editMode && selectedRows.size ? (
                 <div className="mb-3 grid gap-3 rounded-md border bg-muted/20 p-3 md:grid-cols-[180px_1fr] md:items-center">
                   <label className="text-sm font-medium" htmlFor="quotation-batch-source">复制来源</label>
@@ -653,7 +653,7 @@ export function QuotationImportDialog({
                           {!item.purchaseOnly ? (
                             <Input className={item.reviewFields?.includes('unitPrice') ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={inclUnitPrice(item, invoiceTaxRate)} placeholder="含税单价" title="报价单为含税价时直接填含税单价，系统自动折算未税核算；仅销售报价品项需要填写" aria-label={`第 ${index + 1} 项含税单价`} onChange={(event) => { const raw = event.target.value; const incl = raw === '' ? null : Number(raw); patchItem(index, { unitPrice: incl === null ? null : Math.round((incl / (1 + invoiceTaxRate / 100)) * 1000000) / 1000000 }) }} />
                           ) : null}
-                          <Input className={item.costReviewFields?.length ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={item.costInclTax ?? ''} placeholder="采购成本（含税）" aria-label={`第 ${index + 1} 项采购成本（含税）`} onChange={(event) => patchItem(index, { costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />
+                          <Input className={item.costReviewFields?.length ? 'border-amber-500' : ''} type="number" min={0} step="0.01" value={item.costInclTax ?? ''} placeholder="采购价（含税）" aria-label={`第 ${index + 1} 项采购价（含税）`} onChange={(event) => patchItem(index, { costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />
                           <Select value={String(invoiceTaxRate === 6 ? 6 : (item.taxRate ?? 13))} disabled={invoiceTaxRate === 6} onValueChange={(value) => patchItem(index, { taxRate: Number(value) })}>
                             <SelectTrigger aria-label={`第 ${index + 1} 项采购税率`} title={invoiceTaxRate === 6 ? '当前发票类型的适用税率为 6%，采购税率固定为 6%' : undefined}><SelectValue placeholder="采购税率" /></SelectTrigger>
                             <SelectContent><SelectItem value="13">采购税率 13%</SelectItem><SelectItem value="6">采购税率 6%</SelectItem></SelectContent>
@@ -665,7 +665,7 @@ export function QuotationImportDialog({
                           {!item.purchaseOnly && item.costInclTax == null && purchaseOnlyCandidates.length ? (
                             <div className="md:col-span-3">
                               <Select onValueChange={(value) => adoptCost(index, Number(value))}>
-                                <SelectTrigger className="w-full bg-background"><SelectValue placeholder="未匹配到采购成本：从供应商品项选择关联" /></SelectTrigger>
+                                <SelectTrigger className="w-full bg-background"><SelectValue placeholder="未匹配到采购价：从供应商品项选择关联" /></SelectTrigger>
                                 <SelectContent>{purchaseOnlyCandidates.map((candidate, candidateIndex) => (
                                   <SelectItem key={`${candidate.costSource}-${candidateIndex}`} value={String(candidateIndex)}>{candidate.name || candidate.oemSpec || candidate.description || '供应商品项'} · ¥ {money(candidate.costInclTax)}{candidate.vendor ? ` · ${candidate.vendor}` : ''}</SelectItem>
                                 ))}</SelectContent>
@@ -675,7 +675,7 @@ export function QuotationImportDialog({
                           {(item.reviewFields?.length || item.validationMessages?.length) ? <div className="md:col-span-3 border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-900">需要核对：{item.validationMessages?.join('；') || item.reviewFields?.map(reviewFieldLabel).join('、')}</div> : null}
                           {item.matchCandidates?.length ? (
                             <div className="space-y-2 md:col-span-3 rounded border border-blue-200 bg-blue-50 p-3">
-                              <div className="text-xs font-medium text-blue-900">采购成本候选（未自动采用）</div>
+                              <div className="text-xs font-medium text-blue-900">采购价候选（未自动采用）</div>
                               {item.matchCandidates.map((candidate, candidateIndex) => (
                                 <div key={`${candidate.costSource}-${candidateIndex}`} className="flex flex-wrap items-center justify-between gap-2 border-t border-blue-200 pt-2 text-xs text-blue-900">
                                   <span>{candidate.vendor || '供应商未识别'} · {candidate.description} · ¥ {money(candidate.costInclTax)} · 相似度 {candidate.score}%</span>
@@ -691,7 +691,7 @@ export function QuotationImportDialog({
                             </div>
                           ) : null}
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground md:col-span-3">
-                            <span>采购成本（未税） <b className="text-foreground">{amount(excludingTax(item))}</b></span>
+                            <span>采购价（未税） <b className="text-foreground">{amount(excludingTax(item))}</b></span>
                             {item.costSource ? <span>成本来源 {item.costSource}</span> : null}
                             {item.vendor && vendors.some((vendor) => vendor.name === item.vendor) ? <span className="text-emerald-700">已关联 OMS 供应商目录</span> : null}
                           </div>
@@ -711,7 +711,7 @@ export function QuotationImportDialog({
                           <div className="mt-1 break-words text-xs text-muted-foreground">{item.oemSpec || '-'} · {item.description || '-'}</div>
                           <div className="mt-1 text-xs text-muted-foreground">供应商：{item.vendor || '-'} · 保固与服务：{item.warrantyService || '-'}</div>
                           {item.reviewFields?.length ? <div className="mt-1 text-xs text-amber-700">待核对：{item.reviewFields.map(reviewFieldLabel).join('、')}</div> : null}
-                          {item.matchCandidates?.length ? <div className="mt-1 text-xs text-blue-700">存在 {item.matchCandidates.length} 个采购成本候选；请进入品项校对后确认。</div> : null}
+                          {item.matchCandidates?.length ? <div className="mt-1 text-xs text-blue-700">存在 {item.matchCandidates.length} 个采购价候选；请进入品项校对后确认。</div> : null}
                         </div>
                         <div className={item.reviewFields?.includes('qty') ? 'text-sm font-medium text-amber-700' : 'text-sm'}>数量 {item.qty || 1}</div>
                         <div className={item.reviewFields?.includes('unitPrice') ? 'text-sm font-medium text-amber-700 tabular-nums' : 'text-sm tabular-nums'}>
@@ -719,8 +719,8 @@ export function QuotationImportDialog({
                           <div className="mt-1 text-xs text-muted-foreground">含税小计 {amount(includingTax(salesSubtotal(item), invoiceTaxRate))}</div>
                         </div>
                         <div className={item.costReviewFields?.length ? 'text-sm font-medium text-amber-700 tabular-nums' : 'text-sm tabular-nums'}>
-                          <div>采购成本（未税） {amount(excludingTax(item))}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">采购成本（含税） {amount(item.costInclTax)}</div>
+                          <div>采购价（未税） {amount(excludingTax(item))}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">采购价（含税） {amount(item.costInclTax)}</div>
                         </div>
                       </div>
                     )}

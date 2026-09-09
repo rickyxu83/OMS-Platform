@@ -70,7 +70,7 @@ export function WorkbenchMetrics({ order, animationKey = 0 }: { order: MrOrder; 
     { label: '含税合计', value: <AnimatedMoney value={totals.salesIncludingTax} animationKey={animationKey} />, warning: false },
     { label: '毛利', value: <AnimatedMoney value={grossProfit} animationKey={animationKey} />, warning: grossProfit !== null && grossProfit < 0 },
     { label: '整单毛利率', value: <AnimatedPercent value={margin} animationKey={animationKey} />, warning: lowMargin },
-    { label: '采购成本（未税）', value: <AnimatedMoney value={totals.costExcludingTax} animationKey={animationKey} />, warning: false },
+    { label: '采购价（未税）', value: <AnimatedMoney value={totals.costExcludingTax} animationKey={animationKey} />, warning: false },
     { label: '签核进度', value: order.currentStepLabel ? `${order.currentStepKey === 'sales' ? '业务负责人' : order.currentStepKey === 'engineering' ? '工程会签' : order.currentStepLabel} · ${statusLabel(order.status)}` : statusLabel(order.status), warning: false },
   ]
   return (
@@ -117,7 +117,7 @@ export function SummaryPanel({
     { label: '未税总计', value: <AnimatedMoney value={totals.salesExcludingTax} animationKey={animationKey} />, warn: false },
     { label: '销售税额', value: <AnimatedMoney value={totals.vat} animationKey={animationKey} />, warn: false },
     { label: '含税总计', value: <AnimatedMoney value={totals.salesIncludingTax} animationKey={animationKey} />, warn: false },
-    { label: '采购成本（未税）', value: <AnimatedMoney value={totals.costExcludingTax} animationKey={animationKey} />, warn: false },
+    { label: '采购价（未税）', value: <AnimatedMoney value={totals.costExcludingTax} animationKey={animationKey} />, warn: false },
     { label: '整单毛利率', value: <AnimatedPercent value={margin} animationKey={animationKey} />, warn: lowMargin },
   ]
 

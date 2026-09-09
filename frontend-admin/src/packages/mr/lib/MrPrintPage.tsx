@@ -115,7 +115,7 @@ function ItemTable({ items, emptyText, formal }: { items: MrItem[]; emptyText: s
     { key: 'qty', label: '数量', weight: 4, align: 'center', optional: false, present: (item: MrItem) => hasValue(item.qty), render: (item: MrItem) => text(item.qty, emptyText) },
     { key: 'unitPrice', label: '未税单价', weight: 9, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.unitPrice), render: (item: MrItem) => moneyText(item.unitPrice, emptyText) },
     { key: 'subtotal', label: '未税小计 / 毛利率', weight: 10, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.subtotal), render: (item: MrItem) => <span><strong>{moneyText(item.subtotal, emptyText)}</strong><small>{percent(item.marginRate, emptyText)}</small></span> },
-    { key: 'costBoth', label: '采购成本（未税 / 含税）', weight: 12, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.costExcludingTax) || hasValue(item.costInclTax) || hasValue(item.taxRate), render: (item: MrItem) => {
+    { key: 'costBoth', label: '采购价（未税 / 含税）', weight: 12, align: 'right', optional: false, present: (item: MrItem) => hasValue(item.costExcludingTax) || hasValue(item.costInclTax) || hasValue(item.taxRate), render: (item: MrItem) => {
       const excluding = hasValue(item.costExcludingTax) ? moneyText(item.costExcludingTax, emptyText) : ''
       const including = [hasValue(item.costInclTax) ? `含税 ${moneyText(item.costInclTax, emptyText)}` : '', hasValue(item.taxRate) ? `${item.taxRate}%` : ''].filter(hasValue).join(' · ')
       if (!excluding && !including) return emptyText
@@ -286,8 +286,8 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
     { label: '未税总计', raw: totals.salesExcludingTax, value: moneyText(totals.salesExcludingTax, emptyText) },
     { label: '销售税额', raw: totals.vat, value: moneyText(totals.vat, emptyText) },
     { label: '含税总计', raw: totals.salesIncludingTax, value: moneyText(totals.salesIncludingTax, emptyText) },
-    { label: '采购成本（未税）', raw: totals.costExcludingTax, value: moneyText(totals.costExcludingTax, emptyText) },
-    { label: '采购成本（含税）', raw: totals.costIncludingTax, value: moneyText(totals.costIncludingTax, emptyText) },
+    { label: '采购价（未税）', raw: totals.costExcludingTax, value: moneyText(totals.costExcludingTax, emptyText) },
+    { label: '采购价（含税）', raw: totals.costIncludingTax, value: moneyText(totals.costIncludingTax, emptyText) },
     { label: '毛利额', raw: grossProfit, value: grossProfit === null ? emptyText : moneyText(grossProfit, emptyText) },
     { label: '整单毛利率', raw: totals.marginRate, value: percent(totals.marginRate, emptyText) },
   ].filter((fact) => !formal || hasValue(fact.raw))

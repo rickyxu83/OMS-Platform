@@ -1401,7 +1401,7 @@ function hasNumber(value) {
 
 /**
  * 人工修正品项归一化（前端 camelCase → 识别流水线 snake_case）。
- * 用户在校对中只填了“采购成本（含税）”而未填单价/小计时（供应商报价场景），
+ * 用户在校对中只填了“采购价（含税）”而未填单价/小计时（供应商报价场景），
  * 按税率反推未税单价与小计，保证修正数据完整可被 merge 正确消费；含税成本原样保留供 merge 直接取值。
  */
 function normalizeCorrectedItem(item) {
@@ -2161,7 +2161,7 @@ async function deleteQuotationFile(req, res) {
     if (!rows[0]) throw notFound('报价原始附件不存在')
     removed = rows[0]
     await connection.execute('DELETE FROM files WHERE id = :fileId', { fileId })
-    // 联动删除从该文件导入的品项（销售来源或采购成本来源文件名匹配）
+    // 联动删除从该文件导入的品项（销售来源或采购价来源文件名匹配）
     const [deleteResult] = await connection.execute(
       'DELETE FROM mr_items WHERE mr_id = :ownerId AND (cost_source = :fileName OR sales_source = :fileName)',
       { ownerId: req.params.id, fileName: removed.original_name },

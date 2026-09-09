@@ -92,7 +92,7 @@ const REQUIRED_FIELD_LABELS = new Set([
   '数量',
   '未税单价',
   '供应商',
-  '采购成本（含税）',
+  '采购价（含税）',
   '采购税率',
 ])
 export function SectionCard({

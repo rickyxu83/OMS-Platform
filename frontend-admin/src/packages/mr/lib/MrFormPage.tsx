@@ -126,9 +126,9 @@ const CHANGE_LABELS: Record<string, string> = {
   acceptance: '验收条件', acceptanceOther: '验收说明', installOptions: '装机承担方', maintenanceOptions: '维护承担方', hasContract: '是否有合同', contractNo: '合同编号', penaltyContent: '罚则说明',
   fillDate: '填表日期', latestDeliveryDate: '最晚交付日期', deliveryLocation: '交付地点', shipmentNo: '出货单编号', deliveryTerms: '交付条款', remark: '备注', approvalSteps: '签核流程', totals: '金额汇总',
   grossProfitRecognitionStartMonth: '毛利认列起始日期', grossProfitRecognitionAmount: '首期认列毛利', remainingRecognizableGrossProfit: '剩余可认列毛利总额（按季）', taiwanBusinessTransferStartMonth: '台湾业务转拨起始日期', taiwanBusinessTransferAmount: '首期台湾业务转拨金额', remainingTaiwanBusinessTransfer: '剩余台湾业务待转拨总额（按季）', grossProfitRecognitions: '毛利认列', taiwanBusinessTransfers: '台湾业务转拨',
-  salesExcludingTax: '未税总计', vat: '销售税额', salesIncludingTax: '含税总计', costExcludingTax: '采购成本（未税）', costIncludingTax: '采购成本（含税）', marginRate: '整单毛利率',
+  salesExcludingTax: '未税总计', vat: '销售税额', salesIncludingTax: '含税总计', costExcludingTax: '采购价（未税）', costIncludingTax: '采购价（含税）', marginRate: '整单毛利率',
 }
-const ITEM_CHANGE_LABELS: Record<string, string> = { companyPartNo: '公司料号', oemSpec: '原厂规格', name: '品名', description: '品名描述', warrantyService: '保固与服务', installBy: '装机方', qty: '数量', unitPrice: '未税单价', subtotal: '未税小计', vendor: '供应商', costInclTax: '采购成本（含税）', taxRate: '采购税率', purchaseOrderNo: '采购单号', shipmentNo: '出货单号', costSource: '采购成本来源' }
+const ITEM_CHANGE_LABELS: Record<string, string> = { companyPartNo: '公司料号', oemSpec: '原厂规格', name: '品名', description: '品名描述', warrantyService: '保固与服务', installBy: '装机方', qty: '数量', unitPrice: '未税单价', subtotal: '未税小计', vendor: '供应商', costInclTax: '采购价（含税）', taxRate: '采购税率', purchaseOrderNo: '采购单号', shipmentNo: '出货单号', costSource: '采购价来源' }
 function changeLabel(path: string) {
   const item = path.match(/^items\.(\d+)(?:\.(.+))?$/)
   if (item) return `第 ${Number(item[1]) + 1} 项${item[2] ? ` · ${ITEM_CHANGE_LABELS[item[2]] || item[2]}` : ''}`
@@ -1378,7 +1378,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                     {!calculated.pricingMode
                       ? '请先选择计价模式；报价导入与手动录入均按当前模式处理。'
                       : Number(calculated.pricingMode) === 1
-                        ? '请先填写未税总计，再录入各品项采购成本。若销售报价未提供逐项未税单价，系统将按采购成本（未税）占比分摊未税总计。'
+                        ? '请先填写未税总计，再录入各品项采购价。若销售报价未提供逐项未税单价，系统将按采购价（未税）占比分摊未税总计。'
                         : Number(calculated.pricingMode) === 2
                           ? '请先填写未税总计；系统将未税总计按主项 99%、技术服务 1% 自动分配。'
                           : '请逐项填写未税单价；未税总计由各品项未税小计自动汇总。'}
@@ -1440,7 +1440,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                 { label: '未税总计', value: <AnimatedMoney value={calculated.totals?.salesExcludingTax} animationKey={importAnimationKey} />, warn: false },
                 { label: '销售税额', value: <AnimatedMoney value={calculated.totals?.vat} animationKey={importAnimationKey} />, warn: false },
                 { label: '含税总计', value: <AnimatedMoney value={calculated.totals?.salesIncludingTax} animationKey={importAnimationKey} />, warn: false },
-                { label: '采购成本（未税）', value: <AnimatedMoney value={calculated.totals?.costExcludingTax} animationKey={importAnimationKey} />, warn: false },
+                { label: '采购价（未税）', value: <AnimatedMoney value={calculated.totals?.costExcludingTax} animationKey={importAnimationKey} />, warn: false },
                 { label: '整单毛利率', value: <AnimatedPercent value={calculated.totals?.marginRate} animationKey={importAnimationKey} />, warn: Number(calculated.totals?.marginRate) < 15 },
               ].map(({ label, value, warn }) => (
                 <div key={`${label}-${importAnimationKey}`} className={`bg-card p-4 ${importAnimationKey ? 'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-700' : ''}`}>
