@@ -223,6 +223,24 @@ async function callAi(messages, timeoutMs, fetchImpl = fetch, conn) {
   }
 }
 
+/** 已沉淀的提示词规则（规则教练，mr_recognition_rules 表 action_type='prompt_rule'）：注入 AI prompt；读库失败静默返回空（不影响单测与离线场景）。 */
+async function loadPromptRules() {
+  try {
+    const { query } = require('../../../config/db')
+    const rows = await query(
+      `SELECT scope_type, scope_value, rule_text, prompt_text FROM mr_recognition_rules
+       WHERE enabled = 1 AND action_type = 'prompt_rule' ORDER BY id LIMIT 20`,
+    )
+    return rows
+      .map((row) => ({ scopeType: row.scope_type, scopeValue: row.scope_value, text: row.prompt_text || row.rule_text }))
+      .filter((row) => row.text)
+  } catch (_error) {
+    return []
+  }
+}
+
+const SCOPE_LABELS = { category: '仅当品项属于该品类', vendor: '仅当供应商匹配', global: '所有报价' }
+
 /**
  * AI 识别报价文件。成功返回 { sheets, recognitionMethod, documentType }；不可用/失败返回 null（由调用方降级）。
  * @param {Buffer} buffer 文件内容
@@ -238,10 +256,16 @@ async function recognizeQuotationWithAi(buffer, extension, fileName, { fetchImpl
   if (isPdf && onStage) onStage('rendering')
   const input = isPdf ? await pdfImageMessages(buffer, timeoutMs) : workbookText(buffer)
   if (!input || !input.length) return null
+  // 提示词规则注入（spec 008 P1）：每条带作用域前缀，AI 条件式应用
+  const promptRules = await loadPromptRules()
+  const rulesBlock = promptRules.length
+    ? ['', '以下为已沉淀的用户识别规则，按各自作用域条件应用，条件不满足时忽略该条：',
+        ...promptRules.map((rule, index) => `${index + 1}. 【${SCOPE_LABELS[rule.scopeType] || '所有报价'}${rule.scopeValue ? `：${rule.scopeValue}` : ''}】${rule.text}`)]
+    : []
   if (onStage) onStage('ai')
   const messages = [
     { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'user', content: [{ type: 'text', text: USER_PROMPT }, ...input] },
+    { role: 'user', content: [{ type: 'text', text: USER_PROMPT + rulesBlock.join('\n') }, ...input] },
   ]
   const content = await callAi(messages, timeoutMs, fetchImpl, conn)
   const ai = extractJson(content)
@@ -316,4 +340,4 @@ async function applyAiEntityKeys(sources, { fetchImpl = fetch } = {}) {
   }
 }
 
-module.exports = { recognizeQuotationWithAi, normalizeAiResult, extractJson, workbookText, applyAiEntityKeys, stripPriceFieldClauses }
+module.exports = { recognizeQuotationWithAi, normalizeAiResult, extractJson, workbookText, applyAiEntityKeys, stripPriceFieldClauses, resolveAiConnection, callAi }

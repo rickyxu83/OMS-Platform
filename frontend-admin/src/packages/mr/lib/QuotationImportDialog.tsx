@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { deleteQuotationFile, downloadQuotation, getImportProgress, importQuotations, persistQuotations } from '../client'
+import { QuoteCoachDialog } from './QuoteCoachDialog'
 import { RecognitionProgressPanel, type RecognitionProgress } from './RecognitionProgressPanel'
 import type { MrItem, MrOrder, QuotationFile, QuotationImportResult, QuotationSource, VendorOption } from '../types'
 import { calculateForm, quotationDetailItems, salesSubtotal } from './form-logic'
@@ -285,6 +286,7 @@ export function QuotationImportDialog({
   const [batchFields, setBatchFields] = useState({ vendor: true, warrantyService: true, installBy: true })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [coachOpen, setCoachOpen] = useState(false)
   // 识别引擎：v1=当前规则+AI；v2=实验引擎（配置组收敛，spec 008）。previewEngine 记录当前预览由哪个引擎产出
   const [engine, setEngine] = useState<'v1' | 'v2'>(initialEngine)
   const [previewEngine, setPreviewEngine] = useState<'v1' | 'v2' | null>(null)
@@ -605,6 +607,16 @@ export function QuotationImportDialog({
                   {previewEngine === 'v2' ? <span className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700">⚡ 实验引擎 v2</span> : null}
                 </h3>
                 <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={loading}
+                    title="用大白话告诉 AI 你想要的识别效果，满意后可沉淀为长期规则"
+                    onClick={() => setCoachOpen(true)}
+                  >
+                    效果不对？告诉 AI
+                  </Button>
                   <span className="text-xs text-muted-foreground">系统优先根据文件分组判定来源；未匹配到销售报价的供应商报价品项将导入为待填售价品项，售价需在导入后填写。</span>
                   {editable && (salesFiles.length || purchaseFiles.length) ? (
                     <Button
@@ -771,6 +783,13 @@ export function QuotationImportDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>关闭</Button>
           {editable ? <Button disabled={!preview || loading} title={files.length ? undefined : '正在校对已导入报价的识别结果：直接保存校对内容，无需重新上传文件'} onClick={() => void apply()}>{loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileSpreadsheet className="mr-2 size-4" />}确认导入 {appliedItemCount} 个品项</Button> : null}
         </DialogFooter>
+        <QuoteCoachDialog
+          orderId={orderId}
+          open={coachOpen}
+          items={draftItems}
+          onOpenChange={setCoachOpen}
+          onItemsTransformed={(next) => setDraftItems(next as typeof draftItems)}
+        />
       </DialogContent>
     </Dialog>
   )

@@ -63,6 +63,8 @@ const { applyQuotationLayoutRule } = require('./quotation-layout-rules')
 const { mergeQuotations } = require('./quotation-merge')
 const { recognizeQuotationWithAi, applyAiEntityKeys } = require('./quotation-ai-parser')
 const { collapseConfigGroups } = require('./quotation-config-groups')
+const { applyStructuredRules } = require('./quotation-rules')
+const { coachChat, coachDistill } = require('./quote-coach')
 const {
   constants,
   STEP_ROLES,
@@ -1957,6 +1959,28 @@ async function importQuotation(req, res) {
       }
       parsed = await applyQuotationLayoutRule(parsed, name, requestedRole)
       parsed = validateParsedQuotation(parsed, recognitionMethod)
+      // 识别规则库（规则教练沉淀，spec 008 P1）：命中的结构化规则在识别结果上确定性执行
+      try {
+        const rules = await query(
+          `SELECT id, scope_type, scope_value, action_type, params FROM mr_recognition_rules
+           WHERE enabled = 1 AND action_type <> 'prompt_rule' ORDER BY id LIMIT 100`,
+        )
+        if (rules.length) {
+          const ruled = applyStructuredRules(parsed, rules)
+          if (ruled.applied.length) {
+            parsed = ruled.parsed
+            parsed.warnings = [...(parsed.warnings || []), `已应用 ${ruled.applied.length} 条识别规则（规则教练沉淀，设置页可管理）`]
+            const bumpParams = {}
+            ruled.applied.forEach((id, i) => { bumpParams[`id${i}`] = id })
+            await query(
+              `UPDATE mr_recognition_rules SET match_count = match_count + 1 WHERE id IN (${ruled.applied.map((_, i) => `:id${i}`).join(',')})`,
+              bumpParams,
+            )
+          }
+        }
+      } catch (ruleError) {
+        console.warn('[mr] 识别规则应用失败：', ruleError?.message || ruleError)
+      }
       const sheets = (parsed.sheets || []).map((sheet) => ({ ...sheet, total: sheet.total ?? sheetTotal(sheet) }))
       const warnings = [...(parsed.warnings || [])]
       if (!sheets.length) warnings.push(`${name} 未找到可识别的报价明细表；已保留其他来源的识别结果`)
@@ -2409,6 +2433,102 @@ async function processStaleMrReminders(limit = 50) {
   return { scanned: rows.length, reminded }
 }
 
+/* ========== 规则教练与识别规则库（spec 008 P1） ========== */
+
+async function listRecognitionRules(_req, res) {
+  await ensureTables()
+  const rows = await query(
+    `SELECT id, scope_type, scope_value, action_type, params, rule_text, prompt_text, source, enabled, match_count, created_by, created_at, updated_at
+     FROM mr_recognition_rules ORDER BY enabled DESC, match_count DESC, id DESC LIMIT 500`,
+  )
+  res.json({
+    items: rows.map((row) => ({
+      id: row.id,
+      scopeType: row.scope_type,
+      scopeValue: row.scope_value,
+      actionType: row.action_type,
+      params: typeof row.params === 'string' ? JSON.parse(row.params || 'null') : row.params,
+      ruleText: row.rule_text,
+      promptText: row.prompt_text,
+      source: row.source,
+      enabled: Boolean(row.enabled),
+      matchCount: Number(row.match_count || 0),
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    })),
+  })
+}
+
+async function updateRecognitionRule(req, res) {
+  assertAdmin(req)
+  await ensureTables()
+  const id = Number(req.params.id)
+  const rows = await query('SELECT id FROM mr_recognition_rules WHERE id = :id LIMIT 1', { id })
+  if (!rows[0]) throw notFound('规则不存在')
+  const updates = []
+  const params = { id }
+  if (req.body?.enabled !== undefined) { updates.push('enabled = :enabled'); params.enabled = req.body.enabled ? 1 : 0 }
+  if (req.body?.ruleText !== undefined) { updates.push('rule_text = :ruleText'); params.ruleText = String(req.body.ruleText).trim().slice(0, 512) }
+  if (req.body?.scopeValue !== undefined) { updates.push('scope_value = :scopeValue'); params.scopeValue = String(req.body.scopeValue).trim().slice(0, 128) }
+  if (updates.length) await query(`UPDATE mr_recognition_rules SET ${updates.join(', ')} WHERE id = :id`, params)
+  res.json({ ok: true })
+}
+
+async function deleteRecognitionRule(req, res) {
+  assertAdmin(req)
+  await ensureTables()
+  const id = Number(req.params.id)
+  await query('DELETE FROM mr_recognition_rules WHERE id = :id', { id })
+  res.status(204).end()
+}
+
+/** 教练对话一轮：body.items 为当前预览品项（不脱敏，价格字段不发 AI——快照构造时已裁剪），body.messages 为会话历史 */
+async function quoteCoachChat(req, res) {
+  const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 50) : []
+  const messages = Array.isArray(req.body?.messages) ? req.body.messages.slice(-12) : []
+  if (!messages.length || messages[messages.length - 1]?.role !== 'user') throw badRequest('缺少用户消息')
+  const result = await coachChat(items, messages)
+  res.json(result)
+}
+
+/** 蒸馏并入库：会话满意后沉淀为规则（创建即生效，设置页可停用） */
+async function quoteCoachDistill(req, res) {
+  await ensureTables()
+  const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 50) : []
+  const messages = Array.isArray(req.body?.messages) ? req.body.messages.slice(-12) : []
+  if (messages.length < 2) throw badRequest('对话太少，请先描述你想要的效果')
+  const card = await coachDistill(items, messages)
+  // 两段式：未带 confirmedCard 时仅返回蒸馏草稿（前端弹确认卡）；用户微调后带 confirmedCard 重调才入库
+  const confirmed = req.body?.confirmedCard
+  if (!confirmed || typeof confirmed !== 'object') {
+    return res.json({ ok: true, draft: card })
+  }
+  const final = {
+    scopeType: ['category', 'vendor', 'global'].includes(confirmed.scopeType) ? confirmed.scopeType : card.scopeType,
+    scopeValue: String(confirmed.scopeValue ?? card.scopeValue).trim().slice(0, 128),
+    actionType: card.actionType,
+    params: card.params,
+    ruleText: String(confirmed.ruleText ?? card.ruleText).trim().slice(0, 512),
+    promptText: String(card.promptText || '').slice(0, 500),
+  }
+  if (!final.ruleText) throw badRequest('规则描述不能为空')
+  const insert = await query(
+    `INSERT INTO mr_recognition_rules (scope_type, scope_value, action_type, params, rule_text, prompt_text, source, enabled, created_by)
+     VALUES (:scopeType, :scopeValue, :actionType, :params, :ruleText, :promptText, 'coach', 1, :userId)`,
+    {
+      scopeType: final.scopeType,
+      scopeValue: final.scopeValue,
+      actionType: final.actionType,
+      params: final.params ? JSON.stringify(final.params) : null,
+      ruleText: final.ruleText,
+      promptText: final.promptText || '',
+      userId: req.user.id,
+    },
+  )
+  res.status(201).json({ ok: true, id: Number(insert.insertId), card: final, draft: card })
+}
+
 module.exports = {
   ensureTables,
   remind,
@@ -2424,6 +2544,11 @@ module.exports = {
   createLayoutRule,
   updateLayoutRule,
   deleteLayoutRule,
+  listRecognitionRules,
+  updateRecognitionRule,
+  deleteRecognitionRule,
+  quoteCoachChat,
+  quoteCoachDistill,
   quotationUpload,
   attachmentUpload,
   getConstants,
