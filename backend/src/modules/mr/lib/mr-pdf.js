@@ -129,7 +129,7 @@ function header(doc, fonts, order, title = '客户订购申请单（境内单）
   text(doc, fonts, '敦阳（宁波）科技有限公司', textLeft, 30, { size: 13, bold: true, color: '#402080' })
   text(doc, fonts, title, 280, 24, { size: 17, bold: true, color: '#111827', width: 282, align: 'center' })
   text(doc, fonts, `V${Number(order.versionNo || order.version_no || 0)}`, right - 112, 21, { size: 9, bold: true, width: 112, align: 'right' })
-  text(doc, fonts, `单据编号 ${value(order.ctrlNo || order.ctrl_no)}`, right - 190, 34, { size: 9, width: 190, align: 'right' })
+  text(doc, fonts, `Ctrl.No: ${value(order.ctrlNo || order.ctrl_no)}`, right - 190, 34, { size: 9, width: 190, align: 'right' })
   line(doc, left, 50, right, 50, '#111')
   return 58
 }
