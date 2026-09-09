@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 47
+const PDF_FORMAT_VERSION = 48
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -153,14 +153,15 @@ function header(doc, fonts, order, title = '客户订购申请单（境内单）
 function summary(doc, fonts, order, y) {
   const left = PAGE.margin
   const right = PAGE.width - PAGE.margin
-  // 页眉摘要只留最关键的 客户/交付/状态 三栏；客户 P/O、交付地点、交易条款（付款条件/发票类型/开票内容）
-  // 与版本号一律下移或去重到下方资料区——灰色小字打印不清，且头部信息过于分散（用户反馈 2026-09-09）
-  const width = (right - left) / 3
+  // 页眉摘要四栏：客户/交付/业务负责人/状态；客户 P/O、交付地点、交易条款（付款条件/发票类型/开票内容）
+  // 归入下方资料区——灰色小字打印不清，且头部信息过于分散（用户反馈 2026-09-09）
+  const width = (right - left) / 4
   const statusLabels = { draft: '草稿', in_review: '签核中', approved: '已通过', rejected: '已驳回', voided: '已作废' }
   const statusLabel = statusLabels[order.status || order.status_code] || value(order.status)
   const cells = [
     { label: '客户 / CUSTOMER', main: value(order.customerName || order.customer_name, '-') },
     { label: '交付 / DELIVERY', main: value(order.latestDeliveryDate || order.latest_delivery_date, '-') },
+    { label: '业务负责人 / SALES', main: value(orderField(order, 'salesOwnerName', 'sales_owner_name'), '-') },
     { label: '状态 / STATUS', main: statusLabel },
   ]
   cells.forEach((cell, index) => {
@@ -184,8 +185,9 @@ function itemColumns(items) {
   const definitions = [
     { key: 'index', label: '序号', weight: 3, align: 'center', optional: false, present: () => true, content: (_item, index) => index + 1 },
     { key: 'partMerged', label: '公司料号 / 原厂规格', weight: 12, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'companyPartNo', 'company_part_no')) || hasValue(itemField(item, 'oemSpec', 'oem_spec')), content: (item) => [itemField(item, 'companyPartNo', 'company_part_no'), itemField(item, 'oemSpec', 'oem_spec')].filter(hasValue).join('\n') },
-    { key: 'description', label: '品名及描述', weight: 21, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
-    { key: 'warrantyInstall', label: '保固 / 装机', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')) || hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => [itemField(item, 'warrantyService', 'warranty_service'), hasValue(itemField(item, 'installBy', 'install_by')) ? `装机：${itemField(item, 'installBy', 'install_by')}` : ''].filter(hasValue).join('\n') },
+    { key: 'description', label: '品名及描述', weight: 20, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
+    // 保固/装机 weight 10：避免「三年 7×24 上门」类文本在词中间断行
+    { key: 'warrantyInstall', label: '保固 / 装机', weight: 10, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')) || hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => [itemField(item, 'warrantyService', 'warranty_service'), hasValue(itemField(item, 'installBy', 'install_by')) ? `装机：${itemField(item, 'installBy', 'install_by')}` : ''].filter(hasValue).join('\n') },
     { key: 'qty', label: '数量', weight: 4, align: 'center', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
     { key: 'unitPrice', label: '未税单价', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
     { key: 'subtotal', label: '未税小计 / 毛利率', weight: 10, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
@@ -284,8 +286,9 @@ function orderField(order, camel, snake = camel) {
   return order[camel] ?? order[snake]
 }
 
-// 页眉已精简为 客户/交付/状态 三栏：客户 P/O、交付地点、付款条件、发票类型、开票内容、业务负责人均归入下方资料区
-const HEADER_DUPLICATES = new Set(['客户名称', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期'])
+// 页眉四栏已展示 客户/交付/业务负责人/状态：以下字段不再重复进资料区；
+// 客户 P/O、交付地点、付款条件、发票类型、开票内容 已归入下方资料区（用户反馈 2026-09-09）
+const HEADER_DUPLICATES = new Set(['客户名称', '业务负责人', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期'])
 
 const DETAIL_GROUPS = [
   ['客户与合同', ['客户联系人', '客户 P/O', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期']],
