@@ -26,7 +26,9 @@ const COACH_SYSTEM = [
   '}',
   '',
   'transform 取值规则：',
-  '1. 用户想精简整机品项的组件明细（如“只要 CPU/内存/硬盘”）→ summarize_components，keep 从 [cpu, memory, disk, raid, nic, psu, rail, warranty, software] 中选；该变换只影响带 BOM 组件清单的品项',
+  '1. 用户想精简整机品项的组件明细（如“只要 CPU/内存/硬盘”）→ 先看品项快照的 bomCount：',
+  '   - bomCount > 0（品项带结构化 BOM）→ summarize_components，keep 从 [cpu, memory, disk, raid, nic, psu, rail, warranty, software] 中选',
+  '   - bomCount = 0（品项没有 BOM 行，配置写在品名/描述文本里）→ **改用 item_edit 直接改写 description**：从品名和描述中提取用户点名的类别，重写成“规格 ×数量”清单（如 “AMD EPYC 9354 32C 处理器 ×2；64GB DDR5 内存 ×8；960GB SSD ×3”），未点名的信息一律不写。规格与数量必须忠于原文，禁止编造',
   '2. 用户想改写某个品项的品名/描述/料号/供应商 → item_edit，edits 按品项序号（index 从 0 开始）给出新字段值；只许改 name/description/part_no/vendor，严禁改数量与价格',
   '3. 用户只是提问或当前轮次不需要改预览（如寒暄、询问）→ transform 为 null',
   '4. 用户的描述无法落到上述两类动作时，仍在 reply 里说明你会记住这个偏好，transform 为 null（沉淀阶段会处理）',
@@ -47,9 +49,10 @@ const DISTILL_SYSTEM = [
   '}',
   '',
   '蒸馏原则：',
-  '1. 能用 summarize_components 表达的组件摘要类需求，禁止产 prompt_rule',
-  '2. scopeType 优先取最精确的作用域：用户说的是某类产品 → category（scopeValue 从品名推断关键词）；只针对某个供应商的写法 → vendor；普适要求才 global',
-  '3. ruleText 必须让非技术人员看懂这条规则以后会干什么',
+  '1. 能用 summarize_components 表达的组件摘要类需求，禁止产 prompt_rule；但**仅当对话中生效的调整确实是组件摘要时**才选它',
+  '2. 对话中实际生效的调整若是改写描述文本（item_edit，例如从内联配置文本中只留 CPU/内存/硬盘），actionType 必须取 prompt_rule，promptText 写成识别时的指令（如“服务器类品项的 description 只保留 CPU/内存/硬盘的规格与数量，其余配置不写”）',
+  '3. scopeType 优先取最精确的作用域：用户说的是某类产品 → category（scopeValue 从品名推断关键词）；只针对某个供应商的写法 → vendor；普适要求才 global',
+  '4. ruleText 必须让非技术人员看懂这条规则以后会干什么',
 ].join('\n')
 
 /** 品项快照（发给 AI 的上下文，裁剪掉大字段，保留序号/品名/描述/组件数） */
@@ -132,10 +135,24 @@ async function coachChat(items, history, { fetchImpl = fetch } = {}) {
   const content = await callAi(messages, env.ai.quoteTimeoutMs, fetchImpl, conn)
   const payload = extractJson(content)
   if (!payload || typeof payload.reply !== 'string') throw new Error('AI 返回格式异常，请换个说法再试一次')
-  const applied = applyTransform(items, payload.transform)
+  let applied = applyTransform(items, payload.transform)
+  // 落空自动追问一轮：AI 出了变换但没落到任何品项（典型：无 BOM 品项误用组件摘要），带原因重问，引导换 item_edit
+  if (!applied && payload.transform && typeof payload.transform === 'object') {
+    const retryMessages = [
+      ...messages,
+      { role: 'assistant', content },
+      { role: 'user', content: '系统反馈：你上一轮的变换指令未能应用到任何品项（最可能的原因：目标品项 bomCount=0，没有 BOM 组件明细，summarize_components 无处可用）。若是精简描述类需求，请改用 item_edit 直接改写 description 字段（从品名与描述中提取用户点名的类别，规格与数量忠于原文）。请重新输出完整 JSON。' },
+    ]
+    const retryContent = await callAi(retryMessages, env.ai.quoteTimeoutMs, fetchImpl, conn)
+    const retryPayload = extractJson(retryContent)
+    const retryApplied = retryPayload ? applyTransform(items, retryPayload.transform) : null
+    if (retryPayload && typeof retryPayload.reply === 'string' && retryApplied) {
+      return { reply: retryPayload.reply.slice(0, 1000), items: retryApplied.items, changes: retryApplied.changes, transformApplied: true }
+    }
+  }
   let reply = payload.reply.slice(0, 1000)
   if (!applied && payload.transform && typeof payload.transform === 'object') {
-    reply += '\n（该调整未能落到当前品项上：组件摘要需要品项带 BOM 明细。请先用实验引擎重新识别该文件（AI 会输出 BOM），再让我摘要）'
+    reply += '\n（该调整未能落到当前品项上：已自动重试一轮仍无法应用。可以换个说法，或先告诉我希望改成什么样子）'
   }
   return { reply, items: applied ? applied.items : null, changes: applied ? applied.changes : [], transformApplied: applied !== null }
 }
