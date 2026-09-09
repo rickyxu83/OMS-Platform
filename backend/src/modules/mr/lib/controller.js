@@ -1765,7 +1765,7 @@ async function importQuotation(req, res) {
   // persist 回写场景（仅留存文件、无新上传，确认导入补漏校对）：凭 sourceHashes 回写修正，允许 uploads 为空
   const persistOnly = String(req.body?.persistOnly || '') === '1'
   const persist = String(req.body?.persist || '') === '1'
-  // 识别引擎版本：v1=当前规则+AI（默认）；v2=实验引擎（配置组收敛，spec 008），仅影响识别路径，其余流程一致
+  // 识别引擎版本：v1=当前规则+AI（默认）；v2=实验引擎（全格式 AI 优先 + 规则教练，spec 009），仅影响识别路径，其余流程一致
   const engine = String(req.body?.engine || '') === 'v2' ? 'v2' : 'v1'
   if (!uploads.length && !(persist && persistOnly)) throw badRequest('请选择报价单或订单文件')
 
@@ -1953,7 +1953,7 @@ async function importQuotation(req, res) {
       }
       parsed = await applyQuotationLayoutRule(parsed, name, requestedRole)
       parsed = validateParsedQuotation(parsed, recognitionMethod)
-      // 识别规则库（规则教练沉淀，spec 008 P1）：命中的结构化规则在识别结果上确定性执行
+      // 识别规则库（规则教练沉淀，spec 009 P1）：命中的结构化规则在识别结果上确定性执行
       try {
         const rules = await query(
           `SELECT id, scope_type, scope_value, action_type, params FROM mr_recognition_rules
@@ -2427,7 +2427,7 @@ async function processStaleMrReminders(limit = 50) {
   return { scanned: rows.length, reminded }
 }
 
-/* ========== 规则教练与识别规则库（spec 008 P1） ========== */
+/* ========== 规则教练与识别规则库（spec 009 P1） ========== */
 
 async function listRecognitionRules(_req, res) {
   await ensureTables()

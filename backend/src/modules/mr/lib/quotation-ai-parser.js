@@ -267,7 +267,7 @@ async function recognizeQuotationWithAi(buffer, extension, fileName, { fetchImpl
   if (isPdf && onStage) onStage('rendering')
   const input = isPdf ? await pdfImageMessages(buffer, timeoutMs) : workbookText(buffer)
   if (!input || !input.length) return null
-  // 提示词规则注入（spec 008 P1）：每条带作用域前缀，AI 条件式应用
+  // 提示词规则注入（spec 009 P1）：每条带作用域前缀，AI 条件式应用
   const promptRules = await loadPromptRules()
   const rulesBlock = promptRules.length
     ? ['', '以下为已沉淀的用户识别规则，按各自作用域条件应用，条件不满足时忽略该条：',

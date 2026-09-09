@@ -271,7 +271,7 @@ export function QuotationImportDialog({
   onStoredFilesChange?: (files: QuotationFile[]) => void
   /** 删除留存文件后通知外层同步移除该文件导入的品项（后端已联动删除，避免外层保存时写回） */
   onLinkedItemsRemoved?: (fileName: string, removedItems: number) => void
-  /** 实验引擎入口（spec 008）：从「新版识别」按钮打开时默认 v2，弹窗内可随时切回 v1 对比 */
+  /** 实验引擎入口（spec 009）：从「新版识别」按钮打开时默认 v2，弹窗内可随时切回 v1 对比 */
   initialEngine?: 'v1' | 'v2'
 }) {
   const [salesFiles, setSalesFiles] = useState<File[]>([])
@@ -290,7 +290,7 @@ export function QuotationImportDialog({
   // 教练变换撤销栈：每次 AI 调整预览前压入当前快照，支持「撤销上一步」
   const coachUndoRef = useRef<MrItem[][]>([])
   const [coachCanUndo, setCoachCanUndo] = useState(false)
-  // 识别引擎：v1=当前规则+AI；v2=实验引擎（配置组收敛，spec 008）。previewEngine 记录当前预览由哪个引擎产出
+  // 识别引擎：v1=当前规则+AI；v2=实验引擎（全格式 AI 优先，spec 009）。previewEngine 记录当前预览由哪个引擎产出
   const [engine, setEngine] = useState<'v1' | 'v2'>(initialEngine)
   const [previewEngine, setPreviewEngine] = useState<'v1' | 'v2' | null>(null)
   const [progress, setProgress] = useState<RecognitionProgress | null>(null)

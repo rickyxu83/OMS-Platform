@@ -396,7 +396,7 @@ export function MrFormPage() {
   const [error, setError] = useState('')
   const [errors, setErrors] = useState<ValidationError[]>([])
   const [importOpen, setImportOpen] = useState(false)
-  // 报价识别引擎：v1=当前版；v2=实验引擎（配置组收敛，spec 008），由「新版识别（实验）」按钮进入
+  // 报价识别引擎：v1=当前版；v2=实验引擎（全格式 AI 优先，spec 009），由「新版识别（实验）」按钮进入
   const [importEngine, setImportEngine] = useState<'v1' | 'v2'>('v1')
 /** Office 附件在线预览：blob 为 null 表示正在加载 */
 const [officePreview, setOfficePreview] = useState<{ file: QuotationFile; blob: Blob | null } | null>(null)
@@ -884,7 +884,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
   }
 
 
-  // 催办（spec 008）：24h 节流；按钮置灰时提示上次催办时间
+  // 催办（spec 009）：24h 节流；按钮置灰时提示上次催办时间
   const effectiveLastRemindedAt = lastRemindedAt ?? calculated?.lastRemindedAt ?? null
   const remindThrottled = Boolean(effectiveLastRemindedAt && Date.now() - new Date(String(effectiveLastRemindedAt).replace(' ', 'T')).getTime() < 24 * 3600 * 1000)
   const remindThrottledText = effectiveLastRemindedAt ? String(effectiveLastRemindedAt).replace('T', ' ').slice(5, 16) : ''

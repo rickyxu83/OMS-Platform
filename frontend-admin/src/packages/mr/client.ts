@@ -42,7 +42,7 @@ export const createMrLayoutRule = (body: { filePattern: string; vendor: string }
 export const updateMrLayoutRule = (id: string | number, body: { enabled?: boolean; vendor?: string; filePattern?: string }) => api.put(`/mr/layout-rules/${pathId(id)}`, body) as Promise<{ ok: boolean }>
 export const deleteMrLayoutRule = (id: string | number) => api.delete(`/mr/layout-rules/${pathId(id)}`)
 
-/* 规则教练与识别规则库（spec 008 P1） */
+/* 规则教练与识别规则库（spec 009 P1） */
 export const listRecognitionRules = () => api.get('/mr/recognition-rules') as Promise<{ items: MrRecognitionRule[] }>
 export const updateRecognitionRule = (id: string | number, body: { enabled?: boolean; ruleText?: string; scopeValue?: string }) => api.put(`/mr/recognition-rules/${pathId(id)}`, body) as Promise<{ ok: boolean }>
 export const deleteRecognitionRule = (id: string | number) => api.delete(`/mr/recognition-rules/${pathId(id)}`)
@@ -59,7 +59,7 @@ export async function importQuotations(id: string | number, files: File[], persi
   if (cleanupStoredFiles) body.set('cleanupStoredFiles', '1')
   if (taskId) body.set('taskId', taskId)
   if (includeStored) body.set('includeStored', '1')
-  // 实验引擎 v2（spec 008）：配置组收敛识别，默认同传 v1 保持现有行为
+  // 实验引擎 v2（spec 009）：全格式 AI 优先识别，默认同传 v1 保持现有行为
   if (engine !== 'v1') body.set('engine', engine)
   return api.postForm(`/mr/${pathId(id)}/import`, body) as Promise<QuotationImportResult>
 }

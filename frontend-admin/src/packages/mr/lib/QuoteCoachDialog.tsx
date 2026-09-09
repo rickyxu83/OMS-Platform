@@ -12,7 +12,7 @@ const SCOPE_LABELS: Record<string, string> = { category: '品类', vendor: '供�
 const FIELD_LABELS: Record<string, string> = { name: '品名', description: '描述', part_no: '料号', partNo: '料号', oemSpec: '料号', vendor: '供应商' }
 
 /**
- * 规则教练（spec 008 P1）：销售用自然语言描述期望的识别效果，AI 多轮对话调优，
+ * 规则教练（spec 009 P1）：销售用自然语言描述期望的识别效果，AI 多轮对话调优，
  * 满意后蒸馏为全局规则卡（用户确认后入库，立即生效；设置页可停用）。
  *
  * 会话不落库；AI 只输出变换指令，由后端代码执行后返回新预览。

@@ -293,7 +293,7 @@ export interface MrLayoutRule {
   updatedAt?: string
 }
 
-/** 识别规则（规则教练沉淀，spec 008 P1）：结构化规则后端执行，prompt_rule 注入 AI prompt */
+/** 识别规则（规则教练沉淀，spec 009 P1）：结构化规则后端执行，prompt_rule 注入 AI prompt */
 export interface MrRecognitionRule {
   id: number
   scopeType: 'category' | 'vendor' | 'global'
