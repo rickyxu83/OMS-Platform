@@ -62,15 +62,20 @@ assert(!ruled.parsed.sheets[0].items[1].summary_applied, '无 BOM 品项不受�
 // summarize_components
 const coachItems = [{ name: 'ACME DemoServer CTO Svr', description: '全量', part_no: 'P1', components: bom }]
 const t1 = applyTransform(coachItems, { type: 'summarize_components', keep: ['cpu', 'disk'] })
-assert(t1 && t1[0].description.includes('CPU'), '教练摘要变换生效')
-assert(!t1[0].description.includes('32GB'), '未选类别不出现')
+assert(t1 && t1.items[0].description.includes('CPU'), '教练摘要变换生效')
+assert(!t1.items[0].description.includes('32GB'), '未选类别不出现')
+assert(t1.changes.length === 1 && t1.changes[0].field === 'description', '返回变更明细')
+// 品名为空不得拼出“null：”前缀
+const t1b = applyTransform([{ name: null, description: 'x', components: bom }], { type: 'summarize_components', keep: ['cpu'] })
+assert(t1b && !t1b.items[0].description.startsWith('null'), '空品名不加前缀')
 // 非法 keep
 assert.equal(applyTransform(coachItems, { type: 'summarize_components', keep: ['hacker'] }), null)
 // item_edit 白名单
 const t2 = applyTransform(coachItems, { type: 'item_edit', edits: [{ index: 0, fields: { name: '新名字', unit_price: 99999, qty: 99 } }] })
-assert.equal(t2[0].name, '新名字', '白名单字段可改')
-assert.equal(t2[0].unit_price, undefined, '价格字段被拦截')
-assert.equal(t2[0].qty, undefined, '数量字段被拦截')
+assert.equal(t2.items[0].name, '新名字', '白名单字段可改')
+assert.equal(t2.items[0].unit_price, undefined, '价格字段被拦截')
+assert.equal(t2.items[0].qty, undefined, '数量字段被拦截')
+assert(t2.changes.length === 1 && t2.changes[0].field === 'name', '变更明细只记白名单字段')
 // 越界 index / 未知类型
 assert.equal(applyTransform(coachItems, { type: 'item_edit', edits: [{ index: 9, fields: { name: 'x' } }] }), null)
 assert.equal(applyTransform(coachItems, { type: 'drop_table' }), null)

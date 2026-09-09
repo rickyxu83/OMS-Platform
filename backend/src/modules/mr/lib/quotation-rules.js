@@ -100,7 +100,8 @@ function applyStructuredRules(parsed, rules) {
           if (!summary) return item
           touched = true
           // 摘要只改写展示层描述；完整 BOM 保留在 components 供采购下单
-          return { ...item, description: `${item.name}：${summary}`, summary_applied: true }
+          const prefix = item.name ? `${item.name}：` : ''
+          return { ...item, description: `${prefix}${summary}`, summary_applied: true }
         })
         if (touched) { applied.add(rule.id); nextSheet = { ...nextSheet, items } }
       }

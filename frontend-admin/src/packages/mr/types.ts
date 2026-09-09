@@ -310,10 +310,11 @@ export interface MrRecognitionRule {
   updatedAt?: string
 }
 
-/** 规则教练对话消息 */
+/** 规则教练对话消息；changes 为后端执行变换后的逐字段变更明细（仅 assistant 消息携带） */
 export interface QuoteCoachMessage {
   role: 'user' | 'assistant'
   content: string
+  changes?: Array<{ index: number; field: string; from: string; to: string }>
 }
 
 /** 蒸馏出的规则卡草稿（用户确认后入库） */

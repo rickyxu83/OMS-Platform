@@ -68,7 +68,8 @@ function itemsSnapshot(items) {
 }
 
 /**
- * 校验并执行变换指令（返回新 items 副本；非法指令返回 null 表示忽略）。
+ * 校验并执行变换指令。返回 { items, changes }（items 为新副本，changes 为逐字段变更明细供前端展示）；
+ * 非法/无效指令返回 null 表示忽略。
  * @param {Array} items 当前预览品项
  * @param {object} transform AI 输出的变换指令
  */
@@ -79,31 +80,33 @@ function applyTransform(items, transform) {
       ? transform.keep.filter((k) => Object.keys(CATEGORY_LABELS).includes(k) && k !== 'other')
       : []
     if (!keep.length) return null
-    let touched = false
-    const next = items.map((item) => {
+    const changes = []
+    const next = items.map((item, index) => {
       if (!item.components?.length) return item
       const summary = summarizeComponents(item.components, keep)
       if (!summary) return item
-      touched = true
-      return { ...item, description: `${item.name}：${summary}` }
+      const prefix = item.name ? `${item.name}：` : ''
+      const description = `${prefix}${summary}`
+      changes.push({ index, field: 'description', from: String(item.description || '').slice(0, 120), to: description.slice(0, 120) })
+      return { ...item, description }
     })
-    return touched ? next : null
+    return changes.length ? { items: next, changes } : null
   }
   if (transform.type === 'item_edit') {
     const edits = Array.isArray(transform.edits) ? transform.edits : []
     const next = items.map((item) => ({ ...item }))
-    let touched = false
+    const changes = []
     for (const edit of edits) {
       const index = Number(edit?.index)
       if (!Number.isInteger(index) || index < 0 || index >= next.length) continue
       const fields = edit.fields && typeof edit.fields === 'object' ? edit.fields : {}
       for (const [key, value] of Object.entries(fields)) {
         if (!EDITABLE_FIELDS.has(key)) continue
+        changes.push({ index, field: key, from: String(next[index][key] ?? '').slice(0, 120), to: String(value ?? '').slice(0, 120) })
         next[index][key] = String(value ?? '').slice(0, 2000)
-        touched = true
       }
     }
-    return touched ? next : null
+    return changes.length ? { items: next, changes } : null
   }
   return null
 }
@@ -129,8 +132,12 @@ async function coachChat(items, history, { fetchImpl = fetch } = {}) {
   const content = await callAi(messages, env.ai.quoteTimeoutMs, fetchImpl, conn)
   const payload = extractJson(content)
   if (!payload || typeof payload.reply !== 'string') throw new Error('AI 返回格式异常，请换个说法再试一次')
-  const transformed = applyTransform(items, payload.transform)
-  return { reply: payload.reply.slice(0, 1000), items: transformed, transformApplied: transformed !== null }
+  const applied = applyTransform(items, payload.transform)
+  let reply = payload.reply.slice(0, 1000)
+  if (!applied && payload.transform && typeof payload.transform === 'object') {
+    reply += '\n（该调整未能落到当前品项上：若是组件摘要类需求，请确认品项带有 BOM 明细——目前只有配置组收敛的整机品项带 BOM）'
+  }
+  return { reply, items: applied ? applied.items : null, changes: applied ? applied.changes : [], transformApplied: applied !== null }
 }
 
 /**

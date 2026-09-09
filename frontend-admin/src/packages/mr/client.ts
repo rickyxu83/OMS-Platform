@@ -47,7 +47,7 @@ export const listRecognitionRules = () => api.get('/mr/recognition-rules') as Pr
 export const updateRecognitionRule = (id: string | number, body: { enabled?: boolean; ruleText?: string; scopeValue?: string }) => api.put(`/mr/recognition-rules/${pathId(id)}`, body) as Promise<{ ok: boolean }>
 export const deleteRecognitionRule = (id: string | number) => api.delete(`/mr/recognition-rules/${pathId(id)}`)
 export const quoteCoachChat = (id: string | number, body: { items: object[]; messages: QuoteCoachMessage[] }) =>
-  api.post(`/mr/${pathId(id)}/quote-coach/chat`, body) as Promise<{ reply: string; items: object[] | null; transformApplied: boolean }>
+  api.post(`/mr/${pathId(id)}/quote-coach/chat`, body) as Promise<{ reply: string; items: object[] | null; changes: Array<{ index: number; field: string; from: string; to: string }>; transformApplied: boolean }>
 export const quoteCoachDistill = (id: string | number, body: { items: object[]; messages: QuoteCoachMessage[]; confirmedCard?: QuoteRuleCard }) =>
   api.post(`/mr/${pathId(id)}/quote-coach/distill`, body) as Promise<{ ok: boolean; id?: number; draft: QuoteRuleCard }>
 

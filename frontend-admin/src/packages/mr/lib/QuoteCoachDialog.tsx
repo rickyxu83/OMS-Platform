@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Loader2, MessageSquareText, Send, Sparkles } from 'lucide-react'
+import { Loader2, MessageSquareText, Send, Sparkles, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import { quoteCoachChat, quoteCoachDistill } from '../client'
 import type { QuoteCoachMessage, QuoteRuleCard } from '../types'
 
 const SCOPE_LABELS: Record<string, string> = { category: '品类', vendor: '供应商', global: '全局' }
+const FIELD_LABELS: Record<string, string> = { name: '品名', description: '描述', part_no: '料号', partNo: '料号', oemSpec: '料号', vendor: '供应商' }
 
 /**
  * 规则教练（spec 008 P1）：销售用自然语言描述期望的识别效果，AI 多轮对话调优，
@@ -22,6 +23,8 @@ export function QuoteCoachDialog({
   items,
   onOpenChange,
   onItemsTransformed,
+  onUndo,
+  canUndo = false,
 }: {
   orderId: string | number
   open: boolean
@@ -29,6 +32,9 @@ export function QuoteCoachDialog({
   items: object[]
   onOpenChange: (open: boolean) => void
   onItemsTransformed: (items: object[]) => void
+  /** 撤销上一步变换（父组件持有历史栈） */
+  onUndo?: () => void
+  canUndo?: boolean
 }) {
   const [messages, setMessages] = useState<QuoteCoachMessage[]>([])
   const [input, setInput] = useState('')
@@ -61,10 +67,10 @@ export function QuoteCoachDialog({
     setSending(true)
     try {
       const result = await quoteCoachChat(orderId, { items, messages: next })
-      setMessages([...next, { role: 'assistant', content: result.reply }])
+      setMessages([...next, { role: 'assistant', content: result.reply, changes: result.changes?.length ? result.changes : undefined }])
       if (result.transformApplied && result.items) {
         onItemsTransformed(result.items)
-        toast.success('已按你的描述调整左侧预览，请查看效果')
+        toast.success(`已调整 ${result.changes.length} 处，关闭本窗口可在下方预览中查看完整效果；不满意可继续描述或点「撤销上一步」`)
       }
     } catch (err) {
       setMessages([...next, { role: 'assistant', content: `出错了：${(err as Error).message || '请再试一次'}` }])
@@ -135,6 +141,19 @@ export function QuoteCoachDialog({
             <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm ${message.role === 'user' ? 'bg-primary text-primary-foreground' : 'border bg-background'}`}>
                 {message.content}
+                {message.changes?.length ? (
+                  <div className="mt-2 space-y-1 rounded border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-900">
+                    <div className="font-medium">本次实际改了 {message.changes.length} 处：</div>
+                    {message.changes.slice(0, 8).map((change, changeIndex) => (
+                      <div key={changeIndex} className="leading-snug">
+                        <span className="font-medium">第 {change.index + 1} 项 · {FIELD_LABELS[change.field] || change.field}</span>
+                        <div className="mt-0.5 line-through opacity-60">{change.from || '（空）'}</div>
+                        <div>{change.to || '（空）'}</div>
+                      </div>
+                    ))}
+                    {message.changes.length > 8 ? <div>… 共 {message.changes.length} 处</div> : null}
+                  </div>
+                ) : null}
               </div>
             </div>
           ))}
@@ -170,6 +189,11 @@ export function QuoteCoachDialog({
         ) : null}
 
         <div className="flex items-center gap-2">
+          {canUndo ? (
+            <Button variant="ghost" size="sm" title="撤销上一步 AI 对预览的调整" onClick={() => onUndo?.()}>
+              <Undo2 className="mr-1 size-4" />撤销上一步
+            </Button>
+          ) : null}
           <Input
             value={input}
             onChange={(event) => setInput(event.target.value)}

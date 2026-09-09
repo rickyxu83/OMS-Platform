@@ -287,6 +287,9 @@ export function QuotationImportDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [coachOpen, setCoachOpen] = useState(false)
+  // 教练变换撤销栈：每次 AI 调整预览前压入当前快照，支持「撤销上一步」
+  const coachUndoRef = useRef<MrItem[][]>([])
+  const [coachCanUndo, setCoachCanUndo] = useState(false)
   // 识别引擎：v1=当前规则+AI；v2=实验引擎（配置组收敛，spec 008）。previewEngine 记录当前预览由哪个引擎产出
   const [engine, setEngine] = useState<'v1' | 'v2'>(initialEngine)
   const [previewEngine, setPreviewEngine] = useState<'v1' | 'v2' | null>(null)
@@ -788,7 +791,17 @@ export function QuotationImportDialog({
           open={coachOpen}
           items={draftItems}
           onOpenChange={setCoachOpen}
-          onItemsTransformed={(next) => setDraftItems(next as typeof draftItems)}
+          canUndo={coachCanUndo}
+          onItemsTransformed={(next) => {
+            coachUndoRef.current.push(draftItems)
+            setCoachCanUndo(true)
+            setDraftItems(next as typeof draftItems)
+          }}
+          onUndo={() => {
+            const previous = coachUndoRef.current.pop()
+            if (previous) setDraftItems(previous)
+            setCoachCanUndo(coachUndoRef.current.length > 0)
+          }}
         />
       </DialogContent>
     </Dialog>
