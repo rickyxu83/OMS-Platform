@@ -1,7 +1,7 @@
 /** 识别规则引擎 + 规则教练变换执行器 单元测试（合成数据，虚构料号价格）。 */
 const assert = require('assert')
-const { classifyComponent, summarizeComponents, applyStructuredRules, categoryMatches } = require('../lib/quotation-rules')
-const { applyTransform } = require('../lib/quote-coach')
+const { classifyComponent, summarizeComponents, applyStructuredRules, categoryMatches } = require('../quotation-rules')
+const { applyTransform } = require('../quote-coach')
 
 /* ---- 组件归类器 ---- */
 assert.equal(classifyComponent({ part: 'P67093-B21', description: 'INT Xeon-S 4516Y+ CPU for HPE' }), 'cpu')

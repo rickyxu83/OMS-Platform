@@ -10,7 +10,7 @@ process.env.AI_API_URL = 'http://stub.local/chat'
 process.env.AI_API_KEY = 'stub-key'
 process.env.AI_MODEL = 'stub-model'
 
-const { coachChat } = require('../lib/quote-coach')
+const { coachChat } = require('../quote-coach')
 
 /** 构造 fetch stub：依次返回给定的 AI content 文本 */
 function stubFetch(contents) {
