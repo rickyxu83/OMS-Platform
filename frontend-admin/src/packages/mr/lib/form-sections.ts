@@ -1,4 +1,4 @@
-import { CircleDollarSign, ClipboardCheck, Package, ReceiptText, ShieldCheck, StickyNote, Truck, UserRound } from 'lucide-react'
+import { CircleDollarSign, Package, ReceiptText, ShieldCheck, StickyNote, Truck, UserRound } from 'lucide-react'
 
 export interface MrSection {
   id: string
@@ -29,20 +29,15 @@ export const MR_SECTIONS: MrSection[] = [
     id: 'billing',
     title: '开票与付款',
     icon: ReceiptText,
-    fields: ['invoiceProcess', 'billingTiming', 'billingContent', 'paymentTerms', 'paymentOther']
-  },
-  {
-    id: 'contacts',
-    title: '联系人信息',
-    icon: ClipboardCheck,
-    fields: ['purchaser', 'purchaserTel', 'purchaserMail', 'invoiceRecipient', 'invoiceRecipientTel', 'invoiceRecipientMail', 'recipient', 'recipientTel', 'recipientMail'],
+    // 发票收件人归开票语义、采购联系人（客户商务对接人）归付款条件语义（2026-09-09 佬拍板：解散联系人信息区）
+    fields: ['invoiceProcess', 'billingTiming', 'billingContent', 'invoiceRecipient', 'invoiceRecipientTel', 'invoiceRecipientMail', 'paymentTerms', 'paymentOther', 'purchaser', 'purchaserTel', 'purchaserMail']
   },
   {
     id: 'delivery',
     title: '交付、验收与服务',
     icon: Truck,
-    // The backend builds work-option errors as `${label}Options` with a Chinese label.
-    fields: ['latestDeliveryDate', 'splitDelivery', 'acceptance', 'acceptanceOther', 'deliveryLocation', 'installOptions', 'maintenanceOptions', '装机Options', '维护Options']
+    // 收货人/电话/邮箱与交付地点同属收货信息，归交付语义
+    fields: ['latestDeliveryDate', 'splitDelivery', 'acceptance', 'acceptanceOther', 'deliveryLocation', 'recipient', 'recipientTel', 'recipientMail', 'installOptions', 'maintenanceOptions', '装机Options', '维护Options']
   },
   { id: 'items', title: '品项明细', icon: Package, fields: ['items'] },
   { id: 'remark', title: '备注与其他', icon: StickyNote, fields: ['remark', 'grossProfitRecognitionStartMonth', 'grossProfitRecognitionAmount', 'remainingRecognizableGrossProfit', 'taiwanBusinessTransferStartMonth', 'taiwanBusinessTransferAmount', 'remainingTaiwanBusinessTransfer', 'grossProfitRecognitions', 'taiwanBusinessTransfers'] },
