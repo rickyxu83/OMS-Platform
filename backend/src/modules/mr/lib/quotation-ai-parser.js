@@ -135,7 +135,10 @@ function normalizeAiResult(ai, fileName) {
     delivery: str(ai.delivery),
     notes: [],
     tax_rate: finiteNumber(ai.taxRate),
-    tax_included: ai.taxIncluded === true,
+    // 三态（issue #134）：true/false 为 AI 明确判定，null 为未返回/无法判断；
+    // explicit 标记供合并层区分规则解析器“未找到含税字样”的默认 false，避免把 AI 的明确未税结论吞掉
+    tax_included: ai.taxIncluded === true ? true : ai.taxIncluded === false ? false : null,
+    tax_included_explicit: ai.taxIncluded === true || ai.taxIncluded === false,
     untaxed_total: finiteNumber(ai.untaxedTotal),
     total_amount: finiteNumber(ai.totalAmount),
     discounted_total: finiteNumber(ai.discountedTotal),
@@ -143,10 +146,13 @@ function normalizeAiResult(ai, fileName) {
   }
 }
 
-/** Excel 工作簿 → 带行列结构的文本块（保留合并单元格的值）。 */
+/** Excel 工作簿 → 带行列结构的文本块（保留合并单元格的值）。返回数组上挂 truncated 标记：内容被行列/字符上限截断时为 true（issue #136）。 */
 function workbookText(buffer) {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true })
   const blocks = []
+  const maxRows = Math.max(1, env.ai.quoteSheetMaxRows)
+  const maxCols = Math.max(1, env.ai.quoteSheetMaxCols)
+  let truncated = false
   for (const sheetName of workbook.SheetNames) {
     const worksheet = workbook.Sheets[sheetName]
     const range = worksheet['!ref'] ? XLSX.utils.decode_range(worksheet['!ref']) : null
@@ -157,8 +163,9 @@ function workbookText(buffer) {
         for (let col = merge.s.c; col <= merge.e.c; col += 1) owner.set(`${row},${col}`, { r: merge.s.r, c: merge.s.c })
       }
     }
-    const maxRow = Math.min(range.e.r, 150)
-    const maxCol = Math.min(range.e.c, 40)
+    const maxRow = Math.min(range.e.r, maxRows - 1)
+    const maxCol = Math.min(range.e.c, maxCols - 1)
+    if (range.e.r > maxRow || range.e.c > maxCol) truncated = true
     const rows = []
     for (let row = 0; row <= maxRow; row += 1) {
       const cells = []
@@ -172,8 +179,16 @@ function workbookText(buffer) {
     }
     if (rows.length) blocks.push(`[Sheet: ${sheetName}]\n${rows.join('\n')}`)
   }
-  const text = blocks.join('\n\n').slice(0, 30000)
-  return text ? [{ type: 'text', text }] : null
+  const charLimit = Math.max(1000, env.ai.quoteWorkbookMaxChars)
+  let text = blocks.join('\n\n')
+  if (text.length > charLimit) {
+    text = text.slice(0, charLimit)
+    truncated = true
+  }
+  if (!text) return null
+  const messages = [{ type: 'text', text }]
+  messages.truncated = truncated
+  return messages
 }
 
 /** 通过 OCR 服务的 /render 端点把 PDF 渲染为图片消息。 */
@@ -215,7 +230,7 @@ async function callAi(messages, timeoutMs, fetchImpl = fetch, conn) {
         model: conn.model,
         messages,
         stream: false,
-        max_tokens: 4000,
+        max_tokens: env.ai.quoteMaxTokens,
         // 温度仅在显式配置时下发（部分模型如 kimi-for-coding 只允许固定温度 0.6）
         ...(env.ai.quoteTemperature !== null && Number.isFinite(env.ai.quoteTemperature) ? { temperature: env.ai.quoteTemperature } : {}),
         thinking: { type: 'disabled' },
@@ -280,12 +295,14 @@ async function recognizeQuotationWithAi(buffer, extension, fileName, { fetchImpl
   ]
   const content = await callAi(messages, timeoutMs, fetchImpl, conn)
   const ai = extractJson(content)
+  const truncated = Boolean(!isPdf && input.truncated)
   const sheet = normalizeAiResult(ai, fileName)
   if (sheet) {
     return {
       sheets: [sheet],
       documentType: ai?.documentType === 'sales_quote' ? 'sales_quote' : 'purchase_quote',
       recognitionMethod: isPdf ? 'ai_vision' : 'ai_text',
+      truncated,
     }
   }
   // 重试一次：部分模型偶发返回空内容或解析失败，直接重发可显著提升成功率
@@ -297,6 +314,7 @@ async function recognizeQuotationWithAi(buffer, extension, fileName, { fetchImpl
     sheets: [retrySheet],
     documentType: retryAi?.documentType === 'sales_quote' ? 'sales_quote' : 'purchase_quote',
     recognitionMethod: isPdf ? 'ai_vision' : 'ai_text',
+    truncated,
   }
 }
 
@@ -312,18 +330,20 @@ async function applyAiEntityKeys(sources, { fetchImpl = fetch } = {}) {
   if (!conn.apiUrl || !conn.apiKey || !conn.model) return
   const entries = []
   sources.forEach((source, sourceIndex) => {
-    ;(source.sheets || []).forEach((sheet) => {
+    ;(source.sheets || []).forEach((sheet, sheetIndex) => {
       ;(sheet.items || []).forEach((item, itemIndex) => {
         if (item.name || item.part_no || item.description || item.entityKey) {
-          entries.push({ sourceIndex, itemIndex, name: str(item.name), partNo: str(item.part_no), description: str(item.description).slice(0, 200), entityKey: str(item.entityKey) })
+          // 三元组定位（issue #138）：多工作表来源中 itemIndex 跨 sheet 冲突，必须带 sheetIndex
+          entries.push({ sourceIndex, sheetIndex, itemIndex, name: str(item.name), partNo: str(item.part_no), description: str(item.description).slice(0, 200), entityKey: str(item.entityKey) })
         }
       })
     })
   })
   if (entries.length < 2) return
+  if (entries.length > 120) console.warn(`[mr] 实体归一化品项 ${entries.length} 条超过 120 上限，超出部分不参与本次归一化`)
   const prompt = [
     '以下是多份报价文件识别出的品项（已去除金额，仅用于实体识别）：',
-    JSON.stringify(entries.slice(0, 60)),
+    JSON.stringify(entries.slice(0, 120)),
     '',
     '请判断哪些品项属于同一设备/服务实体（例如同一台存储设备的硬件采购与维保服务）。',
     '为每个品项重新分配统一的 entityKey：',
@@ -334,7 +354,7 @@ async function applyAiEntityKeys(sources, { fetchImpl = fetch } = {}) {
     '- 同一设备的不同组成部分（如存储机头与 DS224C 扩展柜）视为同一实体',
     '- 无法判断归属的品项给独立 entityKey 或空字符串',
     '严格只输出 JSON，不要其他文字：',
-    '{ "items": [{ "sourceIndex": 0, "itemIndex": 0, "entityKey": "..." }] }',
+    '{ "items": [{ "sourceIndex": 0, "sheetIndex": 0, "itemIndex": 0, "entityKey": "..." }] }',
   ].join('\n')
   const content = await callAi([
     { role: 'system', content: '你是设备实体识别助手，严格只输出合法 JSON。' },
@@ -346,7 +366,10 @@ async function applyAiEntityKeys(sources, { fetchImpl = fetch } = {}) {
     const key = String(entry?.entityKey || '').trim()
     if (!key) continue
     const source = sources[Number(entry.sourceIndex)]
-    const item = source?.sheets?.[0]?.items?.[Number(entry.itemIndex)]
+    // 写回按 (sourceIndex, sheetIndex, itemIndex) 三元组定位；AI 未返回 sheetIndex 时回退 0（兼容旧输出）（issue #138）
+    const sheetIndexRaw = Number(entry.sheetIndex)
+    const sheetIndex = Number.isInteger(sheetIndexRaw) && sheetIndexRaw >= 0 ? sheetIndexRaw : 0
+    const item = source?.sheets?.[sheetIndex]?.items?.[Number(entry.itemIndex)]
     if (item) item.entityKey = key
   }
 }

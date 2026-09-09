@@ -69,7 +69,10 @@ function sourceTaxRate(source) {
 
 function sourceTaxIncluded(source) {
   const sheet = firstSheet(source)
-  if (sheet.tax_included) return true
+  if (sheet.tax_included === true) return true
+  // AI 明确判定未税（三态 explicit false）时尊重，不再落回「采购默认含税」（issue #134）；
+  // 规则解析器的 false 只是「未找到含税字样」，仍走 notes/默认值推断
+  if (sheet.tax_included === false && sheet.tax_included_explicit) return false
   const text = Array.isArray(sheet.notes) ? sheet.notes.join(' ') : String(sheet.notes || '')
   if (/(未税|未稅|不含税|不含稅|untaxed)/i.test(text)) return false
   return source.role === 'purchase'
@@ -293,6 +296,9 @@ function mergeQuotations(inputSources, vendors = []) {
         roleWarnings.push(`“${source.name}”价格口径：品项为未税价（品项合计与未税总计一致），成本按税率折算含税`)
       } else if (taxed !== null && approximately(taxed)) {
         roleWarnings.push(`“${source.name}”价格口径：品项为含税价（品项合计与含税总计一致）`)
+      } else if (sheet.tax_included === false && sheet.tax_included_explicit) {
+        // AI 明确判定未税但无汇总金额可交叉校验：折算含税成本时显著提示人工核对（issue #134）
+        roleWarnings.push(`“${source.name}”价格口径：AI 判定品项为未税价（文件无汇总金额可供交叉校验），成本已按税率折算含税，请人工核对`)
       }
     }
     const ratio = sourceDiscountRatio(source)

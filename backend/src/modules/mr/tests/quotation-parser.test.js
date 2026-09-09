@@ -392,4 +392,18 @@ const unitPricingParsed = parseWorkbookWithMetadata(XLSX.write(unitPricingBook, 
 assert.equal(unitPricingParsed.sheets[0].items[0].qty, 2)
 assert.equal(unitPricingParsed.sheets[0].items[0].unit_price, 9850)
 assert.equal(unitPricingParsed.sheets[0].items[0].extended, 19700)
+// issue #134：AI 明确 taxIncluded=false 且无汇总金额时，采购成本按未税价 ×(1+税率) 折算含税，并输出核对提示
+const untaxedSalesSheet = { items: [{ item_no: '1', part_no: 'SR665', name: '服务器', description: '服务器', qty: 1, unit_price: 200, extended: 200 }], tax_rate: 13, tax_included: true }
+const untaxedPurchaseMerge = mergeQuotations([
+  { name: '销售报价.xlsx', requestedRole: 'sales', sheets: [untaxedSalesSheet] },
+  { name: '供应商报价.xlsx', requestedRole: 'purchase', sheets: [{ items: [{ item_no: '1', part_no: 'SR665', name: '服务器', description: '服务器', qty: 1, unit_price: 100, extended: 100 }], tax_rate: 13, tax_included: false, tax_included_explicit: true }] },
+], [])
+assert.equal(untaxedPurchaseMerge.items[0].costInclTax, 113, 'AI 明确未税的采购价按税率折算含税成本')
+assert(untaxedPurchaseMerge.warnings.some((warning) => warning.includes('AI 判定品项为未税价')), '输出未税折算核对提示')
+// 回归：未带 explicit 标记的 false（规则解析“未找到含税字样”）仍按采购默认含税，行为不变
+const legacyPurchaseMerge = mergeQuotations([
+  { name: '销售报价.xlsx', requestedRole: 'sales', sheets: [untaxedSalesSheet] },
+  { name: '供应商报价.xlsx', requestedRole: 'purchase', sheets: [{ items: [{ item_no: '1', part_no: 'SR665', name: '服务器', description: '服务器', qty: 1, unit_price: 100, extended: 100 }], tax_rate: 13, tax_included: false }] },
+], [])
+assert.equal(legacyPurchaseMerge.items[0].costInclTax, 100, '规则解析的默认 false 不改变现有行为')
 console.log('quotation parser OCR loose-row tests passed')

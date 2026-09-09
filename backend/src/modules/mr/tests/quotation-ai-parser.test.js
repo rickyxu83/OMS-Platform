@@ -117,6 +117,28 @@ async function testEntityKeys() {
   assert.equal(sources[1].sheets[0].items[0].entityKey, 'FAS2750 存储 SN:952145001351/952145001204')
 }
 
+// issue #138：多工作表来源按 (sourceIndex, sheetIndex, itemIndex) 三元组写回，不再永远写第一张表
+async function testEntityKeysMultiSheet() {
+  const sources = [
+    { name: '多表.xlsx', sheets: [
+      { items: [{ item_no: '1', name: '封面说明行', description: '', part_no: '' }] },
+      { items: [{ item_no: '1', name: 'FAS2750 存储', description: '', part_no: '' }, { item_no: '2', name: 'DS224C 扩展柜', description: '', part_no: '' }] },
+    ] },
+    { name: '维保.pdf', sheets: [{ items: [{ item_no: '1', name: 'FAS2750 14+7T 维保', description: '', part_no: '' }] }] },
+  ]
+  const fakeFetch = async () => new Response(JSON.stringify({
+    choices: [{ message: { content: JSON.stringify({ items: [
+      { sourceIndex: 0, sheetIndex: 1, itemIndex: 0, entityKey: 'FAS2750 存储' },
+      { sourceIndex: 1, sheetIndex: 0, itemIndex: 0, entityKey: 'FAS2750 存储' },
+    ] }) } }],
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  await applyAiEntityKeys(sources, { fetchImpl: fakeFetch })
+  assert.equal(sources[0].sheets[1].items[0].entityKey, 'FAS2750 存储', '写回正确 sheet 的品项')
+  assert.equal(sources[0].sheets[1].items[1].entityKey, undefined, '同 sheet 其他品项不被误写')
+  assert.equal(sources[0].sheets[0].items[0].entityKey, undefined, '第一张表不被误写')
+  assert.equal(sources[1].sheets[0].items[0].entityKey, 'FAS2750 存储')
+}
+
 function testStripPriceFieldClauses() {
   // AI 误把数量/单价/金额写入描述尾部时应剥离
   assert.equal(stripPriceFieldClauses('6类非屏蔽跳线，1米，数量8PC/BOX，单价10.50元，金额84.00元'), '6类非屏蔽跳线，1米')
@@ -138,13 +160,28 @@ function testStripPriceFieldClauses() {
   assert.equal(sheet.items[0].description, '6类非屏蔽跳线，1米')
 }
 
+// issue #134：tax_included 三态——AI 明确 false 保留（explicit），未返回时为 null（未知）
+function testTaxIncludedTriState() {
+  const explicitFalse = normalizeAiResult({ taxIncluded: false, items: [{ name: '服务器', qty: 1, unitPrice: 100, extended: 100 }] }, '供应商.xlsx')
+  assert.equal(explicitFalse.tax_included, false)
+  assert.equal(explicitFalse.tax_included_explicit, true)
+  const explicitTrue = normalizeAiResult({ taxIncluded: true, items: [{ name: '服务器', qty: 1, unitPrice: 100, extended: 100 }] }, '供应商.xlsx')
+  assert.equal(explicitTrue.tax_included, true)
+  assert.equal(explicitTrue.tax_included_explicit, true)
+  const unknown = normalizeAiResult({ items: [{ name: '服务器', qty: 1, unitPrice: 100, extended: 100 }] }, '供应商.xlsx')
+  assert.equal(unknown.tax_included, null)
+  assert.equal(unknown.tax_included_explicit, false)
+}
+
 async function main() {
   testExtractJson()
   testNormalize()
+  testTaxIncludedTriState()
   testStripPriceFieldClauses()
   testWorkbookText()
   await testRecognize()
   await testEntityKeys()
+  await testEntityKeysMultiSheet()
   console.log('quotation AI parser tests passed')
 }
 

@@ -85,6 +85,12 @@ const env = {
       ? null
       : Number(process.env.AI_QUOTE_TEMPERATURE),
     quoteMaxPages: Number(process.env.AI_QUOTE_MAX_PAGES || 3),
+    // AI 报价识别输出上限：长 BOM 报价 4000 tokens 易截成非法 JSON（issue #136）
+    quoteMaxTokens: Number(process.env.AI_QUOTE_MAX_TOKENS || 8000),
+    // 发给 AI 的工作簿文本上限（超出部分截断并标记 truncated，由上层显著提示）
+    quoteSheetMaxRows: Number(process.env.AI_QUOTE_SHEET_MAX_ROWS || 300),
+    quoteSheetMaxCols: Number(process.env.AI_QUOTE_SHEET_MAX_COLS || 41),
+    quoteWorkbookMaxChars: Number(process.env.AI_QUOTE_WORKBOOK_MAX_CHARS || 60000),
   },
   db: {
     host: process.env.DB_HOST || '127.0.0.1',
