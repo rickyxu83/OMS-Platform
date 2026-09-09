@@ -13,8 +13,9 @@ const HEADER_DUPLICATES = new Set(['客户名称', 'Ctrl.NO', '未税总计', '�
 const FACT_GROUPS = [
   ['客户与合同', ['客户联系人', '客户 P/O', '业务负责人', '项目分类', '合同编号', '付款条件', '付款条件说明', '罚则说明', '填表日期']],
   ['交易与开票', ['计价模式', '发票类型', '开票方式', '开票内容', '开票/收款时间', '发票收件人', '发票收件电话', '发票收件邮箱']],
-  ['交付与验收', ['是否允许分批交付', '验收条件', '验收说明', '装机承担方', '维护承担方', '交付地点', '交付条款', '出货单编号']],
-  ['联系与收件', ['采购联系人', '采购联系电话', '采购联系邮箱', '收货人', '收货联系电话', '收货邮箱']],
+  ['交付与验收', ['是否允许分批交付', '验收条件', '验收说明', '装机承担方', '维护承担方', '交付条款', '出货单编号']],
+  // 交付地点与收货人/收货电话同属收货信息，放在一起（2026-09-09 佬反馈）
+  ['联系与收件', ['采购联系人', '采购联系电话', '采购联系邮箱', '收货人', '收货联系电话', '收货邮箱', '交付地点']],
 ] as const
 
 function hasValue(value: unknown) {
@@ -81,7 +82,7 @@ function Header({ order, emptyText, formal }: { order: MrOrder; emptyText: strin
   const controlNumber = hasValue(order.ctrlNo || order.fileName) ? text(order.ctrlNo || order.fileName, emptyText) : formal ? '' : `Ctrl.NO · ${emptyText}`
   return <header className="a-header"><div className="a-brand"><img src={`${import.meta.env.BASE_URL}dunyang-mark.png`} alt="" /><div><span>STARK (NINGBO) TECHNOLOGY INC.</span><strong>敦阳（宁波）科技有限公司</strong></div></div><div className="a-title"><h1>客户订购申请单（境内单）</h1></div><div className="a-ref"><span>Ctrl.No:</span><b>{controlNumber}</b></div></header>
 }
-function Fact({ label, value }: { label: string; value: ReactNode }) { return <div className="a-fact"><small>{label}</small><div>{value}</div></div> }
+function Fact({ label, value, wide }: { label: string; value: ReactNode; wide?: boolean }) { return <div className={wide ? 'a-fact a-fact-wide' : 'a-fact'}><small>{label}</small><div>{value}</div></div> }
 function Section({ index, title, children }: { index: string; title: string; children: ReactNode }) { return <section className="a-section"><div className="a-section-title"><span>{index}</span><h2>{title}</h2></div>{children}</section> }
 function ItemTable({ items, emptyText, formal }: { items: MrItem[]; emptyText: string; formal: boolean }) {
   // 供应商/采购单号合并列按连续相同采购单号 rowSpan 合并，避免整列重复同一个单号
@@ -171,7 +172,7 @@ const styles = `
 .a-fact-group{margin-top:10px}.a-fact-group:first-child{margin-top:0}.a-fact-group-title{margin-bottom:5px;padding-left:7px;border-left:3px solid #73529b;color:#4e386e;font-size:10px;font-weight:700}@media print{.a-fact-group{break-inside:avoid}.a-fact-group-title{color:#111!important;border-left-color:#777}}
 @media screen and (min-width:901px){.mr-print-page .a-items,.mr-print-page .a-items th{font-size:10px}.mr-print-page .a-items th,.mr-print-page .a-items td{padding:7px 5px}.mr-print-page .a-orderbar span,.mr-print-page .a-delivery span{font-size:10px}}
 @media(max-width:900px){.mr-document{min-width:0!important;padding:18px 14px}.a-header{grid-template-columns:1fr;gap:10px}.a-brand,.a-ref{text-align:left}.a-title{text-align:left}.a-title h1{font-size:18px}.a-orderbar{grid-template-columns:1fr}.a-orderbar>div{border-right:0;border-bottom:1px solid #ded5ea}.a-totals{grid-template-columns:repeat(2,1fr)}.a-total{border-bottom:1px solid #ded5ea}.a-bottom{display:block}.a-items,.a-items tbody,.a-items tr,.a-items td{display:block;width:100%}.a-items thead{display:none}.a-items tr{margin-bottom:10px;border:1px solid #b9c5cc;background:#fff!important}.a-items td,.a-items td:first-child,.a-items td:nth-child(n){display:grid;grid-template-columns:105px minmax(0,1fr);gap:8px;border:0;border-bottom:1px solid #e2e8f0;text-align:left!important;font-size:11px}.a-items td:last-child{border-bottom:0}.a-items td::before{content:attr(data-label);color:#655a73;font-weight:700}.a-signatures{grid-template-columns:1fr}.a-signature{min-height:0}}
-.a-details{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid #d8cfe5;border-left:1px solid #d8cfe5}.a-fact{min-width:0;min-height:44px;padding:7px 9px;border-right:1px solid #d8cfe5;border-bottom:1px solid #d8cfe5;break-inside:avoid}.a-fact small{display:block;color:#655a73;font-size:8.5px}.a-fact div{margin-top:3px;overflow-wrap:anywhere;white-space:pre-wrap;font-size:10px;line-height:1.35}.a-items td.a-align-right{text-align:right;font-variant-numeric:tabular-nums}.a-items td.a-align-center{text-align:center}.a-items td.a-align-left{text-align:left}
+.a-details{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid #d8cfe5;border-left:1px solid #d8cfe5}.a-fact-wide{grid-column:1/-1}.a-fact{min-width:0;min-height:44px;padding:7px 9px;border-right:1px solid #d8cfe5;border-bottom:1px solid #d8cfe5;break-inside:avoid}.a-fact small{display:block;color:#655a73;font-size:8.5px}.a-fact div{margin-top:3px;overflow-wrap:anywhere;white-space:pre-wrap;font-size:10px;line-height:1.35}.a-items td.a-align-right{text-align:right;font-variant-numeric:tabular-nums}.a-items td.a-align-center{text-align:center}.a-items td.a-align-left{text-align:left}
 @media(max-width:900px){.a-details{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media print{.a-watermark{position:fixed}.mr-document{min-width:0!important}.a-header{grid-template-columns:1fr auto 1fr!important;gap:16px}.a-brand{text-align:left}.a-title{text-align:center}.a-title h1{font-size:21px}.a-ref{text-align:right}.a-orderbar{grid-template-columns:1.2fr 1fr 1fr .7fr!important}.a-orderbar>div{border-right:1px solid #777;border-bottom:0}.a-orderbar>div:last-child{border-right:0}.a-totals{grid-template-columns:repeat(7,1fr)!important}.a-items{display:table!important;width:100%!important}.a-items thead{display:table-header-group!important}.a-items tbody{display:table-row-group!important}.a-items tr{display:table-row!important;width:auto!important;border:0;margin:0}.a-items td,.a-items td:first-child,.a-items td:nth-child(n){display:table-cell!important;width:auto!important;grid-template-columns:none;border:1px solid #777!important;font-size:8.5px}.a-items td.a-align-right{text-align:right!important}.a-items td.a-align-center{text-align:center!important}.a-items td.a-align-left{text-align:left!important}.a-items td::before{display:none}.a-details{grid-template-columns:repeat(4,minmax(0,1fr));border-color:#777}.a-fact{min-height:36px;padding:5px 7px;border-color:#777}.a-fact small{color:#222!important;font-size:7.5px}.a-fact div{font-size:8.5px}}
 @media print{.a-section{margin-top:9px}.a-totals{grid-template-columns:repeat(var(--total-columns),1fr)!important}.a-signature{min-height:64px;padding:6px}}
@@ -316,7 +317,7 @@ export function MrDocumentView({ order, toolbar, embedded = false }: { order: Mr
             {groupedFacts.map(({ group, items }) => (
               <div className="a-fact-group" key={group}>
                 <div className="a-fact-group-title">{group}</div>
-                <div className="a-details">{items.map((fact) => <Fact key={fact.label} label={fact.label} value={fact.value} />)}</div>
+                <div className="a-details">{items.map((fact) => <Fact key={fact.label} label={fact.label} value={fact.value} wide={fact.label === '交付地点'} />)}</div>
               </div>
             ))}
             {noteFacts.length ? (

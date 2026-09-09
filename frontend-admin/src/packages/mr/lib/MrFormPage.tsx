@@ -1564,6 +1564,12 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                   <AutoFill active={autoFilled.includes('recipientTel')}><Input list="mr-contact-phone-options" value={calculated.recipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('recipientTel', e.target.value)} /></AutoFill>
                   <AutoFill active={autoFilled.includes('recipientMail')}><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.recipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('recipientMail', e.target.value)} /></AutoFill>
                 </div>
+                <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 border-b px-4 py-4">
+                  <div className="font-medium">交付地点</div>
+                  <div className="col-span-3">
+                    <AutoFill active={autoFilled.includes('deliveryLocation')}><Input list="mr-delivery-location-options" value={calculated.deliveryLocation || ''} readOnly={!editable} placeholder="仅填写收货地址（收货人、联系电话见上方）；可选择客户档案地址或直接输入" onChange={(e) => patch({ deliveryLocation: e.target.value })} /></AutoFill>
+                  </div>
+                </div>
                 <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 px-4 py-4">
                   <div className="font-medium">发票收件人</div>
 <AutoFill active={autoFilled.includes('invoiceRecipient')}><SmartCombobox
@@ -1599,11 +1605,6 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                   <Input value={calculated.acceptanceOther || ''} placeholder="请说明验收方式/标准" onChange={(e) => patch({ acceptanceOther: e.target.value })} />
                 </Field>
               ) : null}
-              <Field label="交付地点" editable={editable} readonlyText={textValue(calculated.deliveryLocation)} className="md:col-span-2 xl:col-span-2">
-                <AutoFill active={autoFilled.includes('deliveryLocation')}>
-                <Input list="mr-delivery-location-options" value={calculated.deliveryLocation || ''} placeholder="选择销售或工程服务地址，也可直接输入" onChange={(e) => patch({ deliveryLocation: e.target.value })} />
-                </AutoFill>
-              </Field>
               <WorkOptions
                 label="装机承担方"
                 value={calculated.installOptions || []}
