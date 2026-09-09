@@ -219,7 +219,7 @@ export function MrItemTable({
                 <tr>
                   <th scope="col" className="w-16 px-3 py-2 text-left font-medium">序号</th>
                   <th scope="col" className="px-3 py-2 text-left font-medium">品名及描述</th>
-                  <th scope="col" className="w-20 px-3 py-2 text-right font-medium">数量</th>
+                  <th scope="col" className="w-14 px-1.5 py-2 text-right font-medium">数量</th>
                   <th scope="col" className="w-32 px-3 py-2 text-right font-medium">未税单价</th>
                   <th scope="col" className="w-36 px-3 py-2 text-right font-medium">未税小计</th>
                   <th scope="col" className="w-24 px-3 py-2 text-right font-medium">毛利率</th>
@@ -255,7 +255,7 @@ export function MrItemTable({
                           <span className="mt-0.5 block break-words text-xs text-muted-foreground">{item.oemSpec || '未填写原厂规格'}</span>
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-right tabular-nums">{item.qty ?? '-'}</td>
+                      <td className="px-1.5 py-3 text-right tabular-nums">{item.qty ?? '-'}</td>
                       <td className="px-3 py-3 text-right tabular-nums">{item.unitPrice == null ? '-' : money(item.unitPrice)}</td>
                       <td className="px-3 py-3 text-right tabular-nums">¥ {money(item.subtotal)}</td>
                       <td className={`px-3 py-3 text-right tabular-nums ${low ? 'font-medium text-red-600' : ''}`}>{percent(item.marginRate)}</td>
@@ -307,7 +307,7 @@ export function MrItemTable({
             </Select>
           </div>
           <div className="space-y-3 border-y py-4">
-            <p className="text-xs text-muted-foreground">仅复制所选字段，不会覆盖数量、销售价格或采购成本。</p>
+            <p className="text-xs text-muted-foreground">仅复制所选字段，不会覆盖数量、销售价格或采购价。</p>
             {([['vendor', '供应商'], ['warrantyService', '保固与服务'], ['installBy', '装机方']] as const).map(([field, label]) => (
               <label key={field} className="flex items-center gap-2 text-sm"><Checkbox checked={batchFields[field]} onCheckedChange={(checked) => setBatchFields((current) => ({ ...current, [field]: Boolean(checked) }))} />{label}</label>
             ))}
@@ -392,7 +392,7 @@ function ItemEditorPanel({
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
-          <Field required={!serviceRow} label="采购成本（含税）" editable={editable} readonlyText={item.costInclTax == null ? '-' : `¥ ${money(item.costInclTax)}`}>
+          <Field required={!serviceRow} label="采购价（含税）" editable={editable} readonlyText={item.costInclTax == null ? '-' : `¥ ${money(item.costInclTax)}`}>
             <Input type="number" min={0} step="0.01" value={numberValue(item.costInclTax)} disabled={serviceRow} onChange={(event) => onChange({ costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />
           </Field>
           <Field required={!serviceRow} label="采购税率" editable={editable} readonlyText={item.taxRate ? `${item.taxRate}%` : '-'}>
@@ -411,7 +411,7 @@ function ItemEditorPanel({
           {item.vendor && vendors.some((vendor) => vendor.name === item.vendor) ? <span className="text-emerald-700">已关联 OMS 供应商目录</span> : null}
           {item.costSource ? <span>成本来源 {item.costSource}</span> : null}
         </div>
-        {editable && mode === 1 ? <p className="text-xs text-muted-foreground">多项系统集成优先保留销售报价的逐项未税单价；缺失时按采购成本（未税）占比分摊未税总计。</p> : null}
+        {editable && mode === 1 ? <p className="text-xs text-muted-foreground">多项系统集成优先保留销售报价的逐项未税单价；缺失时按采购价（未税）占比分摊未税总计。</p> : null}
         {editable && mode === 2 ? <p className="text-xs text-muted-foreground">单项系统集成将未税总计按主项 99%、技术服务 1% 自动分配。</p> : null}
 
         <div>

@@ -217,6 +217,28 @@ function canWithdraw(order, user) {
     && Number(order.salesOwnerId) === Number(user.id)
 }
 
+// 催办权限（spec 008）：填单人/业务负责人/本单助理（含助理主管管辖范围）可催办
+function canRemind(order, user, assistantIds, approvals = [], assistantUserId = null) {
+  if (order.status !== 'in_review') return false
+  if (Number(order.createdBy) === Number(user.id) || Number(order.salesOwnerId) === Number(user.id)) return true
+  const assistantStep = approvals.find((approval) => approval.stepKey === 'assistant')
+  const assistantAssigneeId = Number(assistantStep?.assigneeUserId) || Number(assistantUserId) || null
+  return assistantAssigneeId !== null && (assistantAssigneeId === Number(user.id) || assistantIds.includes(assistantAssigneeId))
+}
+
+// 催办节流（spec 008）：手动催办与超时自动提醒各自节流 24 小时
+const REMINDER_INTERVAL_HOURS = 24
+const STALE_APPROVAL_HOURS = 24
+
+function hoursSince(value) {
+  if (!value) return Infinity
+  const time = value instanceof Date
+    ? value.getTime()
+    : new Date(String(value).replace(' ', 'T')).getTime()
+  if (!Number.isFinite(time)) return Infinity
+  return (Date.now() - time) / 3600000
+}
+
 async function loadRawOrder(id, user = null) {
   await ensureTables()
   const rows = await query(
@@ -367,6 +389,7 @@ async function loadDetail(id, user) {
     currentAssigneeName: currentApproval?.assigneeName || null,
     assignmentError: currentApproval?.assignmentError || order.assignmentError || null,
     quotationFiles: fileRows.map((file) => ({ id: file.id, name: file.original_name, size: Number(file.size), createdAt: file.created_at, quoteRole: file.quote_role || null })),
+    lastRemindedAt: order.lastRemindedAt ?? null,
     archivedDocumentTypes: documentRows.map((row) => row.document_type),
     fileName: `${order.customerCode || order.customerName || 'MR'}_${order.ctrlNo || `草稿-${order.id}`}`,
     permissions: {
@@ -375,6 +398,7 @@ async function loadDetail(id, user) {
       canVoid: canVoid(order, user, assistantIds),
       canApprove: canApprove(order, user, assistantIds),
       canWithdraw: canWithdraw(order, user),
+      canRemind: canRemind(order, user, assistantIds, approvals),
       canPurchase: canPurchase(order, user),
       canFillContractNo: canFillContractNo(order, user, assistantIds),
     },
@@ -609,7 +633,7 @@ async function list(req, res) {
   }
   res.json({ items: rows.map((row) => {
     const order = orderPayload(row)
-    return { ...order, approvalSteps: approvalsByMr[row.id] || [], permissions: { canEdit: canEdit(order, req.user, assistantIds), canDelete: canDelete(order, req.user, assistantIds), canVoid: canVoid(order, req.user, assistantIds), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: canWithdraw(order, req.user), canPurchase: canPurchase(order, req.user), canFillContractNo: canFillContractNo(order, req.user, assistantIds) } }
+    return { ...order, approvalSteps: approvalsByMr[row.id] || [], permissions: { canEdit: canEdit(order, req.user, assistantIds), canDelete: canDelete(order, req.user, assistantIds), canVoid: canVoid(order, req.user, assistantIds), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: canWithdraw(order, req.user), canRemind: canRemind(order, req.user, assistantIds, [], row.assistant_user_id), canPurchase: canPurchase(order, req.user), canFillContractNo: canFillContractNo(order, req.user, assistantIds) } }
   }) })
 }
 
@@ -781,6 +805,10 @@ async function decide(req, res, action) {
       && req.user.role === 'assistant_supervisor'
       && assistantIds.includes(Number(expectedCurrentAssignee.id))
     if (!supervisorReplacing && expectedCurrentAssignee.id !== Number(req.user.id)) throw forbidden('该签核待办已转交')
+    // 手写签名门禁：签核意见须连同本人手写签名一起归档，未设置签名禁止签核
+    if (action === 'approve' && !req.user.engineer_signature) {
+      throw badRequest('签核前请先设置手写签名：右上角头像 → 我的设置 → 手写签名')
+    }
     if (action === 'approve' && current.step_key !== 'assistant' && Number(order.versionNo || 0) === 0) {
       const legacyDetail = await loadCalculatedOrder(connection, order)
       const legacySteps = computeApprovalSteps(legacyDetail, legacyDetail.items)
@@ -1401,7 +1429,7 @@ function hasNumber(value) {
 
 /**
  * 人工修正品项归一化（前端 camelCase → 识别流水线 snake_case）。
- * 用户在校对中只填了“采购成本（含税）”而未填单价/小计时（供应商报价场景），
+ * 用户在校对中只填了“采购价（含税）”而未填单价/小计时（供应商报价场景），
  * 按税率反推未税单价与小计，保证修正数据完整可被 merge 正确消费；含税成本原样保留供 merge 直接取值。
  */
 function normalizeCorrectedItem(item) {
@@ -2161,7 +2189,7 @@ async function deleteQuotationFile(req, res) {
     if (!rows[0]) throw notFound('报价原始附件不存在')
     removed = rows[0]
     await connection.execute('DELETE FROM files WHERE id = :fileId', { fileId })
-    // 联动删除从该文件导入的品项（销售来源或采购成本来源文件名匹配）
+    // 联动删除从该文件导入的品项（销售来源或采购价来源文件名匹配）
     const [deleteResult] = await connection.execute(
       'DELETE FROM mr_items WHERE mr_id = :ownerId AND (cost_source = :fileName OR sales_source = :fileName)',
       { ownerId: req.params.id, fileName: removed.original_name },
@@ -2298,8 +2326,84 @@ async function deleteLayoutRule(req, res) {
   res.status(204).end()
 }
 
+// 手动催办（spec 008）：填单人/业务负责人/本单助理催当前签核人，24h 节流
+async function remind(req, res) {
+  await ensureTables()
+  await ensureWorkflowTables()
+  let remindedAt = null
+  await transaction(async (connection) => {
+    const order = await loadLockedOrder(connection, req.params.id)
+    if (order.status !== 'in_review') throw badRequest('当前状态不在签核中，无需催办')
+    const assistantIds = await assistantIdsFor(req.user)
+    const [assistantSteps] = await connection.execute(
+      `SELECT assignee_user_id AS assigneeUserId, step_key AS stepKey FROM mr_approvals
+       WHERE mr_id = :id AND step_key = 'assistant' ORDER BY cycle DESC LIMIT 1`,
+      { id: req.params.id },
+    )
+    if (!canRemind(order, req.user, assistantIds, assistantSteps)) throw forbidden('只有填单人、业务负责人或本单助理可以催办')
+    if (order.lastRemindedAt && hoursSince(order.lastRemindedAt) < REMINDER_INTERVAL_HOURS) {
+      throw badRequest('24 小时内已催过，请稍后再试')
+    }
+    if (!order.currentAssigneeUserId) throw badRequest('当前签核人待系统指派，请稍后再试')
+    await connection.execute(
+      `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+       VALUES (:mrId, :recipientId, 'remind_manual')`,
+      { mrId: req.params.id, recipientId: order.currentAssigneeUserId },
+    )
+    await connection.execute(
+      'UPDATE mr_orders SET last_reminded_at = NOW() WHERE id = :id',
+      { id: req.params.id },
+    )
+    remindedAt = new Date().toISOString()
+  })
+  res.json({ ok: true, remindedAt })
+}
+
+// 超时自动提醒（spec 008）：调度器每小时调用；当前环节停留超 24h 且 24h 内未自动提醒过
+async function processStaleMrReminders(limit = 50) {
+  await ensureTables()
+  await ensureWorkflowTables()
+  const batchLimit = Math.max(1, Number(limit) || 50)
+  const rows = await query(
+    `SELECT o.id, o.submitted_at, a.assignee_user_id,
+            (SELECT MAX(p.decided_at) FROM mr_approvals p
+             WHERE p.mr_id = o.id AND p.cycle = a.cycle AND p.seq < a.seq AND p.action IS NOT NULL) AS prev_decided_at
+     FROM mr_orders o
+     JOIN mr_approvals a ON a.id = (
+       SELECT a2.id FROM mr_approvals a2
+       WHERE a2.mr_id = o.id AND a2.action IS NULL
+       ORDER BY a2.cycle DESC, a2.seq LIMIT 1
+     )
+     WHERE o.status = 'in_review'
+       AND a.assignee_user_id IS NOT NULL
+       AND (o.last_auto_reminded_at IS NULL OR o.last_auto_reminded_at < NOW() - INTERVAL ${REMINDER_INTERVAL_HOURS} HOUR)
+     ORDER BY o.submitted_at ASC
+     LIMIT ${batchLimit}`,
+  )
+  let reminded = 0
+  for (const row of rows) {
+    const waitingHours = hoursSince(row.prev_decided_at || row.submitted_at)
+    if (waitingHours < STALE_APPROVAL_HOURS) continue
+    await transaction(async (connection) => {
+      await connection.execute(
+        `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+         VALUES (:mrId, :recipientId, 'remind_auto')`,
+        { mrId: row.id, recipientId: row.assignee_user_id },
+      )
+      await connection.execute(
+        'UPDATE mr_orders SET last_auto_reminded_at = NOW() WHERE id = :id',
+        { id: row.id },
+      )
+    })
+    reminded += 1
+  }
+  return { scanned: rows.length, reminded }
+}
+
 module.exports = {
   ensureTables,
+  remind,
+  processStaleMrReminders,
   assistantIdsFor,
   normalizeCorrectedItem,
   historyUnitCostStats,

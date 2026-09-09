@@ -178,10 +178,12 @@ async function main() {
   assert.strictEqual(pdf.subarray(0, 4).toString(), '%PDF')
   assert(pdf.length > 1000)
   assert(pdf.includes(Buffer.from('/Subtype /Image')), 'MR PDF 应嵌入审批人的手写签名')
-  assert.strictEqual((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length, 1, '正式 MR 不应追加原始文字附录')
+  const pageCount = (pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length
+  assert(pageCount <= 2, '正式 MR 不应追加原始文字附录（防签名孤儿机制下短单最多 2 页）')
   const parser = new PDFParse({ data: pdf })
   const extracted = await parser.getText()
   await parser.destroy()
+  assert(!extracted.text.includes('完整文字附录'), '正式 PDF 不应包含原始文字附录页')
   assert(extracted.text.includes('多项系统集成'), '正式 PDF 应保留已填写的计价模式')
   assert(extracted.text.includes('确认无误'), '正式 PDF 应保留已填写的签核意见')
   const compactText = extracted.text.replace(/\s+/g, '')

@@ -1189,6 +1189,19 @@ function startScheduler() {
       }
     })
 
+    // MR 签核超时自动提醒（spec 008）：每小时扫描，环节停留超 24h 给当前签核人发提醒邮件（同单 24h 最多一封）
+    scheduleCron('23 * * * *', async () => {
+      try {
+        const { processStaleMrReminders } = require('../modules/mr/controller')
+        const result = await processStaleMrReminders()
+        if (result?.reminded) {
+          console.log(`[scheduler] MR stale reminders: scanned=${result.scanned}, reminded=${result.reminded}`)
+        }
+      } catch (error) {
+        console.error('[scheduler] MR stale reminder check failed', error?.message)
+      }
+    })
+
     scheduleCron('*/2 * * * *', async () => {
       try {
         const result = await processMrArchives(5)
@@ -1212,7 +1225,7 @@ function startScheduler() {
     'install supervisor notifications (every 5 minutes)',
   ]
   if (!env.featureModulesDisabled.has('attendance')) startedTasks.push('attendance notifications (every minute)', 'attendance stale reminders (hourly :17)', 'holiday auto-sync (09:15, Nov-Dec)', 'duty monthly auto-submit (08:21 on day 1)', 'annual leave carryover & comp-time expiry (23:50 daily check)')
-  if (!env.featureModulesDisabled.has('mr')) startedTasks.push('MR approval notifications (1m)', 'MR PDF archive retry (2m)')
+  if (!env.featureModulesDisabled.has('mr')) startedTasks.push('MR approval notifications (1m)', 'MR stale reminders (hourly :23)', 'MR PDF archive retry (2m)')
   console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): ${startedTasks.join(', ')}`)}
 
 module.exports = { startScheduler }

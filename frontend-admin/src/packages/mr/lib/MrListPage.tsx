@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, X, Pencil, Hourglass, CircleCheck, CircleX, CircleSlash, Package, PackageCheck, Minus, FileText, CircleDot, ArrowRight, type LucideIcon } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, X, Pencil, Hourglass, CircleCheck, CircleX, CircleSlash, Package, PackageCheck, Minus, FileText, CircleDot, ArrowRight, BellRing, type LucideIcon } from 'lucide-react'
+import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Button } from '@/components/ui/button'
@@ -11,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ErrorToast } from '@/components/ErrorToast'
 import { useAuth } from '@/contexts/AuthContext'
-import { createMr, listMr, listSalespeople } from '../client'
+import { createMr, listMr, listSalespeople, remindMr } from '../client'
 import { LayoutRulesDialog } from './LayoutRulesDialog'
 import { HelpTooltip } from '@/components/HelpTooltip'
 import type { MrOrder, MrStatus, UserOption } from '../types'
@@ -150,6 +151,7 @@ export function MrListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { hasPermission, user } = useAuth()
   const [items, setItems] = useState<MrOrder[]>([])
+  const [remindingId, setRemindingId] = useState<string | number | null>(null)
   const [queryInput, setQueryInput] = useState('')
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
@@ -433,6 +435,21 @@ export function MrListPage() {
             ) : pagedItems.map((order) => {
               const orderStatus = (order.status || 'draft') as MrStatus
               const stepLabel = order.currentStepKey === 'sales' ? '业务负责人' : (order.currentStepLabel || '')
+              // 催办（spec 008）：签核中且有权限的行显示铃铛，24h 节流置灰
+              const remindThrottled = Boolean(order.lastRemindedAt && (() => { const time = new Date(String(order.lastRemindedAt).replace(' ', 'T')).getTime(); return Number.isFinite(time) && Date.now() - time < 24 * 3600 * 1000 })())
+              const quickRemind = async () => {
+                if (!window.confirm(`确定催办「${order.customerName || '该 MR'}」的当前签核人吗？系统会向其发送提醒邮件。`)) return
+                setRemindingId(order.id!)
+                try {
+                  const result = await remindMr(order.id!)
+                  toast.success('已催办，提醒邮件将发送给当前签核人')
+                  setItems((current) => current.map((item) => item.id === order.id ? { ...item, lastRemindedAt: result.remindedAt || new Date().toISOString() } : item))
+                } catch (cause) {
+                  toast.error(cause instanceof Error ? cause.message : '催办失败')
+                } finally {
+                  setRemindingId(null)
+                }
+              }
               return (
                 <TableRow key={order.id} className="cursor-pointer hover:relative hover:z-10" onClick={() => navigate(`/mr/${order.id}`)}>
                   <TableCell>
@@ -453,6 +470,14 @@ export function MrListPage() {
                     {/* MR 状态与采购状态一行并排,统一 gap 分隔（采购状态字号小一号、灰一点） */}
                     <div className="group flex items-center gap-1.5">
                       <StatusHoverButton orderStatus={orderStatus} order={order} stepLabel={stepLabel} assigneeName={order.currentAssigneeName} onFilter={() => setStatus(orderStatus)} />
+                      {orderStatus === 'in_review' && order.permissions?.canRemind ? (
+                        <button type="button" className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-amber-600/80 transition-colors hover:bg-amber-50 hover:text-amber-700 disabled:opacity-40"
+                          title={remindThrottled ? `已于 ${String(order.lastRemindedAt).replace('T', ' ').slice(5, 16)} 催过，24 小时内只能催办一次` : '催办当前签核人'}
+                          aria-label="催办" disabled={remindingId === order.id || remindThrottled}
+                          onClick={(event) => { event.stopPropagation(); void quickRemind() }}>
+                          {remindingId === order.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BellRing className="h-3.5 w-3.5" />}
+                        </button>
+                      ) : null}
                       {orderStatus === 'approved' && order.purchaseStatus ? (
                         <>
                           {/* 流程递进箭头：常驻琥珀色（呼应采购状态色）,无打扰动效 */}

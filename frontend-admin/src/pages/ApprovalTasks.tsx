@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import {
   CalendarClock, CheckCircle2, CircleCheck, CircleCheckBig, CircleDot, CircleMinus, CircleSlash, CircleX,
   Clock3, FileSignature, FileText, Forward, Hourglass, ListTodo, Loader2, Package,
-  PauseCircle, Pencil, RefreshCw, RotateCcw, Search, Send, type LucideIcon,
+  PauseCircle, Pencil, RefreshCw, RotateCcw, Search, Send, BellRing, type LucideIcon,
 } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -19,7 +19,8 @@ import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { ResponsiveCard, ResponsiveList } from '@/components/ResponsiveList'
 import { EmptyState } from '@/components/EmptyState'
 import { Skeleton } from '@/components/Skeleton'
-import { approveMr, listApprovalTasks, rejectMr } from '@/packages/mr/client'
+import { approveMr, listApprovalTasks, rejectMr, remindMr } from '@/packages/mr/client'
+import { useAuth } from '@/contexts/AuthContext'
 import { matchesSearchText } from '@/lib/text-i18n'
 import type { ApprovalTask } from '@/packages/mr/types'
 
@@ -169,6 +170,7 @@ function taskMatchesKeyword(task: ApprovalTask, keyword: string) {
 }
 
 export function ApprovalTasks() {
+  const { user } = useAuth()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [view, setView] = useState<View>(() => {
@@ -259,6 +261,10 @@ export function ApprovalTasks() {
 
   async function quickApprove(task: ApprovalTask) {
     if (!window.confirm(`确认同意「${task.title}」的签核？`)) return
+    if (user && user.hasEngineerSignature === false) {
+      toast.error('签核前请先设置手写签名：右上角头像 → 我的设置 → 手写签名')
+      return
+    }
     setActingTaskId(task.id)
     try {
       const next = await approveMr(task.businessId)
@@ -294,6 +300,53 @@ export function ApprovalTasks() {
     setSearchQuery('')
     setStartDate('')
     setEndDate('')
+  }
+
+  /** 行内催办（spec 008）：「我发起的」视图里签核中的 MR 可催当前签核人，24h 节流 */
+  const canRemindTask = useCallback((task: ApprovalTask) => (
+    view === 'initiated' && task.businessType === 'mr' && task.businessStatus === 'in_review'
+  ), [view])
+
+  function remindThrottledUntil(task: ApprovalTask) {
+    if (!task.lastRemindedAt) return false
+    const time = new Date(String(task.lastRemindedAt).replace(' ', 'T')).getTime()
+    return Number.isFinite(time) && Date.now() - time < 24 * 3600 * 1000
+  }
+
+  async function quickRemind(task: ApprovalTask) {
+    if (!window.confirm(`确定催办「${task.title}」的当前签核人吗？系统会向其发送提醒邮件。`)) return
+    setActingTaskId(task.id)
+    try {
+      const result = await remindMr(task.businessId)
+      toast.success('已催办，提醒邮件将发送给当前签核人')
+      setItems((current) => current.map((item) => item.id === task.id ? { ...item, lastRemindedAt: result.remindedAt || new Date().toISOString() } : item))
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '催办失败')
+    } finally {
+      setActingTaskId(null)
+    }
+  }
+
+  function remindAction(task: ApprovalTask, withText: boolean) {
+    if (!canRemindTask(task)) return null
+    const acting = actingTaskId === task.id
+    const throttled = remindThrottledUntil(task)
+    const lastText = task.lastRemindedAt ? String(task.lastRemindedAt).replace('T', ' ').slice(5, 16) : ''
+    const title = throttled ? `已于 ${lastText} 催过，24 小时内只能催办一次` : '催办当前签核人'
+    if (withText) return (
+      <Button variant="ghost" size="sm" className="text-muted-foreground hover:bg-transparent hover:text-amber-600" disabled={acting || throttled} title={title}
+        onClick={(event) => { event.stopPropagation(); void quickRemind(task) }}>
+        {acting ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <BellRing className="mr-1 h-4 w-4" />}
+        催办
+      </Button>
+    )
+    return (
+      <button type="button" className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-amber-50 hover:text-amber-600 disabled:opacity-40" title={title} aria-label="催办"
+        disabled={acting || throttled}
+        onClick={(event) => { event.stopPropagation(); void quickRemind(task) }}>
+        {acting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BellRing className="h-3.5 w-3.5" />}
+      </button>
+    )
   }
 
   /** 行内快捷操作（仅 MR 签核待办；采购/合同/考勤任务需进详情页处理） */
@@ -368,7 +421,7 @@ export function ApprovalTasks() {
           { label: '发起人', value: task.initiatorName || '-' },
           { label: view === 'pending' ? '等待' : '时间', value: timeCell(task) },
         ]}
-        actions={quickActions(task, true) ?? undefined}
+        actions={quickActions(task, true) ?? remindAction(task, true) ?? undefined}
       />
     )
   }
@@ -518,7 +571,7 @@ export function ApprovalTasks() {
                         <TableCell><TaskStatusHover task={task} /></TableCell>
                         <TableCell className="whitespace-normal">{timeCell(task)}</TableCell>
                         <TableCell onClick={(event) => event.stopPropagation()}>
-                          <div className="flex items-center gap-1">{quickActions(task, false)}</div>
+                          <div className="flex items-center gap-1">{quickActions(task, false)}{remindAction(task, false)}</div>
                         </TableCell>
                       </TableRow>
                     )

@@ -1186,6 +1186,8 @@ async function sendMrApprovalMail(order, recipient, event = 'task') {
     purchase_assignment_error: 'MR 采购人配置异常，采购环节已暂停',
     purchase_done: '采购单号已填写',
     withdraw: '业务负责人已撤回 MR',
+    remind_manual: 'MR 签核待办催办提醒（手动催办）',
+    remind_auto: 'MR 签核停留超 24 小时，请尽快处理',
     void: 'MR 已作废',
     assignment_error: 'MR 签核人配置异常，签核流程已暂停',
   }
@@ -1253,17 +1255,17 @@ async function sendMrApprovalMail(order, recipient, event = 'task') {
           <thead><tr style="background:#4e386e;color:#fff">
             <th style="padding:7px">#</th><th style="padding:7px">品名及描述 / 履约信息</th><th style="padding:7px">公司料号 / 原厂规格</th>
             <th style="padding:7px">数量</th><th style="padding:7px">未税单价 / 未税小计</th><th style="padding:7px">供应商</th>
-            <th style="padding:7px">采购成本 / 采购税率</th><th style="padding:7px">采购单号 / 采购成本来源</th>
+            <th style="padding:7px">采购价 / 采购税率</th><th style="padding:7px">采购单号 / 采购价来源</th>
           </tr></thead><tbody>${rows || '<tr><td colspan="8" style="padding:12px;text-align:center">暂无品项</td></tr>'}</tbody>
         </table>
       </div>
       <table style="border-collapse:collapse;margin-top:14px;width:100%;max-width:680px">
         <tr><td style="padding:6px;background:#f1f5f9">未税总计</td><td style="padding:6px;text-align:right">¥ ${mrMoney(sales)}</td></tr>
-        <tr><td style="padding:6px;background:#f1f5f9">采购成本（未税）</td><td style="padding:6px;text-align:right">¥ ${mrMoney(cost)}</td></tr>
+        <tr><td style="padding:6px;background:#f1f5f9">采购价（未税）</td><td style="padding:6px;text-align:right">¥ ${mrMoney(cost)}</td></tr>
         <tr><td style="padding:6px;background:#f1f5f9">毛利额</td><td style="padding:6px;text-align:right">¥ ${mrMoney(grossProfit)}</td></tr>
         <tr><td style="padding:6px;background:#f1f5f9">整单毛利率</td><td style="padding:6px;text-align:right">${margin === null ? '-' : `${margin.toFixed(2)}%`}</td></tr>
       </table>
-      <p style="margin-top:16px;color:#b91c1c;font-size:12px">本邮件包含采购成本和毛利等内部商业信息，请勿转发给无关人员。</p>
+      <p style="margin-top:16px;color:#b91c1c;font-size:12px">本邮件包含采购价和毛利等内部商业信息，请勿转发给无关人员。</p>
       ${mailFooter()}
     </div>`
   await mailTransporter(mail).sendMail({ from: mail.from, to, subject, html })

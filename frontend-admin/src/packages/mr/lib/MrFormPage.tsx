@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, Paperclip, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Undo2, Upload, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, BellRing, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, Paperclip, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Undo2, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -26,6 +26,7 @@ import {
   loadMrReferences,
   rejectMr,
   reassignMrSales,
+  remindMr,
   submitMr,
   updateMr,
   uploadMrAttachments,
@@ -126,9 +127,9 @@ const CHANGE_LABELS: Record<string, string> = {
   acceptance: '验收条件', acceptanceOther: '验收说明', installOptions: '装机承担方', maintenanceOptions: '维护承担方', hasContract: '是否有合同', contractNo: '合同编号', penaltyContent: '罚则说明',
   fillDate: '填表日期', latestDeliveryDate: '最晚交付日期', deliveryLocation: '交付地点', shipmentNo: '出货单编号', deliveryTerms: '交付条款', remark: '备注', approvalSteps: '签核流程', totals: '金额汇总',
   grossProfitRecognitionStartMonth: '毛利认列起始日期', grossProfitRecognitionAmount: '首期认列毛利', remainingRecognizableGrossProfit: '剩余可认列毛利总额（按季）', taiwanBusinessTransferStartMonth: '台湾业务转拨起始日期', taiwanBusinessTransferAmount: '首期台湾业务转拨金额', remainingTaiwanBusinessTransfer: '剩余台湾业务待转拨总额（按季）', grossProfitRecognitions: '毛利认列', taiwanBusinessTransfers: '台湾业务转拨',
-  salesExcludingTax: '未税总计', vat: '销售税额', salesIncludingTax: '含税总计', costExcludingTax: '采购成本（未税）', costIncludingTax: '采购成本（含税）', marginRate: '整单毛利率',
+  salesExcludingTax: '未税总计', vat: '销售税额', salesIncludingTax: '含税总计', costExcludingTax: '采购价（未税）', costIncludingTax: '采购价（含税）', marginRate: '整单毛利率',
 }
-const ITEM_CHANGE_LABELS: Record<string, string> = { companyPartNo: '公司料号', oemSpec: '原厂规格', name: '品名', description: '品名描述', warrantyService: '保固与服务', installBy: '装机方', qty: '数量', unitPrice: '未税单价', subtotal: '未税小计', vendor: '供应商', costInclTax: '采购成本（含税）', taxRate: '采购税率', purchaseOrderNo: '采购单号', shipmentNo: '出货单号', costSource: '采购成本来源' }
+const ITEM_CHANGE_LABELS: Record<string, string> = { companyPartNo: '公司料号', oemSpec: '原厂规格', name: '品名', description: '品名描述', warrantyService: '保固与服务', installBy: '装机方', qty: '数量', unitPrice: '未税单价', subtotal: '未税小计', vendor: '供应商', costInclTax: '采购价（含税）', taxRate: '采购税率', purchaseOrderNo: '采购单号', shipmentNo: '出货单号', costSource: '采购价来源' }
 function changeLabel(path: string) {
   const item = path.match(/^items\.(\d+)(?:\.(.+))?$/)
   if (item) return `第 ${Number(item[1]) + 1} 项${item[2] ? ` · ${ITEM_CHANGE_LABELS[item[2]] || item[2]}` : ''}`
@@ -389,6 +390,8 @@ export function MrFormPage() {
   const [autoFilled, setAutoFilled] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [reminding, setReminding] = useState(false)
+  const [lastRemindedAt, setLastRemindedAt] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
   const [error, setError] = useState('')
   const [errors, setErrors] = useState<ValidationError[]>([])
@@ -879,8 +882,32 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
   }
 
 
+  // 催办（spec 008）：24h 节流；按钮置灰时提示上次催办时间
+  const effectiveLastRemindedAt = lastRemindedAt ?? calculated?.lastRemindedAt ?? null
+  const remindThrottled = Boolean(effectiveLastRemindedAt && Date.now() - new Date(String(effectiveLastRemindedAt).replace(' ', 'T')).getTime() < 24 * 3600 * 1000)
+  const remindThrottledText = effectiveLastRemindedAt ? String(effectiveLastRemindedAt).replace('T', ' ').slice(5, 16) : ''
+  const remind = async () => {
+    if (!id) return
+    if (!window.confirm('确定催办当前签核人吗？系统会向其发送提醒邮件。')) return
+    setReminding(true)
+    try {
+      const result = await remindMr(id)
+      setLastRemindedAt(result.remindedAt || new Date().toISOString())
+      toast.success('已催办，提醒邮件将发送给当前签核人')
+    } catch (err) {
+      toast.error((err as Error).message || '催办失败')
+    } finally {
+      setReminding(false)
+    }
+  }
+
   const confirmDecision = async () => {
     if (!id || !decision || (decision !== 'approve' && !reason.trim())) return
+    if (decision === 'approve' && user && user.hasEngineerSignature === false) {
+      setError('签核前请先设置手写签名：右上角头像 → 我的设置 → 手写签名')
+      setDecision(null)
+      return
+    }
     setBusy(true)
     try {
       const next = decision === 'approve'
@@ -1185,6 +1212,12 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
             {assistantReview && !editing ? <Button onClick={() => setEditing(true)}><Pencil className="mr-2 size-4" />编辑申请单</Button> : null}
             {assistantReview && editing ? <Button variant="outline" onClick={() => { if (!dirty || window.confirm('确认放弃未保存的修改吗？')) { setDirty(false); setEditing(false); void load() } }}><Undo2 className="mr-2 size-4" />退出编辑</Button> : null}
             {calculated.permissions?.canWithdraw ? <Button variant="outline" onClick={() => { setDecision('withdraw'); setReason('') }}><Undo2 className="mr-2 size-4" />撤回</Button> : null}
+            {calculated.permissions?.canRemind ? (
+              <Button variant="outline" disabled={busy || reminding || remindThrottled} title={remindThrottled ? `已于 ${remindThrottledText} 催过，24 小时内只能催办一次` : '提醒当前签核人尽快处理'}
+                onClick={() => void remind()}>
+                {reminding ? <Loader2 className="mr-2 size-4 animate-spin" /> : <BellRing className="mr-2 size-4" />}催办
+              </Button>
+            ) : null}
             {user?.role === 'admin' && !['approved', 'voided'].includes(status) ? <Button variant="outline" onClick={() => { setReassignSalesId(String(calculated.salesOwnerId || salespeople[0]?.id || '')); setReassignOpen(true) }}>变更业务负责人</Button> : null}
             {calculated.permissions?.canVoid ? <Button variant="outline" onClick={() => { setDecision('void'); setReason('') }}>作废</Button> : null}
             {calculated.permissions?.canDelete ? (
@@ -1378,7 +1411,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                     {!calculated.pricingMode
                       ? '请先选择计价模式；报价导入与手动录入均按当前模式处理。'
                       : Number(calculated.pricingMode) === 1
-                        ? '请先填写未税总计，再录入各品项采购成本。若销售报价未提供逐项未税单价，系统将按采购成本（未税）占比分摊未税总计。'
+                        ? '请先填写未税总计，再录入各品项采购价。若销售报价未提供逐项未税单价，系统将按采购价（未税）占比分摊未税总计。'
                         : Number(calculated.pricingMode) === 2
                           ? '请先填写未税总计；系统将未税总计按主项 99%、技术服务 1% 自动分配。'
                           : '请逐项填写未税单价；未税总计由各品项未税小计自动汇总。'}
@@ -1440,7 +1473,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                 { label: '未税总计', value: <AnimatedMoney value={calculated.totals?.salesExcludingTax} animationKey={importAnimationKey} />, warn: false },
                 { label: '销售税额', value: <AnimatedMoney value={calculated.totals?.vat} animationKey={importAnimationKey} />, warn: false },
                 { label: '含税总计', value: <AnimatedMoney value={calculated.totals?.salesIncludingTax} animationKey={importAnimationKey} />, warn: false },
-                { label: '采购成本（未税）', value: <AnimatedMoney value={calculated.totals?.costExcludingTax} animationKey={importAnimationKey} />, warn: false },
+                { label: '采购价（未税）', value: <AnimatedMoney value={calculated.totals?.costExcludingTax} animationKey={importAnimationKey} />, warn: false },
                 { label: '整单毛利率', value: <AnimatedPercent value={calculated.totals?.marginRate} animationKey={importAnimationKey} />, warn: Number(calculated.totals?.marginRate) < 15 },
               ].map(({ label, value, warn }) => (
                 <div key={`${label}-${importAnimationKey}`} className={`bg-card p-4 ${importAnimationKey ? 'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-700' : ''}`}>

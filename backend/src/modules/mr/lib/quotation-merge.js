@@ -174,7 +174,7 @@ function looksLikePartNumber(value) {
 }
 
 function costInclTax(item) {
-  // 人工修正回写（corrected）携带的含税成本直接采用：用户在校对中明确填写的“采购成本（含税）”
+  // 人工修正回写（corrected）携带的含税成本直接采用：用户在校对中明确填写的“采购价（含税）”
   // 是含税口径的最终值，不再经过税率口径推断，避免含税/未税判定偏差导致修正值被再次折算
   const correctedCost = item.cost_incl_tax === null || item.cost_incl_tax === undefined ? null : number(item.cost_incl_tax)
   if (correctedCost !== null && correctedCost > 0) return correctedCost

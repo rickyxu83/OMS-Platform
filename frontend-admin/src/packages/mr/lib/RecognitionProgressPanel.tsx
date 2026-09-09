@@ -15,7 +15,7 @@ export interface RecognitionProgress {
 const AI_MESSAGES = [
   '正在提取各品项名称与规格…',
   '正在归纳字段与版式结构…',
-  '正在评估供应商与采购成本…',
+  '正在评估供应商与采购价…',
   '正在识别缺失项与异常值…',
   '正在整理跨文件匹配建议…',
 ]

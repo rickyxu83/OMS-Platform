@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 43
+const PDF_FORMAT_VERSION = 49
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -110,51 +110,68 @@ function options(input) {
   return Array.isArray(input) && input.length ? input.join('、') : ''
 }
 
+// 全局字号放大 20%：用户反馈归档 PDF 字体较网页预览偏小。
+// 所有文字经 text() 渲染，此处统一缩放；行高/卡片高度由 heightOfString 实测处同步缩放（见下方各测量点）
+const FONT_SCALE = 1.2
+
 function text(doc, fonts, content, x, y, options = {}) {
   const { size = 8, bold = false, color = '#111827', ...rest } = options
-  doc.font(bold ? fonts.bold : fonts.regular).fontSize(size).fillColor(color).text(value(content), x, y, rest)
+  doc.font(bold ? fonts.bold : fonts.regular).fontSize(Math.round(size * FONT_SCALE * 10) / 10).fillColor(color).text(value(content), x, y, rest)
 }
 
 function line(doc, x1, y1, x2, y2, color = BORDER) {
   doc.strokeColor(color).lineWidth(0.6).moveTo(x1, y1).lineTo(x2, y2).stroke()
 }
 
+// 分节标题：编号+名称粗体，后缀计数浅灰小字（与打印网页版 01/02/03 分节一致）
+function sectionTitle(doc, fonts, y, label, suffix = '') {
+  text(doc, fonts, label, PAGE.margin, y, { size: 10, bold: true, color: '#111827' })
+  if (suffix) {
+    doc.font(fonts.bold).fontSize(Math.round(10 * FONT_SCALE * 10) / 10)
+    const labelWidth = doc.widthOfString(label)
+    text(doc, fonts, suffix, PAGE.margin + labelWidth + 5, y + 1.2, { size: 7.5, color: MUTED })
+  }
+  return y + 17
+}
+
 function header(doc, fonts, order, title = '客户订购申请单（境内单）') {
   const left = PAGE.margin
   const right = PAGE.width - PAGE.margin
   const logoImage = getLogoBuffer()
-  if (logoImage) doc.image(logoImage, left, 18, { width: 26, height: 26 })
-  const textLeft = left + (logoImage ? 34 : 0)
-  text(doc, fonts, 'STARK (NINGBO) TECHNOLOGY INC.', textLeft, 20, { size: 7, color: MUTED })
-  text(doc, fonts, '敦阳（宁波）科技有限公司', textLeft, 30, { size: 13, bold: true, color: '#402080' })
+  // LOGO 随全局字号同步放大（×1.2 = 31pt），页眉带高不变
+  if (logoImage) doc.image(logoImage, left, 15.5, { width: 31, height: 31 })
+  const textLeft = left + (logoImage ? 39 : 0)
+  text(doc, fonts, 'STARK (NINGBO) TECHNOLOGY INC.', textLeft, 19.5, { size: 7, color: MUTED })
+  text(doc, fonts, '敦阳（宁波）科技有限公司', textLeft, 29.5, { size: 13, bold: true, color: '#402080' })
   text(doc, fonts, title, 280, 24, { size: 17, bold: true, color: '#111827', width: 282, align: 'center' })
-  text(doc, fonts, `V${Number(order.versionNo || order.version_no || 0)}`, right - 112, 21, { size: 9, bold: true, width: 112, align: 'right' })
   text(doc, fonts, `Ctrl.No: ${value(order.ctrlNo || order.ctrl_no)}`, right - 190, 34, { size: 9, width: 190, align: 'right' })
-  line(doc, left, 50, right, 50, '#111')
-  return 58
+  // 标题与分隔线之间留足呼吸空间（字号全局放大后原 50 位置视觉上贴字）
+  line(doc, left, 54, right, 54, '#111')
+  return 62
 }
 
 function summary(doc, fonts, order, y) {
   const left = PAGE.margin
   const right = PAGE.width - PAGE.margin
+  // 页眉摘要四栏：客户/交付/业务负责人/状态；客户 P/O、交付地点、交易条款（付款条件/发票类型/开票内容）
+  // 归入下方资料区——灰色小字打印不清，且头部信息过于分散（用户反馈 2026-09-09）
   const width = (right - left) / 4
   const statusLabels = { draft: '草稿', in_review: '签核中', approved: '已通过', rejected: '已驳回', voided: '已作废' }
   const statusLabel = statusLabels[order.status || order.status_code] || value(order.status)
-  const invoiceLine = [value(order.invoiceType || order.invoice_type), value(order.billingContent || order.billing_content)].filter(hasValue).join(' · ')
   const cells = [
-    { label: '客户 / CUSTOMER', main: value(order.customerName || order.customer_name, '-'), sub: value(order.customerPo || order.customer_po) ? '客户 P/O：' + value(order.customerPo || order.customer_po) : '' },
-    { label: '交付 / DELIVERY', main: value(order.latestDeliveryDate || order.latest_delivery_date, '-'), sub: value(orderField(order, 'deliveryLocation', 'delivery_location')) ? '交付地点：' + value(orderField(order, 'deliveryLocation', 'delivery_location')) : '' },
-    { label: '交易条款 / TERMS', main: value(order.paymentTerms || order.payment_terms, '-'), sub: invoiceLine ? '发票类型 / 开票内容：' + invoiceLine : '' },
-    { label: '状态 / STATUS', main: statusLabel, sub: 'V' + Number(order.versionNo || order.version_no || 0) },
+    { label: '客户 / CUSTOMER', main: value(order.customerName || order.customer_name, '-') },
+    { label: '交付 / DELIVERY', main: value(order.latestDeliveryDate || order.latest_delivery_date, '-') },
+    { label: '项目分类 / CATEGORY', main: value(orderField(order, 'caseCategory', 'case_category'), '-') },
+    { label: '状态 / STATUS', main: statusLabel },
   ]
   cells.forEach((cell, index) => {
     const x = left + width * index
-    text(doc, fonts, cell.label, x + 6, y + 3, { size: 6.3, color: MUTED, width: width - 12, ellipsis: true })
-    text(doc, fonts, cell.main, x + 6, y + 13, { size: 8.5, bold: true, width: width - 12, height: 12, ellipsis: true })
-    if (cell.sub) text(doc, fonts, cell.sub, x + 6, y + 25, { size: 6, color: MUTED, width: width - 12, ellipsis: true })
+    text(doc, fonts, cell.label, x + 6, y + 2, { size: 6.3, color: MUTED, width: width - 12, ellipsis: true })
+    text(doc, fonts, cell.main, x + 6, y + 11.5, { size: 8.5, bold: true, width: width - 12, height: 13, ellipsis: true })
   })
-  line(doc, left, y + 36, right, y + 36, '#e5e7eb')
-  return y + 44
+  // 摘要底部分隔线与主值文字留足间距（原 y+26 视觉上贴字）
+  line(doc, left, y + 29, right, y + 29, '#e5e7eb')
+  return y + 35
 }
 
 function itemField(item, camel, snake = camel) {
@@ -169,12 +186,13 @@ function itemColumns(items) {
   const definitions = [
     { key: 'index', label: '序号', weight: 3, align: 'center', optional: false, present: () => true, content: (_item, index) => index + 1 },
     { key: 'partMerged', label: '公司料号 / 原厂规格', weight: 12, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'companyPartNo', 'company_part_no')) || hasValue(itemField(item, 'oemSpec', 'oem_spec')), content: (item) => [itemField(item, 'companyPartNo', 'company_part_no'), itemField(item, 'oemSpec', 'oem_spec')].filter(hasValue).join('\n') },
-    { key: 'description', label: '品名及描述', weight: 22, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
-    { key: 'warrantyInstall', label: '保固 / 装机', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')) || hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => [itemField(item, 'warrantyService', 'warranty_service'), hasValue(itemField(item, 'installBy', 'install_by')) ? `装机：${itemField(item, 'installBy', 'install_by')}` : ''].filter(hasValue).join('\n') },
+    { key: 'description', label: '品名及描述', weight: 20, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
+    // 保固/装机 weight 10：避免「三年 7×24 上门」类文本在词中间断行
+    { key: 'warrantyInstall', label: '保固 / 装机', weight: 10, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')) || hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => [itemField(item, 'warrantyService', 'warranty_service'), hasValue(itemField(item, 'installBy', 'install_by')) ? `装机：${itemField(item, 'installBy', 'install_by')}` : ''].filter(hasValue).join('\n') },
     { key: 'qty', label: '数量', weight: 4, align: 'center', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
     { key: 'unitPrice', label: '未税单价', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
     { key: 'subtotal', label: '未税小计 / 毛利率', weight: 10, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
-    { key: 'costBoth', label: '采购成本（未税 / 含税）', weight: 12, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) || hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [
+    { key: 'costBoth', label: '采购价（未税 / 含税）', weight: 12, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) || hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [
       hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '',
       [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `含税 ¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join(' · '),
     ].filter(hasValue).join('\n') },
@@ -184,7 +202,7 @@ function itemColumns(items) {
       hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')) ? `采购 ${itemField(item, 'purchaseOrderNo', 'purchase_order_no')}` : '',
     ].filter(hasValue).join('\n') },
     // 出货单号列固定保留并独立成列：系统已填则印出，未填留白供出货时手写
-    { key: 'shipment', label: '出货单号', weight: 7, align: 'left', optional: false, present: () => true, content: (item) => itemField(item, 'shipmentNo', 'shipment_no') },
+    { key: 'shipment', label: '出货单号', weight: 8, align: 'left', optional: false, present: () => true, content: (item) => itemField(item, 'shipmentNo', 'shipment_no') },
   ]
   const visible = definitions.filter((column) => !column.optional || items.some(column.present))
   const available = PAGE.width - PAGE.margin * 2
@@ -209,7 +227,7 @@ function itemHeader(doc, fonts, columns, y) {
 }
 
 function itemRowHeight(doc, fonts, item, index, columns) {
-  doc.font(fonts.regular).fontSize(7)
+  doc.font(fonts.regular).fontSize(7 * FONT_SCALE)
   return Math.max(30, ...columns.map((column) => doc.heightOfString(value(column.content(item, index)), { width: column.width - 6, lineGap: 1 }) + 10))
 }
 
@@ -238,8 +256,8 @@ function totals(doc, fonts, order, items, y) {
     ['未税总计', moneyText(sales)],
     ['销售税额', moneyText(totalsValue.vat)],
     ['含税总计', moneyText(totalsValue.salesIncludingTax)],
-    ['采购成本（未税）', moneyText(cost)],
-    ['采购成本（含税）', moneyText(totalsValue.costIncludingTax)],
+    ['采购价（未税）', moneyText(cost)],
+    ['采购价（含税）', moneyText(totalsValue.costIncludingTax)],
     ['毛利额', moneyText(sales - cost)],
     ['整单毛利率', margin === null ? '' : `${Number(margin).toFixed(2)}%`],
   ].filter(([, content]) => hasValue(content))
@@ -269,10 +287,12 @@ function orderField(order, camel, snake = camel) {
   return order[camel] ?? order[snake]
 }
 
-const HEADER_DUPLICATES = new Set(['客户名称', '客户 P/O', '业务负责人', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期', '发票类型', '开票内容', '付款条件', '交付地点'])
+// 页眉四栏已展示 客户/交付/项目分类/状态：以下字段不再重复进资料区；
+// 客户 P/O、交付地点、付款条件、发票类型、开票内容 已归入下方资料区（用户反馈 2026-09-09）
+const HEADER_DUPLICATES = new Set(['客户名称', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期'])
 
 const DETAIL_GROUPS = [
-  ['客户与合同', ['客户联系人', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期']],
+  ['客户与合同', ['客户联系人', '客户 P/O', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期']],
   ['交易与开票', ['计价模式', '发票类型', '开票方式', '开票内容', '开票/收款时间', '付款条件', '付款条件说明']],
   ['交付与验收', ['是否允许分批交付', '验收条件', '验收说明', '装机承担方', '维护承担方', '交付地点', '交付条款', '出货单编号']],
   ['联系与收件', ['采购联系人', '采购联系电话', '采购联系邮箱', '收货人', '收货联系电话', '收货邮箱', '发票收件人', '发票收件电话', '发票收件邮箱']],
@@ -356,11 +376,11 @@ function noteEntries(order, includeVoidReason) {
 }
 
 function detailCardHeight(doc, fonts, entries, columns, colWidth) {
-  let height = 22
+  let height = 24
   for (let start = 0; start < entries.length; start += columns) {
     const row = entries.slice(start, start + columns)
-    doc.font(fonts.regular).fontSize(6.8)
-    height += Math.min(42, Math.max(24, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 16, lineGap: 1 }) + 16)))
+    doc.font(fonts.regular).fontSize(6.8 * FONT_SCALE)
+    height += Math.min(46, Math.max(26, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 16, lineGap: 1 }) + 16)))
   }
   return height + 3
 }
@@ -371,11 +391,11 @@ function drawDetailCard(doc, fonts, group, entries, x, y, width) {
   const height = detailCardHeight(doc, fonts, entries, columns, colWidth)
   doc.circle(x + 12, y + 12, 2.3).fill(PURPLE)
   text(doc, fonts, group, x + 20, y + 6, { size: 7.8, bold: true, color: '#111827', width: width - 30 })
-  let rowY = y + 22
+  let rowY = y + 24
   for (let start = 0; start < entries.length; start += columns) {
     const row = entries.slice(start, start + columns)
-    doc.font(fonts.regular).fontSize(6.8)
-    const rowHeight = Math.min(42, Math.max(24, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 16, lineGap: 1 }) + 16)))
+    doc.font(fonts.regular).fontSize(6.8 * FONT_SCALE)
+    const rowHeight = Math.min(46, Math.max(26, ...row.map(([, content]) => doc.heightOfString(value(content), { width: colWidth - 16, lineGap: 1 }) + 16)))
     row.forEach(([label, content], index) => {
       const cellX = x + 9 + index * colWidth
       text(doc, fonts, label, cellX, rowY + 1, { size: 6.1, color: MUTED, width: colWidth - 16 })
@@ -388,8 +408,8 @@ function drawDetailCard(doc, fonts, group, entries, x, y, width) {
 
 function noteCardHeight(doc, fonts, entries, width) {
   const contentWidth = width - 142
-  doc.font(fonts.regular).fontSize(7)
-  return 22 + entries.reduce((sum, [, content]) => sum + Math.min(45, Math.max(22, doc.heightOfString(value(content), { width: contentWidth, lineGap: 1 }) + 9)), 0) + 3
+  doc.font(fonts.regular).fontSize(7 * FONT_SCALE)
+  return 24 + entries.reduce((sum, [, content]) => sum + Math.min(50, Math.max(24, doc.heightOfString(value(content), { width: contentWidth, lineGap: 1 }) + 9)), 0) + 3
 }
 
 function drawNoteCard(doc, fonts, entries, x, y, width) {
@@ -397,10 +417,10 @@ function drawNoteCard(doc, fonts, entries, x, y, width) {
   doc.roundedRect(x, y, width, height, 6).fill('#f8f8fb')
   doc.rect(x, y + 7, 3, height - 14).fill(PURPLE)
   text(doc, fonts, '备注与其他', x + 12, y + 6, { size: 7.8, bold: true, color: PURPLE })
-  let rowY = y + 22
+  let rowY = y + 24
   entries.forEach(([label, content], index) => {
-    doc.font(fonts.regular).fontSize(7)
-    const rowHeight = Math.min(45, Math.max(22, doc.heightOfString(value(content), { width: width - 142, lineGap: 1 }) + 9))
+    doc.font(fonts.regular).fontSize(7 * FONT_SCALE)
+    const rowHeight = Math.min(50, Math.max(24, doc.heightOfString(value(content), { width: width - 142, lineGap: 1 }) + 9))
     if (index) line(doc, x + 12, rowY, x + width - 12, rowY, '#e5ddec')
     text(doc, fonts, label, x + 12, rowY + 6, { size: 6.6, bold: true, color: PURPLE, width: 104 })
     text(doc, fonts, content, x + 122, rowY + 6, { size: 7, width: width - 142, height: rowHeight - 8, lineGap: 1, ellipsis: true })
@@ -428,18 +448,18 @@ function detailsHeight(doc, fonts, order, items, includeVoidReason = true) {
   return height + 2
 }
 
-function details(doc, fonts, order, items, y, includeVoidReason = true) {
+function details(doc, fonts, order, items, y, includeVoidReason = true, reserveBottom = 0) {
   const left = PAGE.margin
   const width = PAGE.width - PAGE.margin * 2
-  const bottom = PAGE.height - 32
+  // reserveBottom：为后续签核区预留的高度（防签名孤儿页），资料卡片分页按收紧后的底线判断
+  const bottom = PAGE.height - 32 - reserveBottom
   const entries = detailEntries(order, items)
   const notes = noteEntries(order, includeVoidReason)
   const groupOf = new Map()
   for (const [group, labels] of DETAIL_GROUPS) for (const label of labels) groupOf.set(label, group)
   const grouped = DETAIL_GROUPS.map(([group]) => [group, entries.filter(([label]) => groupOf.get(label) === group)]).filter(([, list]) => list.length)
   const drawTitle = () => {
-    text(doc, fonts, '订购与交付资料', left, y, { size: 10, bold: true, color: '#111827' })
-    y += 17
+    y = sectionTitle(doc, fonts, y, '02 订购与交付资料', `· 共 ${entries.length + notes.length} 项`)
   }
   const newPage = () => {
     doc.addPage()
@@ -486,14 +506,14 @@ function signatureImage(doc, dataUrl, x, y, width, height) {
 
 function approvalBoxHeight(doc, fonts, rows) {
   const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, rows.length)
-  doc.font(fonts.regular).fontSize(6)
+  doc.font(fonts.regular).fontSize(6 * FONT_SCALE)
   const reasonHeight = Math.max(0, ...rows.filter((approval) => hasValue(approval.reason)).map((approval) => doc.heightOfString(value(approval.reason), { width: width - 10, align: 'center' })))
-  return 48 + (reasonHeight ? Math.ceil(reasonHeight) + 6 : 0)
+  return 54 + (reasonHeight ? Math.ceil(reasonHeight) + 6 : 0)
 }
 
 function approvals(doc, fonts, rows, y) {
-  text(doc, fonts, '电子签核记录', PAGE.margin, y, { size: 10, bold: true, color: '#111827' })
-  y += 16
+  y = sectionTitle(doc, fonts, y, '03 电子签核记录')
+  y -= 1
   const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, rows.length)
   const boxHeight = approvalBoxHeight(doc, fonts, rows)
   rows.forEach((approval, index) => {
@@ -505,14 +525,16 @@ function approvals(doc, fonts, rows, y) {
     if (index > 0) {
       doc.moveTo(x, y + 6).lineTo(x, y + boxHeight - 6).strokeColor('#e2e8f0').lineWidth(0.5).stroke()
     }
-    // 签名区加宽到 92：超宽签名（如横屏英文连笔）不再被 50pt 宽度压得过小；文本相应收窄
-    const hasSignature = Boolean(signature) && signatureImage(doc, signature, x + 96, y + 2, 92, 44)
+    // 签名图右对齐钳制在单元格内（x + width - 98 起，宽 92）：超宽签名（如横屏英文连笔）
+    // 按宽缩放且不再溢出压到下一格文本；文本相应收窄
+    const signatureX = x + Math.max(8, width - 98)
+    const hasSignature = Boolean(signature) && signatureImage(doc, signature, signatureX, y + 2, 92, 44)
     const textWidth = width - (hasSignature ? 112 : 16)
     text(doc, fonts, stepLabel, x + 8, y + 2, { size: 6.5, bold: true, width: textWidth, align: 'left' })
     text(doc, fonts, action, x + 8, y + 11, { size: 6.5, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: textWidth, align: 'left' })
     text(doc, fonts, approval.approverNameSnapshot || approval.approver_name_snapshot || approval.approverName, x + 8, y + 22, { size: 6.5, bold: true, width: textWidth, align: 'left' })
     text(doc, fonts, time(approval.decidedAt || approval.decided_at), x + 8, y + 31, { size: 5.5, color: MUTED, width: textWidth, align: 'left' })
-    if (hasValue(approval.reason)) text(doc, fonts, approval.reason, x + 8, y + 40, { size: 6, color: MUTED, width: width - 16, height: boxHeight - 42, align: 'left' })
+    if (hasValue(approval.reason)) text(doc, fonts, approval.reason, x + 8, y + 40, { size: 6, color: MUTED, width: width - 16, height: boxHeight - 44, align: 'left' })
   })
   return y + boxHeight + 8
 }
@@ -571,6 +593,7 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
   const columns = itemColumns(items)
   const bottom = PAGE.height - 45
   let y = summary(doc, fonts, order, header(doc, fonts, order))
+  y = sectionTitle(doc, fonts, y, '01 采购与销售明细', `· ${items.length} 个品项`)
   y = itemHeader(doc, fonts, columns, y)
   items.forEach((item, index) => {
     const needed = itemRowHeight(doc, fonts, item, index, columns)
@@ -580,22 +603,16 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
     }
     y = itemRow(doc, fonts, item, index, columns, y, bottom - y)
   })
-  // 签名区防孤儿页：仅当当前页剩余空间已不足一小截（<150pt）、且整段能放进新页时，才把
-  // “合计+资料+签核”整段移到新页；剩余空间尚可时让合计与资料卡片自然续排（资料区内部、
-  // 签核区各有分页保护），避免表格后剩半页空白却整段跳到新页
+  // 合计紧跟明细表落本页；签名孤儿由 details 的 reserveBottom 预留机制防住，不再整段搬页
   const approvalSpace = approvalRows.length ? approvalBoxHeight(doc, fonts, approvalRows) + 24 : 0
-  const tailSpace = 5 + 41 + detailsHeight(doc, fonts, order, items, Boolean(watermarkLabel)) + approvalSpace
-  const freshPageCapacity = (PAGE.height - 45) - 58
-  if (y + tailSpace > bottom && bottom - y < 150 && tailSpace <= freshPageCapacity) {
-    doc.addPage()
-    y = header(doc, fonts, order, '客户订购申请单 · 签核归档')
-  }
   if (y + 45 > bottom) {
     doc.addPage()
     y = header(doc, fonts, order, '客户订购申请单 · 签核归档')
   }
   y = totals(doc, fonts, order, items, y + 5)
-  y = details(doc, fonts, order, items, y, Boolean(watermarkLabel))
+  // 防签名孤儿页：给资料区预留签核区高度（含两侧底线差 13pt），排不进预留带的卡片/备注自动落到
+  // 下一页与签核作伴；签核区因此总能跟在最后一张卡片/备注后面，不会单独成页
+  y = details(doc, fonts, order, items, y, Boolean(watermarkLabel), approvalRows.length ? approvalSpace + 13 : 0)
   if (approvalRows.length) {
     const approvalSpace = approvalBoxHeight(doc, fonts, approvalRows) + 24
     if (y + approvalSpace > bottom) {
