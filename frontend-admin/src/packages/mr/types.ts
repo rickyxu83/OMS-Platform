@@ -30,6 +30,8 @@ export interface MrItem {
   validationMessages?: string[]
   costConfidence?: Record<string, number> | null
   costReviewFields?: string[]
+  /** 整机/捆绑品项的 BOM 组件清单（实验引擎 v2 配置组收敛或捆绑解析产出；采购下单依据，打印保持全量） */
+  components?: Array<{ group?: string; part?: string; description?: string; qty?: number | null; unit_price?: number | null; extended?: number | null }>
   matchCandidates?: Array<{ description: string; vendor: string; costInclTax: number; taxRate: number | null; costSource: string; score: number }>
 }
 
@@ -289,6 +291,40 @@ export interface MrLayoutRule {
   createdBy?: number | null
   createdAt?: string
   updatedAt?: string
+}
+
+/** 识别规则（规则教练沉淀，spec 009 P1）：结构化规则后端执行，prompt_rule 注入 AI prompt */
+export interface MrRecognitionRule {
+  id: number
+  scopeType: 'category' | 'vendor' | 'global'
+  scopeValue: string
+  actionType: 'summarize_components' | 'prompt_rule' | string
+  params?: { keep?: string[] } | null
+  ruleText: string
+  promptText?: string
+  source: 'coach' | string
+  enabled: boolean
+  matchCount: number
+  createdBy?: number | null
+  createdAt?: string
+  updatedAt?: string
+}
+
+/** 规则教练对话消息；changes 为后端执行变换后的逐字段变更明细（仅 assistant 消息携带） */
+export interface QuoteCoachMessage {
+  role: 'user' | 'assistant'
+  content: string
+  changes?: Array<{ index: number; field: string; from: string; to: string }>
+}
+
+/** 蒸馏出的规则卡草稿（用户确认后入库） */
+export interface QuoteRuleCard {
+  scopeType: 'category' | 'vendor' | 'global'
+  scopeValue: string
+  actionType: string
+  params?: { keep?: string[] } | null
+  ruleText: string
+  promptText?: string
 }
 
 export interface ParsedQuotationSheet {

@@ -263,6 +263,26 @@ async function ensureTables() {
       KEY idx_mr_layout_rules_enabled (enabled, match_count)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  // 识别规则库（规则教练沉淀，spec 008 P1）：结构化规则由 quotation-rules 引擎执行，提示词规则注入 AI prompt
+  await query(
+    `CREATE TABLE IF NOT EXISTS mr_recognition_rules (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      scope_type VARCHAR(16) NOT NULL DEFAULT 'global',
+      scope_value VARCHAR(128) NOT NULL DEFAULT '',
+      action_type VARCHAR(32) NOT NULL,
+      params JSON NULL,
+      rule_text VARCHAR(512) NOT NULL DEFAULT '',
+      prompt_text VARCHAR(500) NOT NULL DEFAULT '',
+      source VARCHAR(16) NOT NULL DEFAULT 'coach',
+      enabled TINYINT(1) NOT NULL DEFAULT 1,
+      match_count INT UNSIGNED NOT NULL DEFAULT 0,
+      created_by BIGINT UNSIGNED NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_mr_recognition_rules_enabled (enabled, scope_type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
   // 报价表头布局模板：从纠错样本学习“文件模式 + 表头签名 → 列语义映射”，同模板新文件识别时按模板取数
   await query(
     `CREATE TABLE IF NOT EXISTS mr_layout_templates (

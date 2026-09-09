@@ -1,5 +1,5 @@
 import { api } from '@/services/api'
-import type { ApprovalTask, AssistantSetting, CustomerOption, MrConstants, MrLayoutRule, MrOrder, QuotationFile, QuotationImportResult, SalesPreferences, UserOption, VendorOption } from './types'
+import type { ApprovalTask, AssistantSetting, CustomerOption, MrConstants, MrLayoutRule, MrOrder, MrRecognitionRule, QuotationFile, QuotationImportResult, QuoteCoachMessage, QuoteRuleCard, SalesPreferences, UserOption, VendorOption } from './types'
 
 function pathId(id: string | number) {
   return encodeURIComponent(String(id).replace(/^\/+|\/+$/g, ''))
@@ -42,7 +42,16 @@ export const createMrLayoutRule = (body: { filePattern: string; vendor: string }
 export const updateMrLayoutRule = (id: string | number, body: { enabled?: boolean; vendor?: string; filePattern?: string }) => api.put(`/mr/layout-rules/${pathId(id)}`, body) as Promise<{ ok: boolean }>
 export const deleteMrLayoutRule = (id: string | number) => api.delete(`/mr/layout-rules/${pathId(id)}`)
 
-export async function importQuotations(id: string | number, files: File[], persist = false, roles?: Array<'sales' | 'purchase'>, cleanupStoredFiles = false, taskId = '', includeStored = false) {
+/* 规则教练与识别规则库（spec 009 P1） */
+export const listRecognitionRules = () => api.get('/mr/recognition-rules') as Promise<{ items: MrRecognitionRule[] }>
+export const updateRecognitionRule = (id: string | number, body: { enabled?: boolean; ruleText?: string; scopeValue?: string }) => api.put(`/mr/recognition-rules/${pathId(id)}`, body) as Promise<{ ok: boolean }>
+export const deleteRecognitionRule = (id: string | number) => api.delete(`/mr/recognition-rules/${pathId(id)}`)
+export const quoteCoachChat = (id: string | number, body: { items: object[]; messages: QuoteCoachMessage[] }) =>
+  api.post(`/mr/${pathId(id)}/quote-coach/chat`, body) as Promise<{ reply: string; items: object[] | null; changes: Array<{ index: number; field: string; from: string; to: string }>; transformApplied: boolean }>
+export const quoteCoachDistill = (id: string | number, body: { items: object[]; messages: QuoteCoachMessage[]; confirmedCard?: QuoteRuleCard }) =>
+  api.post(`/mr/${pathId(id)}/quote-coach/distill`, body) as Promise<{ ok: boolean; id?: number; draft: QuoteRuleCard }>
+
+export async function importQuotations(id: string | number, files: File[], persist = false, roles?: Array<'sales' | 'purchase'>, cleanupStoredFiles = false, taskId = '', includeStored = false, engine: 'v1' | 'v2' = 'v1') {
   const body = new FormData()
   for (const file of files) body.append('files', file)
   if (roles?.length) body.set('sourceRoles', JSON.stringify(roles))
@@ -50,6 +59,8 @@ export async function importQuotations(id: string | number, files: File[], persi
   if (cleanupStoredFiles) body.set('cleanupStoredFiles', '1')
   if (taskId) body.set('taskId', taskId)
   if (includeStored) body.set('includeStored', '1')
+  // 实验引擎 v2（spec 009）：全格式 AI 优先识别，默认同传 v1 保持现有行为
+  if (engine !== 'v1') body.set('engine', engine)
   return api.postForm(`/mr/${pathId(id)}/import`, body) as Promise<QuotationImportResult>
 }
 

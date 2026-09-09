@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { deleteQuotationFile, downloadQuotation, getImportProgress, importQuotations, persistQuotations } from '../client'
+import { QuoteCoachDialog } from './QuoteCoachDialog'
 import { RecognitionProgressPanel, type RecognitionProgress } from './RecognitionProgressPanel'
 import type { MrItem, MrOrder, QuotationFile, QuotationImportResult, QuotationSource, VendorOption } from '../types'
 import { calculateForm, quotationDetailItems, salesSubtotal } from './form-logic'
@@ -254,6 +255,7 @@ export function QuotationImportDialog({
   onApply,
   onStoredFilesChange,
   onLinkedItemsRemoved,
+  initialEngine = 'v1',
 }: {
   orderId: string | number
   open: boolean
@@ -269,6 +271,8 @@ export function QuotationImportDialog({
   onStoredFilesChange?: (files: QuotationFile[]) => void
   /** 删除留存文件后通知外层同步移除该文件导入的品项（后端已联动删除，避免外层保存时写回） */
   onLinkedItemsRemoved?: (fileName: string, removedItems: number) => void
+  /** 实验引擎入口（spec 009）：从「新版识别」按钮打开时默认 v2，弹窗内可随时切回 v1 对比 */
+  initialEngine?: 'v1' | 'v2'
 }) {
   const [salesFiles, setSalesFiles] = useState<File[]>([])
   const [purchaseFiles, setPurchaseFiles] = useState<File[]>([])
@@ -282,6 +286,13 @@ export function QuotationImportDialog({
   const [batchFields, setBatchFields] = useState({ vendor: true, warrantyService: true, installBy: true })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [coachOpen, setCoachOpen] = useState(false)
+  // 教练变换撤销栈：每次 AI 调整预览前压入当前快照，支持「撤销上一步」
+  const coachUndoRef = useRef<MrItem[][]>([])
+  const [coachCanUndo, setCoachCanUndo] = useState(false)
+  // 识别引擎：v1=当前规则+AI；v2=实验引擎（全格式 AI 优先，spec 009）。previewEngine 记录当前预览由哪个引擎产出
+  const [engine, setEngine] = useState<'v1' | 'v2'>(initialEngine)
+  const [previewEngine, setPreviewEngine] = useState<'v1' | 'v2' | null>(null)
   const [progress, setProgress] = useState<RecognitionProgress | null>(null)
   // applying：确认导入（persist）阶段为 true；识别阶段为 false，用于区分展示保存动画还是识别进度面板
   const [applying, setApplying] = useState(false)
@@ -394,7 +405,8 @@ export function QuotationImportDialog({
     : 0
   const ignoredSingleIntegrationItems = effectivePricingMode === 2 ? Math.max(0, previewItems.length - 2) : 0
   const appliedItemCount = previewItems.length
-  const parse = async (nextSales: File[], nextPurchase: File[]) => {
+  const parse = async (nextSales: File[], nextPurchase: File[], engineOverride?: 'v1' | 'v2') => {
+    const activeEngine = engineOverride ?? engine
     const nextFiles = [...nextSales, ...nextPurchase]
     const nextRoles: UploadRole[] = [...nextSales.map(() => 'sales' as const), ...nextPurchase.map(() => 'purchase' as const)]
     // 保留已有预览直到新结果回来，避免追加文件时下方内容被清空
@@ -412,9 +424,10 @@ export function QuotationImportDialog({
       }).catch(() => { /* 进度接口暂不可用则保持通用提示 */ })
     }, 1200)
     try {
-      const parsed = await importQuotations(orderId, nextFiles, false, nextRoles, false, taskId, storedFiles.length > 0)
+      const parsed = await importQuotations(orderId, nextFiles, false, nextRoles, false, taskId, storedFiles.length > 0, activeEngine)
       if (seq !== parseSeqRef.current) return
       setPreview(parsed)
+      setPreviewEngine(activeEngine)
       setPreviewAnimationKey((current) => current + 1)
     } catch (err) {
       if (seq === parseSeqRef.current) setError((err as Error).message || '报价文件解析失败')
@@ -428,6 +441,10 @@ export function QuotationImportDialog({
   }
 
   // 再次打开弹窗（仅留存文件）：直接用 MR 单已导入品项构建校对预览，不触发后端识别（已去除识别缓存）
+  // 打开时同步入口选择的引擎（报价导入=v1 / 新版识别=v2），弹窗组件跨开关复用，useState 初始值不随重开更新
+  useEffect(() => {
+    if (open) setEngine(initialEngine)
+  }, [open, initialEngine])
   useEffect(() => {
     if (!open || !editable) return
     if (!storedFiles.length || salesFiles.length || purchaseFiles.length || preview || loading) return
@@ -587,7 +604,41 @@ export function QuotationImportDialog({
         {preview ? (
           <div key={previewAnimationKey} className={`space-y-5 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-500 ${loading ? 'pointer-events-none opacity-60' : ''}`}>
             <section>
-              <div className="mb-2 flex items-center justify-between gap-3"><h3 className="text-sm font-medium">自动识别结果</h3><span className="text-xs text-muted-foreground">系统优先根据文件分组判定来源；未匹配到销售报价的供应商报价品项将导入为待填售价品项，售价需在导入后填写。</span></div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <h3 className="flex items-center gap-2 text-sm font-medium">
+                  自动识别结果
+                  {previewEngine === 'v2' ? <span className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700">⚡ 实验引擎 v2</span> : null}
+                </h3>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={loading}
+                    title="用大白话告诉 AI 你想要的识别效果，满意后可沉淀为长期规则"
+                    onClick={() => setCoachOpen(true)}
+                  >
+                    效果不对？告诉 AI
+                  </Button>
+                  <span className="text-xs text-muted-foreground">系统优先根据文件分组判定来源；未匹配到销售报价的供应商报价品项将导入为待填售价品项，售价需在导入后填写。</span>
+                  {editable && (salesFiles.length || purchaseFiles.length) ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={loading}
+                      title={previewEngine === 'v2' ? '用当前版引擎重新识别同一份文件，对比识别效果' : '用实验引擎 v2 重新识别同一份文件（全格式 AI 优先识别）'}
+                      onClick={() => {
+                        const next = previewEngine === 'v2' ? 'v1' : 'v2'
+                        setEngine(next)
+                        void parse(salesFiles, purchaseFiles, next)
+                      }}
+                    >
+                      {previewEngine === 'v2' ? '换回当前引擎重新识别' : '⚡ 换实验引擎重新识别'}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
               {preview.metadata?.matchedCustomer ? (
                 <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">已匹配客户档案：{preview.metadata.matchedCustomer.code ? `${preview.metadata.matchedCustomer.code} · ` : ''}{preview.metadata.matchedCustomer.name}{preview.metadata.matchedCustomer.contacts?.length ? `（${preview.metadata.matchedCustomer.contacts.length} 位联系人）` : ''}</div>
               ) : preview.metadata?.customer ? (
@@ -735,6 +786,23 @@ export function QuotationImportDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>关闭</Button>
           {editable ? <Button disabled={!preview || loading} title={files.length ? undefined : '正在校对已导入报价的识别结果：直接保存校对内容，无需重新上传文件'} onClick={() => void apply()}>{loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <FileSpreadsheet className="mr-2 size-4" />}确认导入 {appliedItemCount} 个品项</Button> : null}
         </DialogFooter>
+        <QuoteCoachDialog
+          orderId={orderId}
+          open={coachOpen}
+          items={draftItems}
+          onOpenChange={setCoachOpen}
+          canUndo={coachCanUndo}
+          onItemsTransformed={(next) => {
+            coachUndoRef.current.push(draftItems)
+            setCoachCanUndo(true)
+            setDraftItems(next as typeof draftItems)
+          }}
+          onUndo={() => {
+            const previous = coachUndoRef.current.pop()
+            if (previous) setDraftItems(previous)
+            setCoachCanUndo(coachUndoRef.current.length > 0)
+          }}
+        />
       </DialogContent>
     </Dialog>
   )
