@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 40
+const PDF_FORMAT_VERSION = 43
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -168,20 +168,23 @@ function itemDescription(item) {
 function itemColumns(items) {
   const definitions = [
     { key: 'index', label: '序号', weight: 3, align: 'center', optional: false, present: () => true, content: (_item, index) => index + 1 },
-    { key: 'companyPartNo', label: '公司料号', weight: 7, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'companyPartNo', 'company_part_no')), content: (item) => itemField(item, 'companyPartNo', 'company_part_no') },
-    { key: 'oemSpec', label: '原厂规格', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'oemSpec', 'oem_spec')), content: (item) => itemField(item, 'oemSpec', 'oem_spec') },
-    { key: 'description', label: '品名及描述', weight: 18, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
-    { key: 'warranty', label: '保固与服务', weight: 8, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')), content: (item) => itemField(item, 'warrantyService', 'warranty_service') },
-    { key: 'install', label: '装机方', weight: 6, align: 'center', optional: true, present: (item) => hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => itemField(item, 'installBy', 'install_by') },
+    { key: 'partMerged', label: '公司料号 / 原厂规格', weight: 12, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'companyPartNo', 'company_part_no')) || hasValue(itemField(item, 'oemSpec', 'oem_spec')), content: (item) => [itemField(item, 'companyPartNo', 'company_part_no'), itemField(item, 'oemSpec', 'oem_spec')].filter(hasValue).join('\n') },
+    { key: 'description', label: '品名及描述', weight: 22, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
+    { key: 'warrantyInstall', label: '保固 / 装机', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')) || hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => [itemField(item, 'warrantyService', 'warranty_service'), hasValue(itemField(item, 'installBy', 'install_by')) ? `装机：${itemField(item, 'installBy', 'install_by')}` : ''].filter(hasValue).join('\n') },
     { key: 'qty', label: '数量', weight: 4, align: 'center', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
-    { key: 'unitPrice', label: '未税单价', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
-    { key: 'subtotal', label: '未税小计 / 毛利率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
-    { key: 'vendor', label: '供应商', weight: 8, align: 'center', optional: true, present: (item) => hasValue(item.vendor), content: (item) => abbreviateVendor(item.vendor) },
-    { key: 'costExcludingTax', label: '采购成本（未税）', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
-    { key: 'costInclTax', label: '采购成本（含税）', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join('\n') },
-    { key: 'purchase', label: '采购单号', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')), content: (item) => itemField(item, 'purchaseOrderNo', 'purchase_order_no') },
-    // 出货单号列固定保留：系统已填则印出，未填留白供出货时手写（与打印页同口径）
-    { key: 'shipment', label: '出货单号', weight: 6, align: 'left', optional: false, present: () => true, content: (item) => itemField(item, 'shipmentNo', 'shipment_no') },
+    { key: 'unitPrice', label: '未税单价', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
+    { key: 'subtotal', label: '未税小计 / 毛利率', weight: 10, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
+    { key: 'costBoth', label: '采购成本（未税 / 含税）', weight: 12, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) || hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [
+      hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '',
+      [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `含税 ¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join(' · '),
+    ].filter(hasValue).join('\n') },
+    // 供应商/采购单号列：供应商与采购单号同列两行，有值才印（与打印页同口径）
+    { key: 'vendorPo', label: '供应商 / 采购单号', weight: 11, align: 'left', optional: true, present: (item) => hasValue(item.vendor) || hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')), content: (item) => [
+      hasValue(item.vendor) ? abbreviateVendor(item.vendor) : '',
+      hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')) ? `采购 ${itemField(item, 'purchaseOrderNo', 'purchase_order_no')}` : '',
+    ].filter(hasValue).join('\n') },
+    // 出货单号列固定保留并独立成列：系统已填则印出，未填留白供出货时手写
+    { key: 'shipment', label: '出货单号', weight: 7, align: 'left', optional: false, present: () => true, content: (item) => itemField(item, 'shipmentNo', 'shipment_no') },
   ]
   const visible = definitions.filter((column) => !column.optional || items.some(column.present))
   const available = PAGE.width - PAGE.margin * 2
@@ -346,7 +349,7 @@ function noteEntries(order, includeVoidReason) {
       orderField(order, 'taiwanBusinessTransferAmount', 'taiwan_business_transfer_amount'),
       orderField(order, 'remainingTaiwanBusinessTransfer', 'remaining_taiwan_business_transfer'),
       '转拨',
-    ) + retentionSuffix(order)],,
+    ) + retentionSuffix(order)],
     ['备注', order.remark],
     ['作废原因', includeVoidReason ? orderField(order, 'voidReason', 'void_reason') : ''],
   ].filter(([, content]) => hasValue(content))
@@ -577,12 +580,13 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
     }
     y = itemRow(doc, fonts, item, index, columns, y, bottom - y)
   })
-  // 签名区防孤儿页：合计+资料+签核若在当前页排不下、但整体能放进新页，
-  // 则整段移到新页，避免签名条单独占一页（新页顶部的“签核归档”是续页标题）
+  // 签名区防孤儿页：仅当当前页剩余空间已不足一小截（<150pt）、且整段能放进新页时，才把
+  // “合计+资料+签核”整段移到新页；剩余空间尚可时让合计与资料卡片自然续排（资料区内部、
+  // 签核区各有分页保护），避免表格后剩半页空白却整段跳到新页
   const approvalSpace = approvalRows.length ? approvalBoxHeight(doc, fonts, approvalRows) + 24 : 0
   const tailSpace = 5 + 41 + detailsHeight(doc, fonts, order, items, Boolean(watermarkLabel)) + approvalSpace
   const freshPageCapacity = (PAGE.height - 45) - 58
-  if (y + tailSpace > bottom && tailSpace <= freshPageCapacity) {
+  if (y + tailSpace > bottom && bottom - y < 150 && tailSpace <= freshPageCapacity) {
     doc.addPage()
     y = header(doc, fonts, order, '客户订购申请单 · 签核归档')
   }
