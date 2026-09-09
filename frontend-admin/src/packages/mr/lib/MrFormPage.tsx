@@ -65,7 +65,10 @@ import { OfficePreviewContent, isUnsupportedOfficeName, officePreviewType } from
 import { PdfPreview } from '@/components/PdfPreview'
 
 const PRICING_LABELS: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
-const WORKBENCH_SECTIONS = [MR_SECTIONS[0], MR_SECTIONS[1], MR_SECTIONS[5], ...MR_SECTIONS.slice(2, 5), ...MR_SECTIONS.slice(6)]
+const SECTION_ICON = (id: string) => MR_SECTIONS.find((section) => section.id === id)?.icon
+const WORKBENCH_SECTIONS = ['identity', 'trade', 'items', 'billing', 'delivery', 'remark', 'approval']
+  .map((id) => MR_SECTIONS.find((section) => section.id === id))
+  .filter((section): section is (typeof MR_SECTIONS)[number] => Boolean(section))
 function suggestPricingMode(result: QuotationImportResult) {
   const itemText = (result.items || []).map((item) => `${item.name || ''} ${item.description || ''}`).join(' ')
   const sourceText = (result.sources || []).map((source) => source.name).join(' ')
@@ -1335,7 +1338,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
             </div>
           ) : null}
 
-          <SectionCard id="identity" title="客户与单号" icon={MR_SECTIONS[0].icon} flash={flashSection === 'identity'}>
+          <SectionCard id="identity" title="客户与单号" icon={SECTION_ICON('identity')} flash={flashSection === 'identity'}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <Field label="客户名称" editable={editable} readonlyText={textValue(calculated.customerName)} className="xl:col-span-2">
                 <div className="relative">
@@ -1373,7 +1376,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
             </div>
           </SectionCard>
 
-          <SectionCard id="trade" title="交易信息" icon={MR_SECTIONS[1].icon} description="当前计价模式和发票类型同时适用于报价导入及手动录入。" flash={flashSection === 'trade'}>
+          <SectionCard id="trade" title="交易信息" icon={SECTION_ICON('trade')} description="当前计价模式和发票类型同时适用于报价导入及手动录入。" flash={flashSection === 'trade'}>
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="计价与发票">
                 <Field label="计价模式" editable={editable} readonlyText={PRICING_LABELS[Number(calculated.pricingMode)] || '-'} help="决定金额分摊方式：多项系统集成＝整单未税总计按各品项成本占比分摊；单项系统集成＝固定拆为主项 99%＋技术服务 1%；开明细＝各品项小计加总即为总计，不做整单分摊。切换模式会重算品项单价与必填规则。">
@@ -1447,7 +1450,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
           <SectionCard
             id="items"
             title="品项明细"
-            icon={MR_SECTIONS[5].icon}
+            icon={SECTION_ICON('items')}
             description={`共 ${calculated.items?.length || 0} 个品项`}
           actions={editable || calculated.quotationFiles?.length ? (
               <div className="flex items-center gap-2">
@@ -1508,7 +1511,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
             </div>
           </SectionCard>
 
-          <SectionCard id="billing" title="开票与付款" icon={MR_SECTIONS[2].icon} flash={flashSection === 'billing'}>
+          <SectionCard id="billing" title="开票与付款" icon={SECTION_ICON('billing')} flash={flashSection === 'billing'}>
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="开票信息">
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -1526,6 +1529,23 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                   <Field label="开票内容" editable={editable} readonlyText={textValue(calculated.billingContent)} className="sm:col-span-2">
                     <Input value={calculated.billingContent || ''} placeholder="如：系统集成服务费 / 设备销售" onChange={(e) => patch({ billingContent: e.target.value })} />
                   </Field>
+                  <div className="grid gap-4 sm:grid-cols-3 sm:col-span-2 border-t pt-4">
+                    <Field label="发票收件人" editable={editable} readonlyText={textValue(calculated.invoiceRecipient)}>
+                      <AutoFill active={autoFilled.includes('invoiceRecipient')}><SmartCombobox
+                        value={calculated.invoiceRecipient || ''}
+                        readOnly={!editable}
+                        placeholder="发票收件人姓名"
+                        options={contactChoices.map((contact) => ({ value: String(contact.id), label: contact.name || '', hint: [contact.phone, contact.email].filter(Boolean).join(' · ') }))}
+                        onChange={(value) => patchContactField('invoiceRecipient', value)}
+                      /></AutoFill>
+                    </Field>
+                    <Field label="发票收件电话" editable={editable} readonlyText={textValue(calculated.invoiceRecipientTel)}>
+                      <AutoFill active={autoFilled.includes('invoiceRecipientTel')}><Input list="mr-contact-phone-options" value={calculated.invoiceRecipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('invoiceRecipientTel', e.target.value)} /></AutoFill>
+                    </Field>
+                    <Field label="发票收件邮箱" editable={editable} readonlyText={textValue(calculated.invoiceRecipientMail)}>
+                      <AutoFill active={autoFilled.includes('invoiceRecipientMail')}><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.invoiceRecipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('invoiceRecipientMail', e.target.value)} /></AutoFill>
+                    </Field>
+                  </div>
                 </div>
               </SubPanel>
               <SubPanel title="付款信息">
@@ -1545,65 +1565,52 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                       </AutoFill>
                     </Field>
                   ) : null}
+                  <div className="grid gap-4 sm:grid-cols-3 sm:col-span-2 border-t pt-4">
+                    <Field required label="采购联系人" editable={editable} readonlyText={textValue(calculated.purchaser)} help="客户侧商务对接人，谈单与付款流程联系他">
+                      <AutoFill active={autoFilled.includes('purchaser')}><SmartCombobox
+                        value={calculated.purchaser || ''}
+                        readOnly={!editable}
+                        placeholder="采购联系人姓名"
+                        options={contactChoices.map((contact) => ({ value: String(contact.id), label: contact.name || '', hint: [contact.phone, contact.email].filter(Boolean).join(' · ') }))}
+                        onChange={(value) => patchContactField('purchaser', value)}
+                      /></AutoFill>
+                    </Field>
+                    <Field label="采购联系电话" editable={editable} readonlyText={textValue(calculated.purchaserTel)}>
+                      <AutoFill active={autoFilled.includes('purchaserTel')}><Input list="mr-contact-phone-options" value={calculated.purchaserTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('purchaserTel', e.target.value)} /></AutoFill>
+                    </Field>
+                    <Field label="采购联系邮箱" editable={editable} readonlyText={textValue(calculated.purchaserMail)}>
+                      <AutoFill active={autoFilled.includes('purchaserMail')}><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.purchaserMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('purchaserMail', e.target.value)} /></AutoFill>
+                    </Field>
+                  </div>
                 </div>
               </SubPanel>
             </div>
           </SectionCard>
 
-          <SectionCard id="contacts" title="联系人信息" icon={MR_SECTIONS[3].icon} description="可手动填写姓名、联系电话和邮箱；如内容存在于当前客户档案中，系统将自动补全对应信息。" flash={flashSection === 'contacts'}>
-            <div className="overflow-x-auto border">
-              <div className="min-w-[880px]">
-                <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] gap-3 border-b bg-muted/30 px-4 py-3 text-sm font-medium">
-                  <div>联系人角色</div><div>姓名</div><div>联系电话（选填）</div><div>邮箱（选填）</div>
-                </div>
-                <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 border-b px-4 py-4">
-                  <div className="font-medium">采购联系人<span className="ml-0.5 text-red-600" aria-hidden="true">*</span></div>
-<AutoFill active={autoFilled.includes('purchaser')}><SmartCombobox
-                  value={calculated.purchaser || ''}
-                  readOnly={!editable}
-                  placeholder="采购联系人姓名"
-                  options={contactChoices.map((contact) => ({ value: String(contact.id), label: contact.name || '', hint: [contact.phone, contact.email].filter(Boolean).join(' · ') }))}
-                  onChange={(value) => patchContactField('purchaser', value)}
-                /></AutoFill>
-                  <AutoFill active={autoFilled.includes('purchaserTel')}><Input list="mr-contact-phone-options" value={calculated.purchaserTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('purchaserTel', e.target.value)} /></AutoFill>
-                  <AutoFill active={autoFilled.includes('purchaserMail')}><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.purchaserMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('purchaserMail', e.target.value)} /></AutoFill>
-                </div>
-                <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 border-b px-4 py-4">
-                  <div className="font-medium">收货人<span className="ml-0.5 text-red-600" aria-hidden="true">*</span></div>
-<AutoFill active={autoFilled.includes('recipient')}><SmartCombobox
-                  value={calculated.recipient || ''}
-                  readOnly={!editable}
-                  placeholder="收货人姓名"
-                  options={contactChoices.map((contact) => ({ value: String(contact.id), label: contact.name || '', hint: [contact.phone, contact.email].filter(Boolean).join(' · ') }))}
-                  onChange={(value) => patchContactField('recipient', value)}
-                /></AutoFill>
-                  <AutoFill active={autoFilled.includes('recipientTel')}><Input list="mr-contact-phone-options" value={calculated.recipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('recipientTel', e.target.value)} /></AutoFill>
-                  <AutoFill active={autoFilled.includes('recipientMail')}><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.recipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('recipientMail', e.target.value)} /></AutoFill>
-                </div>
-                <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 border-b px-4 py-4">
-                  <div className="font-medium">交付地点</div>
-                  <div className="col-span-3">
-                    <AutoFill active={autoFilled.includes('deliveryLocation')}><Input list="mr-delivery-location-options" value={calculated.deliveryLocation || ''} readOnly={!editable} placeholder="仅填写收货地址（收货人、联系电话见上方）；可选择客户档案地址或直接输入" onChange={(e) => patch({ deliveryLocation: e.target.value })} /></AutoFill>
-                  </div>
-                </div>
-                <div className="grid grid-cols-[150px_minmax(200px,1fr)_170px_minmax(220px,1fr)] items-center gap-3 px-4 py-4">
-                  <div className="font-medium">发票收件人</div>
-<AutoFill active={autoFilled.includes('invoiceRecipient')}><SmartCombobox
-                  value={calculated.invoiceRecipient || ''}
-                  readOnly={!editable}
-                  placeholder="发票收件人姓名"
-                  options={contactChoices.map((contact) => ({ value: String(contact.id), label: contact.name || '', hint: [contact.phone, contact.email].filter(Boolean).join(' · ') }))}
-                  onChange={(value) => patchContactField('invoiceRecipient', value)}
-                /></AutoFill>
-                  <AutoFill active={autoFilled.includes('invoiceRecipientTel')}><Input list="mr-contact-phone-options" value={calculated.invoiceRecipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('invoiceRecipientTel', e.target.value)} /></AutoFill>
-                  <AutoFill active={autoFilled.includes('invoiceRecipientMail')}><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.invoiceRecipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('invoiceRecipientMail', e.target.value)} /></AutoFill>
-                </div>
-              </div>
-            </div>
-          </SectionCard>
-
-          <SectionCard id="delivery" title="交付、验收与服务" icon={MR_SECTIONS[4].icon} flash={flashSection === 'delivery'}>
+          <SectionCard id="delivery" title="交付、验收与服务" icon={SECTION_ICON('delivery')} flash={flashSection === 'delivery'}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-3 md:col-span-2 xl:col-span-4 rounded-lg border bg-muted/20 p-4">
+                <Field required label="收货人" editable={editable} readonlyText={textValue(calculated.recipient)}>
+                  <AutoFill active={autoFilled.includes('recipient')}><SmartCombobox
+                    value={calculated.recipient || ''}
+                    readOnly={!editable}
+                    placeholder="收货人姓名"
+                    options={contactChoices.map((contact) => ({ value: String(contact.id), label: contact.name || '', hint: [contact.phone, contact.email].filter(Boolean).join(' · ') }))}
+                    onChange={(value) => patchContactField('recipient', value)}
+                  /></AutoFill>
+                </Field>
+                <Field label="收货联系电话" editable={editable} readonlyText={textValue(calculated.recipientTel)}>
+                  <AutoFill active={autoFilled.includes('recipientTel')}><Input list="mr-contact-phone-options" value={calculated.recipientTel || ''} readOnly={!editable} placeholder="联系电话" onChange={(e) => patchContactPhoneField('recipientTel', e.target.value)} /></AutoFill>
+                </Field>
+                <Field label="收货邮箱" editable={editable} readonlyText={textValue(calculated.recipientMail)}>
+                  <AutoFill active={autoFilled.includes('recipientMail')}><Input type="email" autoComplete="email" list="mr-contact-mail-options" value={calculated.recipientMail || ''} readOnly={!editable} placeholder="邮箱" onChange={(e) => patchContactMailField('recipientMail', e.target.value)} /></AutoFill>
+                </Field>
+                <Field label="交付地点" editable={editable} readonlyText={textValue(calculated.deliveryLocation)} className="sm:col-span-3" help="仅填写收货地址；收货人与联系电话见上方">
+                  <AutoFill active={autoFilled.includes('deliveryLocation')}>
+                  <Input list="mr-delivery-location-options" value={calculated.deliveryLocation || ''} placeholder="选择销售或工程服务地址，也可直接输入" onChange={(e) => patch({ deliveryLocation: e.target.value })} />
+                  </AutoFill>
+                </Field>
+              </div>
               <Field label="最晚交付日期" editable={editable} readonlyText={textValue(calculated.latestDeliveryDate)}>
                 <Input type="date" value={calculated.latestDeliveryDate || ''} onChange={(e) => patch({ latestDeliveryDate: e.target.value })} />
               </Field>
@@ -1641,7 +1648,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
             ) : null}
           </SectionCard>
 
-          <SectionCard id="remark" title="备注与其他" icon={MR_SECTIONS[6].icon} flash={flashSection === 'remark'}>
+          <SectionCard id="remark" title="备注与其他" icon={SECTION_ICON('remark')} flash={flashSection === 'remark'}>
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="毛利认列">
                 {editable ? <p className="-mt-2 text-xs text-muted-foreground">按财务要求一次性或分期确认本单毛利；分期需选开始月份、填写期数与总金额。</p> : null}
@@ -1686,7 +1693,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
             </Field>
           </SectionCard>
 
-          <SectionCard id="approval" title="电子签核流程" icon={MR_SECTIONS[7].icon} flash={flashSection === 'approval'}>
+          <SectionCard id="approval" title="电子签核流程" icon={SECTION_ICON('approval')} flash={flashSection === 'approval'}>
             <ApprovalPanel order={calculated} layout="horizontal" />
             {status === 'approved' ? (
               <div className="mt-4 flex items-center gap-2 text-sm text-emerald-700"><ShieldCheck className="size-4" />全部签核已完成，可另存为 PDF 并归档。</div>
