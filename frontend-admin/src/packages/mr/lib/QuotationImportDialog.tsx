@@ -48,7 +48,7 @@ function sourceLabel(role: QuotationSource['role']) {
 }
 
 function recognitionMethodLabel(method?: string) {
-  return method === 'excel_config_group_v2' ? '⚡ 配置组收敛（实验引擎 v2）' : method === 'excel_cells' ? 'Excel 单元格' : method === 'ocr_layout' ? 'OCR 坐标' : method === 'pdf_layout' ? 'PDF 坐标' : method === 'pdf_text' ? 'PDF 文字层' : method === 'ai_vision' ? 'AI 视觉识别' : method === 'ai_text' ? 'AI 文本识别' : '自动识别'
+  return method === 'excel_cells' ? 'Excel 单元格' : method === 'ocr_layout' ? 'OCR 坐标' : method === 'pdf_layout' ? 'PDF 坐标' : method === 'pdf_text' ? 'PDF 文字层' : method === 'ai_vision' ? 'AI 视觉识别' : method === 'ai_text' ? 'AI 文本识别' : '自动识别'
 }
 
 function confidenceLabel(confidence?: number | null, reviewCount = 0) {
@@ -627,7 +627,7 @@ export function QuotationImportDialog({
                       variant="outline"
                       size="sm"
                       disabled={loading}
-                      title={previewEngine === 'v2' ? '用当前版引擎重新识别同一份文件，对比识别效果' : '用实验引擎 v2 重新识别同一份文件（配置组收敛，针对 HPE 整机捆绑报价）'}
+                      title={previewEngine === 'v2' ? '用当前版引擎重新识别同一份文件，对比识别效果' : '用实验引擎 v2 重新识别同一份文件（全格式 AI 优先识别）'}
                       onClick={() => {
                         const next = previewEngine === 'v2' ? 'v1' : 'v2'
                         setEngine(next)

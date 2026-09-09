@@ -62,7 +62,6 @@ const { validateParsedQuotation } = require('./quotation-validation')
 const { applyQuotationLayoutRule } = require('./quotation-layout-rules')
 const { mergeQuotations } = require('./quotation-merge')
 const { recognizeQuotationWithAi, applyAiEntityKeys } = require('./quotation-ai-parser')
-const { collapseConfigGroups } = require('./quotation-config-groups')
 const { applyStructuredRules } = require('./quotation-rules')
 const { coachChat, coachDistill } = require('./quote-coach')
 const {
@@ -1812,15 +1811,9 @@ async function importQuotation(req, res) {
     let systemItemCount = 0
     let aiItemCount = 0
     let aiDocumentType = null
-    // 实验引擎 v2（spec 008 / Issue #86）：Excel 先尝试配置组收敛（HPE 整机 CTO 捆绑报价）；
-    // 门控未命中（非配置组结构）返回 null，原样回退常规规则解析，两引擎对普通文件行为一致
-    let collapsedV2 = null
-    if (engine === 'v2' && (extension === '.xls' || extension === '.xlsx')) {
-      try { collapsedV2 = collapseConfigGroups(file.buffer) } catch (_error) { collapsedV2 = null }
-    }
-    parsed = collapsedV2 || (extension === '.pdf'
+    parsed = extension === '.pdf'
         ? await parsePdf(file.buffer, name)
-        : parseWorkbookWithMetadata(file.buffer, name))
+        : parseWorkbookWithMetadata(file.buffer, name)
       // 表头模板应用：同文件模式 + 表头签名命中已学模板时，用模板列映射重新解析（覆盖启发式识别）
       if (extension === '.xls' || extension === '.xlsx') {
         try {
@@ -1887,9 +1880,8 @@ async function importQuotation(req, res) {
       }
       recognitionMethod = parsed.recognitionMethod || recognitionMethod
       systemItemCount = (parsed.sheets || []).reduce((sum, sheet) => sum + (sheet.items || []).length, 0)
-      // AI 优先策略：v1=PDF 或规则 0 品项时才调 AI；v2（实验引擎）=所有格式 AI 优先（佬 2026-09-09 裁决），
-      // 唯一例外是配置组收敛已命中的文件（确定性结果比 AI 可靠，实测 AI 会丢整组）
-      const preferAi = engine === 'v2' ? !collapsedV2 : (extension === '.pdf' || systemItemCount === 0)
+      // AI 优先策略：v1=PDF 或规则 0 品项时才调 AI；v2（实验引擎）=所有格式 AI 优先（佬 2026-09-09 裁决），规则解析降级为兜底
+      const preferAi = engine === 'v2' ? true : (extension === '.pdf' || systemItemCount === 0)
       if (env.ai.quoteRecognitionEnabled && preferAi) {
         try {
           const aiResult = await recognizeQuotationWithAi(file.buffer, extension, name, { onStage: (stage) => {

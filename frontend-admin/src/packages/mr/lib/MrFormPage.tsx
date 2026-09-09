@@ -1452,7 +1452,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                 <Button variant="outline" size="sm" onClick={() => { setImportEngine('v1'); setImportOpen(true) }}>
                   <FileSpreadsheet className="mr-2 size-4" />报价导入
                 </Button>
-                <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-50" title="实验引擎 v2：配置组收敛识别（针对 HPE 整机 CTO 捆绑报价单），与当前版可对比" onClick={() => { setImportEngine('v2'); setImportOpen(true) }}>
+                <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-50" title="实验引擎 v2：全格式 AI 优先识别 + 规则教练，与当前版可同文件对比" onClick={() => { setImportEngine('v2'); setImportOpen(true) }}>
                   <Zap className="mr-2 size-4" />新版识别（实验）
                 </Button>
               </div>
