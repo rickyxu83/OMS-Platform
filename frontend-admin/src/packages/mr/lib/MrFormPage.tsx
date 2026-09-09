@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, Paperclip, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Undo2, Upload, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, BellRing, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, Paperclip, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Undo2, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -26,6 +26,7 @@ import {
   loadMrReferences,
   rejectMr,
   reassignMrSales,
+  remindMr,
   submitMr,
   updateMr,
   uploadMrAttachments,
@@ -389,6 +390,8 @@ export function MrFormPage() {
   const [autoFilled, setAutoFilled] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [reminding, setReminding] = useState(false)
+  const [lastRemindedAt, setLastRemindedAt] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
   const [error, setError] = useState('')
   const [errors, setErrors] = useState<ValidationError[]>([])
@@ -879,6 +882,25 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
   }
 
 
+  // 催办（spec 008）：24h 节流；按钮置灰时提示上次催办时间
+  const effectiveLastRemindedAt = lastRemindedAt ?? calculated?.lastRemindedAt ?? null
+  const remindThrottled = Boolean(effectiveLastRemindedAt && Date.now() - new Date(String(effectiveLastRemindedAt).replace(' ', 'T')).getTime() < 24 * 3600 * 1000)
+  const remindThrottledText = effectiveLastRemindedAt ? String(effectiveLastRemindedAt).replace('T', ' ').slice(5, 16) : ''
+  const remind = async () => {
+    if (!id) return
+    if (!window.confirm('确定催办当前签核人吗？系统会向其发送提醒邮件。')) return
+    setReminding(true)
+    try {
+      const result = await remindMr(id)
+      setLastRemindedAt(result.remindedAt || new Date().toISOString())
+      toast.success('已催办，提醒邮件将发送给当前签核人')
+    } catch (err) {
+      toast.error((err as Error).message || '催办失败')
+    } finally {
+      setReminding(false)
+    }
+  }
+
   const confirmDecision = async () => {
     if (!id || !decision || (decision !== 'approve' && !reason.trim())) return
     if (decision === 'approve' && user && user.hasEngineerSignature === false) {
@@ -1190,6 +1212,12 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
             {assistantReview && !editing ? <Button onClick={() => setEditing(true)}><Pencil className="mr-2 size-4" />编辑申请单</Button> : null}
             {assistantReview && editing ? <Button variant="outline" onClick={() => { if (!dirty || window.confirm('确认放弃未保存的修改吗？')) { setDirty(false); setEditing(false); void load() } }}><Undo2 className="mr-2 size-4" />退出编辑</Button> : null}
             {calculated.permissions?.canWithdraw ? <Button variant="outline" onClick={() => { setDecision('withdraw'); setReason('') }}><Undo2 className="mr-2 size-4" />撤回</Button> : null}
+            {calculated.permissions?.canRemind ? (
+              <Button variant="outline" disabled={busy || reminding || remindThrottled} title={remindThrottled ? `已于 ${remindThrottledText} 催过，24 小时内只能催办一次` : '提醒当前签核人尽快处理'}
+                onClick={() => void remind()}>
+                {reminding ? <Loader2 className="mr-2 size-4 animate-spin" /> : <BellRing className="mr-2 size-4" />}催办
+              </Button>
+            ) : null}
             {user?.role === 'admin' && !['approved', 'voided'].includes(status) ? <Button variant="outline" onClick={() => { setReassignSalesId(String(calculated.salesOwnerId || salespeople[0]?.id || '')); setReassignOpen(true) }}>变更业务负责人</Button> : null}
             {calculated.permissions?.canVoid ? <Button variant="outline" onClick={() => { setDecision('void'); setReason('') }}>作废</Button> : null}
             {calculated.permissions?.canDelete ? (

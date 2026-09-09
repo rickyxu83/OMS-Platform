@@ -1186,6 +1186,8 @@ async function sendMrApprovalMail(order, recipient, event = 'task') {
     purchase_assignment_error: 'MR 采购人配置异常，采购环节已暂停',
     purchase_done: '采购单号已填写',
     withdraw: '业务负责人已撤回 MR',
+    remind_manual: 'MR 签核待办催办提醒（手动催办）',
+    remind_auto: 'MR 签核停留超 24 小时，请尽快处理',
     void: 'MR 已作废',
     assignment_error: 'MR 签核人配置异常，签核流程已暂停',
   }

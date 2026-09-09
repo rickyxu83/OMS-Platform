@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 44
+const PDF_FORMAT_VERSION = 45
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -505,8 +505,10 @@ function approvals(doc, fonts, rows, y) {
     if (index > 0) {
       doc.moveTo(x, y + 6).lineTo(x, y + boxHeight - 6).strokeColor('#e2e8f0').lineWidth(0.5).stroke()
     }
-    // 签名区加宽到 92：超宽签名（如横屏英文连笔）不再被 50pt 宽度压得过小；文本相应收窄
-    const hasSignature = Boolean(signature) && signatureImage(doc, signature, x + 96, y + 2, 92, 44)
+    // 签名图右对齐钳制在单元格内（x + width - 98 起，宽 92）：超宽签名（如横屏英文连笔）
+    // 按宽缩放且不再溢出压到下一格文本；文本相应收窄
+    const signatureX = x + Math.max(8, width - 98)
+    const hasSignature = Boolean(signature) && signatureImage(doc, signature, signatureX, y + 2, 92, 44)
     const textWidth = width - (hasSignature ? 112 : 16)
     text(doc, fonts, stepLabel, x + 8, y + 2, { size: 6.5, bold: true, width: textWidth, align: 'left' })
     text(doc, fonts, action, x + 8, y + 11, { size: 6.5, color: approval.action === 'approve' ? '#047857' : approval.action === 'reject' ? '#b91c1c' : MUTED, width: textWidth, align: 'left' })

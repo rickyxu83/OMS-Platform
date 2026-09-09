@@ -128,6 +128,7 @@ export interface MrOrder {
   archiveStatus?: 'pending' | 'generating' | 'ready' | 'failed' | null
   archiveError?: string | null
   archivedDocumentTypes?: Array<'approved' | 'voided'>
+  lastRemindedAt?: string | null
   autoApprovedStep?: string | null
   assignmentError?: string | null
   currentAssigneeUserId?: string | number | null
@@ -164,6 +165,7 @@ export interface MrOrder {
     canVoid?: boolean
     canApprove?: boolean
     canWithdraw?: boolean
+    canRemind?: boolean
     canPurchase?: boolean
     canFillContractNo?: boolean
   }

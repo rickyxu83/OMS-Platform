@@ -48,6 +48,9 @@ async function ensureWorkflowTables() {
     ['purchased_at', 'DATETIME NULL AFTER purchase_assignment_error'],
     ['purchased_by', 'BIGINT UNSIGNED NULL AFTER purchased_at'],
     ['purchase_note', 'VARCHAR(500) NULL AFTER purchased_by'],
+    // 催办节流（spec 008）：手动催办/超时自动提醒各自节流 24h，时间戳落这两列
+    ['last_reminded_at', 'DATETIME NULL AFTER purchase_note'],
+    ['last_auto_reminded_at', 'DATETIME NULL AFTER last_reminded_at'],
   ])
   await addMissingColumns('mr_approvals', [
     ['assignee_user_id', 'BIGINT UNSIGNED NULL AFTER step_label'],
