@@ -34,6 +34,7 @@ const USER_PROMPT = [
   '2. qty / unitPrice / extended 输出为数字（不要千分位逗号、不要货币符号）；extended 以文件中的小计/金额为准',
   '3. name 必须包含完整品名：若文件中“产品名称”与“型号及规格”分列，name 应组合为“产品名称 + 规格”（例如 “6类非屏蔽跳线 1米”、“LC-LC OM4光纤跳线 15米”），不得只填规格（如单独的 “1米”“15米”）；description 必须包含表格中的全部明细字段——如序列号、硬件配置、设备型号、月数、设备地点、服务级别等表格列内容，不得省略（例如 “DS224C 960G SSD*24, Qty 1; 序列号: 952145001351/952145001204; 月数: 12; 设备地点: 苏州; 服务级别: 4R”）；partNo 为型号/料号：优先填写文件中的料号、序列号或型号编码（多个编码用 / 连接）；若文件包含设备清单/资产清单/序列号列表（可能与价格表分离、位于文件其他区域），请按顺序把每台设备的序列号写入对应品项的 partNo（第 n 个报价品项对应第 n 台设备的序列号）；尤其是 NetApp 设备，每台通常有一组两个序列号（多份文件中前后顺序可能不同），必须把所有序列号全部写入 partNo，不得遗漏或留空；不要填 MISC、FAS2750、维修、维保等短词或品名，确实没有任何编码时才填空字符串',
   '3a. name 和 description 均不得包含数量、单价、金额、小计等字段内容（如 “数量: 8PC/BOX”“单价: 10.50元”“金额: 84.00元”）——这些已有 qty / unitPrice / extended 独立字段，写入 name/description 会污染品名',
+  '3b. components 为该品项的 BOM/配置明细数组：仅当品项是整机/套装/带配置清单的捆绑项（如 CTO 服务器、成套设备，表格中其下挂多行子件明细）时填写，每个子件一行 { "part": "料号/型号编码（无则空字符串）", "description": "子件描述", "qty": 数量 }，按文件行顺序、不得遗漏；普通单行品项填 []。有 components 时 description 仍照常拍平全量明细，两者都要',
   '4. taxRate 用数字（如 13、6），无法判断填 null；taxIncluded 为布尔值，判断品项价格为含税还是未税——判定方法：先算品项小计（extended）合计，与文件中的未税总计、含税总计对比：品项合计≈未税总计→taxIncluded=false（品项为未税价）；品项合计≈含税总计→taxIncluded=true（品项为含税价）；文件写有“含税”字样但品项合计与未税总计一致时，以数字为准（填 false）',
   '5. untaxedTotal 为未税总计、totalAmount 为含税总计；如文件有“最终优惠价/优惠价/折后价”（在总价基础上再优惠的金额），填写 discountedTotal，没有则填 null',
   '6. documentType 取值 "sales_quote"（销售报价/客户 PO）或 "purchase_quote"（供应商报价）',
@@ -46,7 +47,7 @@ const USER_PROMPT = [
   '  "documentType": "purchase_quote",',
   '  "customer": "", "vendor": "", "attn": "", "payment": "", "delivery": "",',
   '  "taxRate": null, "taxIncluded": true, "untaxedTotal": null, "totalAmount": null, "discountedTotal": null,',
-  '  "items": [{ "itemNo": 1, "partNo": "", "name": "", "description": "", "entityKey": "", "qty": 1, "unitPrice": 0, "extended": 0 }]',
+  '  "items": [{ "itemNo": 1, "partNo": "", "name": "", "description": "", "entityKey": "", "qty": 1, "unitPrice": 0, "extended": 0, "components": [] }]',
   '}',
   '',
   '文件内容如下：',
@@ -102,12 +103,22 @@ function normalizeAiResult(ai, fileName) {
     const extended = finiteNumber(item.extended)
     const name = stripPriceFieldClauses(item.name)
     const description = stripPriceFieldClauses(item.description) || name
+    // BOM 组件明细（3b）：整机/套装品项的子件清单；非数组一律视为无组件
+    const components = (Array.isArray(item.components) ? item.components : []).map((component) => ({
+      group: '',
+      part: str(component?.part),
+      description: str(component?.description),
+      qty: finiteNumber(component?.qty) ?? 1,
+      unit_price: null,
+      extended: null,
+    })).filter((component) => component.part || component.description)
     return {
       item_no: str(item.itemNo) || String(index + 1),
       part_no: str(item.partNo),
       entityKey: str(item.entityKey),
       name,
       description,
+      components,
       qty: qty === null ? 1 : qty,
       unit_price: unitPrice === null ? 0 : unitPrice,
       extended: extended === null && qty !== null && unitPrice !== null ? qty * unitPrice : extended ?? 0,

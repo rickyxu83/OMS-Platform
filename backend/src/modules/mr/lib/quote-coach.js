@@ -135,7 +135,7 @@ async function coachChat(items, history, { fetchImpl = fetch } = {}) {
   const applied = applyTransform(items, payload.transform)
   let reply = payload.reply.slice(0, 1000)
   if (!applied && payload.transform && typeof payload.transform === 'object') {
-    reply += '\n（该调整未能落到当前品项上：若是组件摘要类需求，请确认品项带有 BOM 明细——目前只有配置组收敛的整机品项带 BOM）'
+    reply += '\n（该调整未能落到当前品项上：组件摘要需要品项带 BOM 明细。请先用实验引擎重新识别该文件（AI 会输出 BOM），再让我摘要）'
   }
   return { reply, items: applied ? applied.items : null, changes: applied ? applied.changes : [], transformApplied: applied !== null }
 }
