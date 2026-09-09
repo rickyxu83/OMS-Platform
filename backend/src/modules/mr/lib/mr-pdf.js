@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 49
+const PDF_FORMAT_VERSION = 50
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -292,10 +292,11 @@ function orderField(order, camel, snake = camel) {
 const HEADER_DUPLICATES = new Set(['客户名称', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期'])
 
 const DETAIL_GROUPS = [
-  ['客户与合同', ['客户联系人', '客户 P/O', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期']],
-  ['交易与开票', ['计价模式', '发票类型', '开票方式', '开票内容', '开票/收款时间', '付款条件', '付款条件说明']],
+  // 付款条件归合同条款语义；发票收件人归发票语义（2026-09-09 均衡调整，左右列字段数拉平）
+  ['客户与合同', ['客户联系人', '客户 P/O', '业务负责人', '项目分类', '合同编号', '付款条件', '付款条件说明', '罚则说明', '填表日期']],
+  ['交易与开票', ['计价模式', '发票类型', '开票方式', '开票内容', '开票/收款时间', '发票收件人', '发票收件电话', '发票收件邮箱']],
   ['交付与验收', ['是否允许分批交付', '验收条件', '验收说明', '装机承担方', '维护承担方', '交付地点', '交付条款', '出货单编号']],
-  ['联系与收件', ['采购联系人', '采购联系电话', '采购联系邮箱', '收货人', '收货联系电话', '收货邮箱', '发票收件人', '发票收件电话', '发票收件邮箱']],
+  ['联系与收件', ['采购联系人', '采购联系电话', '采购联系邮箱', '收货人', '收货联系电话', '收货邮箱']],
 ]
 
 function detailEntries(order, items = []) {
@@ -458,6 +459,8 @@ function details(doc, fonts, order, items, y, includeVoidReason = true, reserveB
   const groupOf = new Map()
   for (const [group, labels] of DETAIL_GROUPS) for (const label of labels) groupOf.set(label, group)
   const grouped = DETAIL_GROUPS.map(([group]) => [group, entries.filter(([label]) => groupOf.get(label) === group)]).filter(([, list]) => list.length)
+  // 无任何资料字段且无备注时整段跳过（不出现空标题）
+  if (!grouped.length && !notes.length) return y
   const drawTitle = () => {
     y = sectionTitle(doc, fonts, y, '02 订购与交付资料', `· 共 ${entries.length + notes.length} 项`)
   }
@@ -466,9 +469,18 @@ function details(doc, fonts, order, items, y, includeVoidReason = true, reserveB
     y = header(doc, fonts, order, '客户订购申请单 · 资料续页')
     drawTitle()
   }
-  drawTitle()
   const cardGap = 8
   const cardWidth = (width - cardGap) / 2
+  // 标题不孤儿：若标题下方连第一排卡片（或无卡片时的备注卡）都放不下，整段从新页开始，
+  // 避免页尾只挂一个空标题（2026-09-09 佬反馈）
+  const firstContentHeight = grouped.length
+    ? Math.max(...grouped.slice(0, 2).map(([, list]) => detailCardHeight(doc, fonts, list, 3, (cardWidth - 18) / 3)))
+    : (notes.length ? noteCardHeight(doc, fonts, notes, width) : 0)
+  if (firstContentHeight && y + 17 + firstContentHeight > bottom) {
+    doc.addPage()
+    y = header(doc, fonts, order, '客户订购申请单 · 资料续页')
+  }
+  drawTitle()
   for (let start = 0; start < grouped.length; start += 2) {
     const cards = grouped.slice(start, start + 2)
     const heights = cards.map(([, groupEntries]) => detailCardHeight(doc, fonts, groupEntries, 3, (cardWidth - 18) / 3))
