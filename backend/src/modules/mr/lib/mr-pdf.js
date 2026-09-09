@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 54
+const PDF_FORMAT_VERSION = 55
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -658,14 +658,22 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
   const bottom = PAGE.height - 45
   let y = summary(doc, fonts, order, header(doc, fonts, order))
   y = sectionTitle(doc, fonts, y, '01 采购与销售明细', `· ${items.length} 个品项`)
+  // 明细行高封顶（约 12 行）：超长配置清单截断加「…」，归档件保持紧凑，完整内容在系统里看；
+  // 01 标题+表头+首行粘连：首行放不进当前页时整组移新页，不留空表头（2026-09-10 MR-8 反馈）
+  const ITEM_ROW_MAX = 190
+  const firstNeeded = items.length ? Math.min(itemRowHeight(doc, fonts, items[0], 0, columns), ITEM_ROW_MAX) : 0
+  if (firstNeeded && y + 30 + firstNeeded > bottom) {
+    doc.addPage()
+    y = sectionTitle(doc, fonts, header(doc, fonts, order), '01 采购与销售明细', `· ${items.length} 个品项`)
+  }
   y = itemHeader(doc, fonts, columns, y)
   items.forEach((item, index) => {
-    const needed = itemRowHeight(doc, fonts, item, index, columns)
+    const needed = Math.min(itemRowHeight(doc, fonts, item, index, columns), ITEM_ROW_MAX)
     if (y + needed > bottom) {
       doc.addPage()
       y = itemHeader(doc, fonts, columns, header(doc, fonts, order))
     }
-    y = itemRow(doc, fonts, item, index, columns, y, bottom - y)
+    y = itemRow(doc, fonts, item, index, columns, y, Math.min(bottom - y, ITEM_ROW_MAX))
   })
   // 文档尾部（合计/资料区/签核）由块排版引擎统一分页：粘连规则声明在各块上，无特判
   const tail = tailBlocks(doc, fonts, order, items, Boolean(watermarkLabel), approvalRows)
