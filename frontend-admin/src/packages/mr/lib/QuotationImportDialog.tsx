@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { AlertTriangle, Check, Download, FileSpreadsheet, ListChecks, Loader2, Pencil, SlidersHorizontal, Trash2, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { SHOW_MR_QUOTE_V2 } from '@/lib/feature-flags'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -610,6 +611,7 @@ export function QuotationImportDialog({
                   {previewEngine === 'v2' ? <span className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700">⚡ 实验引擎 v2</span> : null}
                 </h3>
                 <div className="flex items-center gap-2">
+                  {SHOW_MR_QUOTE_V2 && editable ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -620,8 +622,9 @@ export function QuotationImportDialog({
                   >
                     效果不对？告诉 AI
                   </Button>
+                  ) : null}
                   <span className="text-xs text-muted-foreground">系统优先根据文件分组判定来源；未匹配到销售报价的供应商报价品项将导入为待填售价品项，售价需在导入后填写。</span>
-                  {editable && (salesFiles.length || purchaseFiles.length) ? (
+                  {SHOW_MR_QUOTE_V2 && editable && (salesFiles.length || purchaseFiles.length) ? (
                     <Button
                       type="button"
                       variant="outline"
