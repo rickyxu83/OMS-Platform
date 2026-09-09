@@ -84,7 +84,7 @@ function Header({ order, emptyText, formal }: { order: MrOrder; emptyText: strin
 function Fact({ label, value }: { label: string; value: ReactNode }) { return <div className="a-fact"><small>{label}</small><div>{value}</div></div> }
 function Section({ index, title, children }: { index: string; title: string; children: ReactNode }) { return <section className="a-section"><div className="a-section-title"><span>{index}</span><h2>{title}</h2></div>{children}</section> }
 function ItemTable({ items, emptyText, formal }: { items: MrItem[]; emptyText: string; formal: boolean }) {
-  // 供应商/单号合并列按连续相同采购单号 rowSpan 合并，避免整列重复同一个单号
+  // 供应商/采购单号合并列按连续相同采购单号 rowSpan 合并，避免整列重复同一个单号
   const purchaseValue = (item: MrItem) => (hasValue(item.purchaseOrderNo) ? String(item.purchaseOrderNo) : '')
   const mergedIntoPrev = (index: number) => index > 0 && purchaseValue(items[index]) !== '' && purchaseValue(items[index]) === purchaseValue(items[index - 1])
   const groupSpan = (index: number) => {
@@ -121,21 +121,18 @@ function ItemTable({ items, emptyText, formal }: { items: MrItem[]; emptyText: s
       if (!excluding && !including) return emptyText
       return <span>{excluding ? <strong>{excluding}</strong> : null}{including ? <small>{including}</small> : null}</span>
     } },
-    // 供应商/单号列固定保留：出货单号有值印出、未填留白供出货时手写；供应商与采购单号有值才印
-    { key: 'vendorShip', label: '供应商 / 单号', weight: 11, align: 'left', optional: false, present: () => true, render: (item: MrItem, index: number) => {
-      const span = groupSpan(index)
-      const shipments = items.slice(index, index + span).map((row) => String(row.shipmentNo || ''))
-      return <span>
-        {hasValue(item.vendor) ? <strong title={String(item.vendor)}>{vendorAbbreviation(item.vendor, emptyText)}</strong> : null}
-        {hasValue(item.purchaseOrderNo) ? <small>采购 {item.purchaseOrderNo}</small> : null}
-        {shipments.map((no, shipmentIndex) => <small key={shipmentIndex}>{no ? `出货 ${no}` : '出货 '}</small>)}
-      </span>
-    } },
+    // 供应商/采购单号列：按连续相同采购单号 rowSpan 合并；供应商与采购单号有值才印
+    { key: 'vendorPo', label: '供应商 / 采购单号', weight: 11, align: 'left', optional: true, present: (item: MrItem) => hasValue(item.vendor) || hasValue(item.purchaseOrderNo), render: (item: MrItem) => <span>
+      {hasValue(item.vendor) ? <strong title={String(item.vendor)}>{vendorAbbreviation(item.vendor, emptyText)}</strong> : null}
+      {hasValue(item.purchaseOrderNo) ? <small>采购 {item.purchaseOrderNo}</small> : null}
+    </span> },
+    // 出货单号列固定保留并独立成列：系统已填则印出，未填留白供出货时手写
+    { key: 'shipment', label: '出货单号', weight: 7, align: 'left', optional: false, present: () => true, render: (item: MrItem) => text(item.shipmentNo, '') },
   ]
   const columns = definitions.filter((column) => !formal || !column.optional || items.some(column.present))
   const totalWeight = columns.reduce((sum, column) => sum + column.weight, 0)
   return <table className="a-items"><thead><tr>{columns.map((column) => <th key={column.key} style={{ width: `${column.weight / totalWeight * 100}%`, textAlign: column.align as 'left' | 'center' | 'right', whiteSpace: column.nowrap ? 'nowrap' : undefined }}>{column.label}</th>)}</tr></thead><tbody>{items.map((item, index) => <tr key={item.id || index}>{columns.map((column) => {
-    if (column.key === 'vendorShip') {
+    if (column.key === 'vendorPo') {
       if (mergedIntoPrev(index)) return null
       const span = groupSpan(index)
       return <td key={column.key} data-label={column.label} rowSpan={span} className={`a-align-${column.align} ${span > 1 ? 'a-purchase-merged' : ''}`}>{column.render(item, index)}</td>

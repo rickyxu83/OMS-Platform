@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 42
+const PDF_FORMAT_VERSION = 43
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -178,12 +178,13 @@ function itemColumns(items) {
       hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '',
       [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `含税 ¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join(' · '),
     ].filter(hasValue).join('\n') },
-    // 供应商/单号列固定保留：出货单号有值印出、未填留白供出货时手写；供应商与采购单号有值才印（与打印页同口径）
-    { key: 'vendorShip', label: '供应商 / 单号', weight: 11, align: 'left', optional: false, present: () => true, content: (item) => [
+    // 供应商/采购单号列：供应商与采购单号同列两行，有值才印（与打印页同口径）
+    { key: 'vendorPo', label: '供应商 / 采购单号', weight: 11, align: 'left', optional: true, present: (item) => hasValue(item.vendor) || hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')), content: (item) => [
       hasValue(item.vendor) ? abbreviateVendor(item.vendor) : '',
       hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')) ? `采购 ${itemField(item, 'purchaseOrderNo', 'purchase_order_no')}` : '',
-      hasValue(itemField(item, 'shipmentNo', 'shipment_no')) ? `出货 ${itemField(item, 'shipmentNo', 'shipment_no')}` : '出货',
     ].filter(hasValue).join('\n') },
+    // 出货单号列固定保留并独立成列：系统已填则印出，未填留白供出货时手写
+    { key: 'shipment', label: '出货单号', weight: 7, align: 'left', optional: false, present: () => true, content: (item) => itemField(item, 'shipmentNo', 'shipment_no') },
   ]
   const visible = definitions.filter((column) => !column.optional || items.some(column.present))
   const available = PAGE.width - PAGE.margin * 2
