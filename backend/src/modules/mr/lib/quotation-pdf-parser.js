@@ -323,7 +323,8 @@ function parsePdfText(text, layout = null) {
   const po = clean.match(/PO\s*NO\.?\)?[^A-Z0-9]{0,12}([A-Z0-9-]+)/i)?.[1] || clean.match(/(?:订购单号|訂購單號)[：:\s]*(\d+)/i)?.[1] || ''
   const payment = cleanSegment(clean.match(/(?:付款方式|Payment)[^\n]*?[:：]\s*([^\n]+)/i)?.[1])
   const delivery = cleanSegment(clean.match(/(?:交货地点|交貨地點|Ship To)[^\n]*?[:：]\s*([^\n]+)/i)?.[1])
-  let untaxedTotal = number((clean.match(/(?:未\s*[税稅]\s*(?:总计|總計|金额|金額)|sub\s*total)[^\d]{0,40}(?:RMB\s*)?([\d,]+(?:\.\d+)?)/i) || compact.match(/(?:未[税稅](?:总计|總計|金额|金額)|subtotal)[^\d]{0,40}([\d,]+(?:\.\d+)?)/i))?.[1])
+  // 间隔段需消化括号注释与百分数（如“Sub Total（含13%增值稅）…130,000”），否则会把税率 13 误抓成金额
+let untaxedTotal = number((clean.match(/(?:未\s*[税稅]\s*(?:总计|總計|金额|金額)|sub\s*total)(?:\([^)]*\)|（[^）]*）|\([^）]*）|（[^)]*\)|\d+(?:\.\d+)?\s*%|[^\d]){0,160}?(?:RMB\s*)?(?!\d+(?:\.\d+)?\s*%)([\d,]+(?:\.\d+)?)/i) || compact.match(/(?:未[税稅](?:总计|總計|金额|金額)|subtotal)(?:\([^)]*\)|（[^）]*）|\([^）]*）|（[^)]*\)|\d+(?:\.\d+)?\s*%|[^\d]){0,160}?(?!\d+(?:\.\d+)?\s*%)([\d,]+(?:\.\d+)?)/i))?.[1])
   const totalMatch = clean.match(/(?:含\s*[税稅]\s*(?:金额|金額|总计|總計|合计|合計)|总价|總價|grand\s*total)[^\d]{0,40}(?:RMB|USD)?\s*([\d,]+(?:\.\d+)?)/i) || compact.match(/(?:含[税稅](?:金额|金額|总计|總計|合计|合計)|总价|總價|grandtotal)[^\d]{0,40}([\d,]+(?:\.\d+)?)/i)
   let totalAmount = number(totalMatch?.[1])
   const currencyAmounts = [...clean.matchAll(/(?:¥|RMB|USD)\s*([\d,]+(?:\.\d+)?)/gi)].map((match) => number(match[1])).filter((value) => value !== null)

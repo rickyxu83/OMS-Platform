@@ -44,6 +44,19 @@ function testNormalize() {
   assert.equal(sheet.items[1].part_no, '')
   assert.equal(normalizeAiResult({ items: [] }, 'x.pdf'), null)
   assert.equal(normalizeAiResult(null, 'x.pdf'), null)
+  // 3b：整机/套装品项的 BOM 组件明细规范化（普通品项为空数组）
+  const withBom = normalizeAiResult({
+    items: [{ itemNo: 1, name: 'ACME 服务器', qty: 2, unitPrice: 159000, extended: 318000, components: [
+      { part: 'AA100-B21', description: 'INT Xeon CPU', qty: 2 },
+      { part: '', description: '', qty: 1 },
+      { part: 'CC300-B21', description: '32GB DDR5 内存', qty: '4' },
+    ] }],
+  }, 'server.xlsx')
+  assert.equal(withBom.items[0].components.length, 2, '空壳组件被过滤')
+  assert.equal(withBom.items[0].components[1].qty, 4, '组件数量归一化为数字')
+  assert.deepEqual(withBom.items[0].components[0].group, '')
+  const noBom = normalizeAiResult({ items: [{ name: '跳线', qty: 1, unitPrice: 10, extended: 10 }] }, 'x.xlsx')
+  assert.deepEqual(noBom.items[0].components, [], '缺 components 字段时为 []')
   // AI 把价格原样输出为带千分位逗号的字符串（如 "75,000.00"）时，必须归一化为数字而非归 0
   const commaSheet = normalizeAiResult({
     items: [{ itemNo: 1, name: 'VMware 服务', qty: '1', unitPrice: '75,000.00', extended: '75,000.00' }],
