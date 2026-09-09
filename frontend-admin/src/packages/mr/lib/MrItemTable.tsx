@@ -85,7 +85,8 @@ export function MrItemTable({
     })
   }
   const onRowMouseDown = (index: number, event: ReactMouseEvent<HTMLTableRowElement>) => {
-    if (!editable || event.button !== 0) return
+    // mode 2（单项系统集成）固定主项+技术服务两行，不提供多选/批量操作
+    if (!editable || mode === 2 || event.button !== 0) return
     if ((event.target as HTMLElement).closest('input, textarea, button, a, select')) return
     suppressClickRef.current = false
     if (event.shiftKey && anchorRef.current !== null) {
@@ -104,7 +105,7 @@ export function MrItemTable({
     event.preventDefault()
   }
   const onRowMouseEnter = (index: number) => {
-    if (!editable || !dragRef.current.active) return
+    if (!editable || mode === 2 || !dragRef.current.active) return
     if (!dragRef.current.started) {
       dragRef.current.started = true
       applyRowSelection(dragRef.current.startIndex, dragRef.current.mode)
@@ -190,10 +191,10 @@ export function MrItemTable({
 
       {editable ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">点击品项行即可编辑；按住左键拖过品项行可多选，Shift+点击选连续区间，用于批量复制、批量删除。</p>
+          <p className="text-xs text-muted-foreground">点击品项行即可编辑{mode !== 2 ? '；按住左键拖过品项行可多选，Shift+点击选连续区间，用于批量复制、批量删除' : ''}。</p>
           <div className="flex items-center gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedRows(new Set(items.map((_, index) => index)))}>全选</Button>
-            {editable && selectedRows.size ? (
+            {mode !== 2 ? <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedRows(new Set(items.map((_, index) => index)))}>全选</Button> : null}
+            {editable && mode !== 2 && selectedRows.size ? (
               <>
                 <span className="text-xs text-muted-foreground">已选择 {selectedRows.size} 个品项</span>
                 <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedRows(new Set())}>清除</Button>
@@ -241,7 +242,7 @@ export function MrItemTable({
                       <td className="px-3 py-3 text-muted-foreground tabular-nums">
                         <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
                           <span className="tabular-nums">{index + 1}</span>
-                          {editable ? (
+                          {editable && mode !== 2 ? (
                             <Button type="button" variant="ghost" size="icon" className="size-6" title="复制此行为新行" aria-label={`复制第 ${index + 1} 项`} onClick={() => duplicateItem(index)}><Copy className="size-3.5" /></Button>
                           ) : null}
                         </div>
@@ -253,6 +254,7 @@ export function MrItemTable({
                         >
                           <span className="block break-words font-medium">{item.description || item.name || '未填写品名及描述'}</span>
                           <span className="mt-0.5 block break-words text-xs text-muted-foreground">{item.oemSpec || '未填写原厂规格'}</span>
+                          {mode === 2 && index === 1 ? <span className="mt-1 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">系统生成</span> : null}
                         </div>
                       </td>
                       <td className="px-1.5 py-3 text-right tabular-nums">{item.qty ?? '-'}</td>
@@ -260,7 +262,7 @@ export function MrItemTable({
                       <td className="px-3 py-3 text-right tabular-nums">¥ {money(item.subtotal)}</td>
                       <td className={`px-3 py-3 text-right tabular-nums ${low ? 'font-medium text-red-600' : ''}`}>{percent(item.marginRate)}</td>
                       <td className="w-12 px-2 py-3 text-right">
-                        {editable ? (
+                        {editable && mode !== 2 ? (
                           <Button type="button" variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" title="删除此品项" aria-label={`删除第 ${index + 1} 项`} onClick={(event) => { event.stopPropagation(); if (window.confirm(`确定删除“${item.description || item.name || `第 ${index + 1} 项`}”吗？删除后不可恢复。`)) { remove(index) } }}><Trash2 className="size-4" /></Button>
                         ) : null}
                       </td>
@@ -274,11 +276,20 @@ export function MrItemTable({
         </div>
       </div>
 
-      {/* 编辑品项弹窗：点击品项行弹出，不再在表格内下拉展开 */}
+      {/* 编辑品项弹窗：点击品项行弹出，不再在表格内下拉展开；支持上一项/下一项连续校对（issue #131） */}
       <Dialog open={Boolean(selectedIndex !== null && items[selectedIndex])} onOpenChange={(open) => { if (!open) setSelectedIndex(null) }}>
         <DialogContent className="w-[calc(100vw-2rem)] max-h-[92vh] max-w-3xl overflow-y-auto sm:max-w-3xl">
           {selectedIndex !== null && items[selectedIndex] ? (
-            <ItemEditorPanel
+            <>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/40 px-3 py-2">
+                <span className="text-xs text-muted-foreground tabular-nums">第 {selectedIndex + 1} / {items.length} 项</span>
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" disabled={selectedIndex <= 0} onClick={() => setSelectedIndex(selectedIndex - 1)}>上一项</Button>
+                  <Button type="button" variant="outline" size="sm" disabled={selectedIndex >= items.length - 1} onClick={() => setSelectedIndex(selectedIndex + 1)}>下一项</Button>
+                  <Button type="button" size="sm" onClick={() => setSelectedIndex(null)}>完成编辑</Button>
+                </div>
+              </div>
+              <ItemEditorPanel
               item={items[selectedIndex]}
               index={selectedIndex}
               editable={editable}
@@ -289,7 +300,8 @@ export function MrItemTable({
               onClose={() => setSelectedIndex(null)}
               onRemove={editable && mode !== 2 ? () => { remove(selectedIndex); setSelectedIndex(null) } : undefined}
               onChange={(patch) => setItem(selectedIndex, patch)}
-            />
+              />
+            </>
           ) : null}
         </DialogContent>
       </Dialog>
@@ -360,7 +372,7 @@ function ItemEditorPanel({
     <section aria-label={`编辑第 ${index + 1} 项`}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b pb-3">
         <div>
-          <div className="text-xs font-medium uppercase tracking-wide text-primary">{editable ? '编辑品项' : '查看品项'} {index + 1}</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-primary">{editable ? '编辑品项' : '查看品项'} {index + 1}{serviceRow ? ' · 系统生成' : ''}</div>
           <div className="mt-1 text-sm text-muted-foreground">{editable ? '请在此编辑完整资料；关闭后，品项表仅显示摘要。' : '只读查看品项完整资料。'}</div>
         </div>
       </div>
