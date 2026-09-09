@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 41
+const PDF_FORMAT_VERSION = 42
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -348,7 +348,7 @@ function noteEntries(order, includeVoidReason) {
       orderField(order, 'taiwanBusinessTransferAmount', 'taiwan_business_transfer_amount'),
       orderField(order, 'remainingTaiwanBusinessTransfer', 'remaining_taiwan_business_transfer'),
       '转拨',
-    ) + retentionSuffix(order)],,
+    ) + retentionSuffix(order)],
     ['备注', order.remark],
     ['作废原因', includeVoidReason ? orderField(order, 'voidReason', 'void_reason') : ''],
   ].filter(([, content]) => hasValue(content))
@@ -579,12 +579,13 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
     }
     y = itemRow(doc, fonts, item, index, columns, y, bottom - y)
   })
-  // 签名区防孤儿页：合计+资料+签核若在当前页排不下、但整体能放进新页，
-  // 则整段移到新页，避免签名条单独占一页（新页顶部的“签核归档”是续页标题）
+  // 签名区防孤儿页：仅当当前页剩余空间已不足一小截（<150pt）、且整段能放进新页时，才把
+  // “合计+资料+签核”整段移到新页；剩余空间尚可时让合计与资料卡片自然续排（资料区内部、
+  // 签核区各有分页保护），避免表格后剩半页空白却整段跳到新页
   const approvalSpace = approvalRows.length ? approvalBoxHeight(doc, fonts, approvalRows) + 24 : 0
   const tailSpace = 5 + 41 + detailsHeight(doc, fonts, order, items, Boolean(watermarkLabel)) + approvalSpace
   const freshPageCapacity = (PAGE.height - 45) - 58
-  if (y + tailSpace > bottom && tailSpace <= freshPageCapacity) {
+  if (y + tailSpace > bottom && bottom - y < 150 && tailSpace <= freshPageCapacity) {
     doc.addPage()
     y = header(doc, fonts, order, '客户订购申请单 · 签核归档')
   }
