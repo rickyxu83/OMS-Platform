@@ -3,8 +3,8 @@ const path = require('path')
 const PDFDocument = require('pdfkit')
 const { registerFonts } = require('../../service-orders/service-record-pdf')
 
-// 页眉 logo（与前端预览同一张 dunyang-mark.png），只读取一次
-const LOGO_PATH = path.join(__dirname, '..', 'assets', 'dunyang-mark.png')
+// 页眉 logo：用裁掉内部留白的 trimmed 版（原图 180×180 里墨迹只有 80×126，直接按框放会虚小且偏低）
+const LOGO_PATH = path.join(__dirname, '..', 'assets', 'dunyang-mark-trimmed.png')
 let logoBufferCache
 function getLogoBuffer() {
   if (logoBufferCache === undefined) {
@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 56
+const PDF_FORMAT_VERSION = 57
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -138,9 +138,10 @@ function header(doc, fonts, order, title = '客户订购申请单（境内单）
   const left = PAGE.margin
   const right = PAGE.width - PAGE.margin
   const logoImage = getLogoBuffer()
-  // LOGO 随全局字号同步放大（×1.2 = 31pt），页眉带高不变
-  if (logoImage) doc.image(logoImage, left, 15.5, { width: 31, height: 31 })
-  const textLeft = left + (logoImage ? 39 : 0)
+  // LOGO 与右侧两行文字的墨迹等高对齐（实测文字墨迹 22.6→49.0pt，高 26.4pt，中心 35.8pt；2026-09-10 佬反馈）
+  const LOGO_H = 26.4
+  if (logoImage) doc.image(logoImage, left, 35.8 - LOGO_H / 2, { height: LOGO_H })
+  const textLeft = left + (logoImage ? 46 : 0)
   text(doc, fonts, 'STARK (NINGBO) TECHNOLOGY INC.', textLeft, 19.5, { size: 7, color: MUTED })
   text(doc, fonts, '敦阳（宁波）科技有限公司', textLeft, 29.5, { size: 13, bold: true, color: '#402080' })
   text(doc, fonts, title, 280, 24, { size: 17, bold: true, color: '#111827', width: 282, align: 'center' })
