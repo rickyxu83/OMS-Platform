@@ -342,7 +342,8 @@ export function QuotationImportDialog({
       installOptions: [],
     }).items || []
   }, [preview, draftItems, effectivePricingMode, invoiceType])
-  const purchaseOnlyCandidates = previewItems.filter((item) => item.purchaseOnly)
+  // 供应商品项候选携带在 previewItems 中的原始下标：下拉 value 存原始下标，adoptCost 按它定位，避免过滤后序号错位带错成本（issue #135）
+  const purchaseOnlyCandidates = previewItems.map((item, index) => ({ item, index })).filter(({ item }) => item.purchaseOnly)
   const patchItem = (index: number, patch: Partial<MrItem>) => setDraftItems((current) => current.map((item, itemIndex) => {
     if (itemIndex !== index) return item
     const reviewed = new Set(item.reviewFields || [])
@@ -720,7 +721,7 @@ export function QuotationImportDialog({
                             <div className="md:col-span-3">
                               <Select onValueChange={(value) => adoptCost(index, Number(value))}>
                                 <SelectTrigger className="w-full bg-background"><SelectValue placeholder="未匹配到采购价：从供应商品项选择关联" /></SelectTrigger>
-                                <SelectContent>{purchaseOnlyCandidates.map((candidate, candidateIndex) => (
+                                <SelectContent>{purchaseOnlyCandidates.map(({ item: candidate, index: candidateIndex }) => (
                                   <SelectItem key={`${candidate.costSource}-${candidateIndex}`} value={String(candidateIndex)}>{candidate.name || candidate.oemSpec || candidate.description || '供应商品项'} · ¥ {money(candidate.costInclTax)}{candidate.vendor ? ` · ${candidate.vendor}` : ''}</SelectItem>
                                 ))}</SelectContent>
                               </Select>
