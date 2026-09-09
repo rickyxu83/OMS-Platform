@@ -433,10 +433,11 @@ function detailsHeight(doc, fonts, order, items, includeVoidReason = true) {
   return height + 2
 }
 
-function details(doc, fonts, order, items, y, includeVoidReason = true) {
+function details(doc, fonts, order, items, y, includeVoidReason = true, reserveBottom = 0) {
   const left = PAGE.margin
   const width = PAGE.width - PAGE.margin * 2
-  const bottom = PAGE.height - 32
+  // reserveBottom：为后续签核区预留的高度（防签名孤儿页），资料卡片分页按收紧后的底线判断
+  const bottom = PAGE.height - 32 - reserveBottom
   const entries = detailEntries(order, items)
   const notes = noteEntries(order, includeVoidReason)
   const groupOf = new Map()
@@ -602,7 +603,9 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
     y = header(doc, fonts, order, '客户订购申请单 · 签核归档')
   }
   y = totals(doc, fonts, order, items, y + 5)
-  y = details(doc, fonts, order, items, y, Boolean(watermarkLabel))
+  // 防签名孤儿页：给资料区预留签核区高度（含两侧底线差 13pt），排不进预留带的卡片/备注自动落到
+  // 下一页与签核作伴；签核区因此总能跟在最后一张卡片/备注后面，不会单独成页
+  y = details(doc, fonts, order, items, y, Boolean(watermarkLabel), approvalRows.length ? approvalSpace + 13 : 0)
   if (approvalRows.length) {
     const approvalSpace = approvalBoxHeight(doc, fonts, approvalRows) + 24
     if (y + approvalSpace > bottom) {
