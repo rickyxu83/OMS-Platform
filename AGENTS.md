@@ -85,6 +85,7 @@ bash scripts/deploy.sh tencent <target>
 - `gh pr create` 报 GraphQL 错误多为 GitHub 服务短暂抽风，稍后重试；**务必确认 PR 已合并（`gh pr view <编号> --json state,mergedAt`）再继续部署**
 - 分支合并后本地记得删掉已合并的本地分支（`git branch -d <分支名>`，远端已被 --delete-branch 删除）
 - 部署前 `git status` 确认工作区干净（含 `.playwright-cli/` 等临时目录，需要先清理）
+- **多线并行时部署 rn 前先 `git fetch origin && git merge origin/main`**：RN 一次只挂一份代码，只要各线都基于最新 main，互部署就不会覆盖对方**已合并**的内容。注意这只保住已合并部分——对方**未合并**的实验分支内容被覆盖属预期行为；需要并行验收多个未合并分支时，先协调部署顺序，别闷头互刷
 
 **生产热修**：从 main 切 `hotfix/<描述>` → 修复 → PR 合 main → 部署生产（可跳过测试服，但事后把修复在测试服验证一遍）。
 
