@@ -218,11 +218,11 @@ function canWithdraw(order, user) {
 }
 
 // 催办权限（spec 008）：填单人/业务负责人/本单助理（含助理主管管辖范围）可催办
-function canRemind(order, user, assistantIds, approvals = []) {
+function canRemind(order, user, assistantIds, approvals = [], assistantUserId = null) {
   if (order.status !== 'in_review') return false
   if (Number(order.createdBy) === Number(user.id) || Number(order.salesOwnerId) === Number(user.id)) return true
   const assistantStep = approvals.find((approval) => approval.stepKey === 'assistant')
-  const assistantAssigneeId = Number(assistantStep?.assigneeUserId) || null
+  const assistantAssigneeId = Number(assistantStep?.assigneeUserId) || Number(assistantUserId) || null
   return assistantAssigneeId !== null && (assistantAssigneeId === Number(user.id) || assistantIds.includes(assistantAssigneeId))
 }
 
@@ -633,7 +633,7 @@ async function list(req, res) {
   }
   res.json({ items: rows.map((row) => {
     const order = orderPayload(row)
-    return { ...order, approvalSteps: approvalsByMr[row.id] || [], permissions: { canEdit: canEdit(order, req.user, assistantIds), canDelete: canDelete(order, req.user, assistantIds), canVoid: canVoid(order, req.user, assistantIds), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: canWithdraw(order, req.user), canPurchase: canPurchase(order, req.user), canFillContractNo: canFillContractNo(order, req.user, assistantIds) } }
+    return { ...order, approvalSteps: approvalsByMr[row.id] || [], permissions: { canEdit: canEdit(order, req.user, assistantIds), canDelete: canDelete(order, req.user, assistantIds), canVoid: canVoid(order, req.user, assistantIds), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: canWithdraw(order, req.user), canRemind: canRemind(order, req.user, assistantIds, [], row.assistant_user_id), canPurchase: canPurchase(order, req.user), canFillContractNo: canFillContractNo(order, req.user, assistantIds) } }
   }) })
 }
 

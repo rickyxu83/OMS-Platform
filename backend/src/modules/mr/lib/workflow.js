@@ -785,6 +785,15 @@ async function listApprovalTasks(userId, view = 'pending', extraAssigneeIds = []
      ) AS count`,
     { userId, ...assigneeParams },
   )
+  // 催办节流态（spec 008）：待办中心「我发起的」催办按钮置灰用
+  const lastRemindedByMr = {}
+  if (mrIds.length) {
+    const remindedRows = await query(
+      `SELECT id, last_reminded_at FROM mr_orders WHERE id IN (${mrIds.map(() => '?').join(',')})`,
+      mrIds,
+    )
+    for (const row of remindedRows) lastRemindedByMr[row.id] = row.last_reminded_at || null
+  }
   return { items: rows.map((row) => ({
     id: row.id,
     businessType: row.business_type,
@@ -801,6 +810,7 @@ async function listApprovalTasks(userId, view = 'pending', extraAssigneeIds = []
     createdAt: row.created_at,
     completedAt: row.completed_at,
     approvalSteps: row.business_type === 'mr' ? (approvalsByMr[row.business_id] || []) : [],
+    lastRemindedAt: row.business_type === 'mr' ? (lastRemindedByMr[row.business_id] ?? null) : null,
   })), pendingCount: Number(countRows[0]?.count || 0) }
 }
 
