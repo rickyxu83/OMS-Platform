@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 40
+const PDF_FORMAT_VERSION = 41
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -168,20 +168,22 @@ function itemDescription(item) {
 function itemColumns(items) {
   const definitions = [
     { key: 'index', label: '序号', weight: 3, align: 'center', optional: false, present: () => true, content: (_item, index) => index + 1 },
-    { key: 'companyPartNo', label: '公司料号', weight: 7, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'companyPartNo', 'company_part_no')), content: (item) => itemField(item, 'companyPartNo', 'company_part_no') },
-    { key: 'oemSpec', label: '原厂规格', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'oemSpec', 'oem_spec')), content: (item) => itemField(item, 'oemSpec', 'oem_spec') },
-    { key: 'description', label: '品名及描述', weight: 18, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
-    { key: 'warranty', label: '保固与服务', weight: 8, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')), content: (item) => itemField(item, 'warrantyService', 'warranty_service') },
-    { key: 'install', label: '装机方', weight: 6, align: 'center', optional: true, present: (item) => hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => itemField(item, 'installBy', 'install_by') },
+    { key: 'partMerged', label: '公司料号 / 原厂规格', weight: 12, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'companyPartNo', 'company_part_no')) || hasValue(itemField(item, 'oemSpec', 'oem_spec')), content: (item) => [itemField(item, 'companyPartNo', 'company_part_no'), itemField(item, 'oemSpec', 'oem_spec')].filter(hasValue).join('\n') },
+    { key: 'description', label: '品名及描述', weight: 22, align: 'left', optional: false, present: (item) => hasValue(itemDescription(item)), content: itemDescription },
+    { key: 'warrantyInstall', label: '保固 / 装机', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'warrantyService', 'warranty_service')) || hasValue(itemField(item, 'installBy', 'install_by')), content: (item) => [itemField(item, 'warrantyService', 'warranty_service'), hasValue(itemField(item, 'installBy', 'install_by')) ? `装机：${itemField(item, 'installBy', 'install_by')}` : ''].filter(hasValue).join('\n') },
     { key: 'qty', label: '数量', weight: 4, align: 'center', optional: false, present: (item) => hasValue(item.qty), content: (item) => item.qty },
-    { key: 'unitPrice', label: '未税单价', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
-    { key: 'subtotal', label: '未税小计 / 毛利率', weight: 9, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
-    { key: 'vendor', label: '供应商', weight: 8, align: 'center', optional: true, present: (item) => hasValue(item.vendor), content: (item) => abbreviateVendor(item.vendor) },
-    { key: 'costExcludingTax', label: '采购成本（未税）', weight: 8, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')), content: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '' },
-    { key: 'costInclTax', label: '采购成本（含税）', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join('\n') },
-    { key: 'purchase', label: '采购单号', weight: 9, align: 'left', optional: true, present: (item) => hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')), content: (item) => itemField(item, 'purchaseOrderNo', 'purchase_order_no') },
-    // 出货单号列固定保留：系统已填则印出，未填留白供出货时手写（与打印页同口径）
-    { key: 'shipment', label: '出货单号', weight: 6, align: 'left', optional: false, present: () => true, content: (item) => itemField(item, 'shipmentNo', 'shipment_no') },
+    { key: 'unitPrice', label: '未税单价', weight: 9, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')), content: (item) => hasValue(itemField(item, 'unitPrice', 'unit_price')) ? `¥ ${money(itemField(item, 'unitPrice', 'unit_price'))}` : '' },
+    { key: 'subtotal', label: '未税小计 / 毛利率', weight: 10, align: 'right', optional: false, present: (item) => hasValue(item.subtotal), content: (item) => [`¥ ${money(item.subtotal)}`, hasValue(itemField(item, 'marginRate', 'margin_rate')) ? `${Number(itemField(item, 'marginRate', 'margin_rate')).toFixed(2)}%` : ''].filter(hasValue).join('\n') },
+    { key: 'costBoth', label: '采购成本（未税 / 含税）', weight: 12, align: 'right', optional: false, present: (item) => hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) || hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) || hasValue(itemField(item, 'taxRate', 'tax_rate')), content: (item) => [
+      hasValue(itemField(item, 'costExcludingTax', 'cost_excluding_tax')) ? `¥ ${money(itemField(item, 'costExcludingTax', 'cost_excluding_tax'))}` : '',
+      [hasValue(itemField(item, 'costInclTax', 'cost_incl_tax')) ? `含税 ¥ ${money(itemField(item, 'costInclTax', 'cost_incl_tax'))}` : '', hasValue(itemField(item, 'taxRate', 'tax_rate')) ? `${value(itemField(item, 'taxRate', 'tax_rate'))}%` : ''].filter(hasValue).join(' · '),
+    ].filter(hasValue).join('\n') },
+    // 供应商/单号列固定保留：出货单号有值印出、未填留白供出货时手写；供应商与采购单号有值才印（与打印页同口径）
+    { key: 'vendorShip', label: '供应商 / 单号', weight: 11, align: 'left', optional: false, present: () => true, content: (item) => [
+      hasValue(item.vendor) ? abbreviateVendor(item.vendor) : '',
+      hasValue(itemField(item, 'purchaseOrderNo', 'purchase_order_no')) ? `采购 ${itemField(item, 'purchaseOrderNo', 'purchase_order_no')}` : '',
+      hasValue(itemField(item, 'shipmentNo', 'shipment_no')) ? `出货 ${itemField(item, 'shipmentNo', 'shipment_no')}` : '出货',
+    ].filter(hasValue).join('\n') },
   ]
   const visible = definitions.filter((column) => !column.optional || items.some(column.present))
   const available = PAGE.width - PAGE.margin * 2
