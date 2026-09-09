@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useNavigate, useParams } from 'react-router-dom'
 import { AlertTriangle, ArrowLeft, BellRing, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, Paperclip, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Undo2, Upload, X, Zap } from 'lucide-react'
 import { toast } from 'sonner'
+import { SHOW_MR_QUOTE_V2 } from '@/lib/feature-flags'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -1452,9 +1453,11 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                 <Button variant="outline" size="sm" onClick={() => { setImportEngine('v1'); setImportOpen(true) }}>
                   <FileSpreadsheet className="mr-2 size-4" />报价导入
                 </Button>
+                {SHOW_MR_QUOTE_V2 ? (
                 <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-50" title="实验引擎 v2：全格式 AI 优先识别 + 规则教练，与当前版可同文件对比" onClick={() => { setImportEngine('v2'); setImportOpen(true) }}>
                   <Zap className="mr-2 size-4" />新版识别（实验）
                 </Button>
+                ) : null}
               </div>
             ) : null}
           >
