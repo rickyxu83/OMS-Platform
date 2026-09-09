@@ -123,6 +123,17 @@ function line(doc, x1, y1, x2, y2, color = BORDER) {
   doc.strokeColor(color).lineWidth(0.6).moveTo(x1, y1).lineTo(x2, y2).stroke()
 }
 
+// 分节标题：编号+名称粗体，后缀计数浅灰小字（与打印网页版 01/02/03 分节一致）
+function sectionTitle(doc, fonts, y, label, suffix = '') {
+  text(doc, fonts, label, PAGE.margin, y, { size: 10, bold: true, color: '#111827' })
+  if (suffix) {
+    doc.font(fonts.bold).fontSize(Math.round(10 * FONT_SCALE * 10) / 10)
+    const labelWidth = doc.widthOfString(label)
+    text(doc, fonts, suffix, PAGE.margin + labelWidth + 5, y + 1.2, { size: 7.5, color: MUTED })
+  }
+  return y + 17
+}
+
 function header(doc, fonts, order, title = '客户订购申请单（境内单）') {
   const left = PAGE.margin
   const right = PAGE.width - PAGE.margin
@@ -133,33 +144,32 @@ function header(doc, fonts, order, title = '客户订购申请单（境内单）
   text(doc, fonts, 'STARK (NINGBO) TECHNOLOGY INC.', textLeft, 19.5, { size: 7, color: MUTED })
   text(doc, fonts, '敦阳（宁波）科技有限公司', textLeft, 29.5, { size: 13, bold: true, color: '#402080' })
   text(doc, fonts, title, 280, 24, { size: 17, bold: true, color: '#111827', width: 282, align: 'center' })
-  text(doc, fonts, `V${Number(order.versionNo || order.version_no || 0)}`, right - 112, 21, { size: 9, bold: true, width: 112, align: 'right' })
   text(doc, fonts, `Ctrl.No: ${value(order.ctrlNo || order.ctrl_no)}`, right - 190, 34, { size: 9, width: 190, align: 'right' })
-  line(doc, left, 50, right, 50, '#111')
-  return 58
+  // 标题与分隔线之间留足呼吸空间（字号全局放大后原 50 位置视觉上贴字）
+  line(doc, left, 54, right, 54, '#111')
+  return 62
 }
 
 function summary(doc, fonts, order, y) {
   const left = PAGE.margin
   const right = PAGE.width - PAGE.margin
-  const width = (right - left) / 4
+  // 页眉摘要只留最关键的 客户/交付/状态 三栏；客户 P/O、交付地点、交易条款（付款条件/发票类型/开票内容）
+  // 与版本号一律下移或去重到下方资料区——灰色小字打印不清，且头部信息过于分散（用户反馈 2026-09-09）
+  const width = (right - left) / 3
   const statusLabels = { draft: '草稿', in_review: '签核中', approved: '已通过', rejected: '已驳回', voided: '已作废' }
   const statusLabel = statusLabels[order.status || order.status_code] || value(order.status)
-  const invoiceLine = [value(order.invoiceType || order.invoice_type), value(order.billingContent || order.billing_content)].filter(hasValue).join(' · ')
   const cells = [
-    { label: '客户 / CUSTOMER', main: value(order.customerName || order.customer_name, '-'), sub: value(order.customerPo || order.customer_po) ? '客户 P/O：' + value(order.customerPo || order.customer_po) : '' },
-    { label: '交付 / DELIVERY', main: value(order.latestDeliveryDate || order.latest_delivery_date, '-'), sub: value(orderField(order, 'deliveryLocation', 'delivery_location')) ? '交付地点：' + value(orderField(order, 'deliveryLocation', 'delivery_location')) : '' },
-    { label: '交易条款 / TERMS', main: value(order.paymentTerms || order.payment_terms, '-'), sub: invoiceLine ? '发票类型 / 开票内容：' + invoiceLine : '' },
-    { label: '状态 / STATUS', main: statusLabel, sub: 'V' + Number(order.versionNo || order.version_no || 0) },
+    { label: '客户 / CUSTOMER', main: value(order.customerName || order.customer_name, '-') },
+    { label: '交付 / DELIVERY', main: value(order.latestDeliveryDate || order.latest_delivery_date, '-') },
+    { label: '状态 / STATUS', main: statusLabel },
   ]
   cells.forEach((cell, index) => {
     const x = left + width * index
-    text(doc, fonts, cell.label, x + 6, y + 3, { size: 6.3, color: MUTED, width: width - 12, ellipsis: true })
-    text(doc, fonts, cell.main, x + 6, y + 13, { size: 8.5, bold: true, width: width - 12, height: 14, ellipsis: true })
-    if (cell.sub) text(doc, fonts, cell.sub, x + 6, y + 25, { size: 6, color: MUTED, width: width - 12, ellipsis: true })
+    text(doc, fonts, cell.label, x + 6, y + 2, { size: 6.3, color: MUTED, width: width - 12, ellipsis: true })
+    text(doc, fonts, cell.main, x + 6, y + 11.5, { size: 8.5, bold: true, width: width - 12, height: 13, ellipsis: true })
   })
-  line(doc, left, y + 36, right, y + 36, '#e5e7eb')
-  return y + 44
+  line(doc, left, y + 26, right, y + 26, '#e5e7eb')
+  return y + 32
 }
 
 function itemField(item, camel, snake = camel) {
@@ -274,10 +284,11 @@ function orderField(order, camel, snake = camel) {
   return order[camel] ?? order[snake]
 }
 
-const HEADER_DUPLICATES = new Set(['客户名称', '客户 P/O', '业务负责人', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期', '发票类型', '开票内容', '付款条件', '交付地点'])
+// 页眉已精简为 客户/交付/状态 三栏：客户 P/O、交付地点、付款条件、发票类型、开票内容、业务负责人均归入下方资料区
+const HEADER_DUPLICATES = new Set(['客户名称', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期'])
 
 const DETAIL_GROUPS = [
-  ['客户与合同', ['客户联系人', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期']],
+  ['客户与合同', ['客户联系人', '客户 P/O', '业务负责人', '项目分类', '合同编号', '罚则说明', '填表日期']],
   ['交易与开票', ['计价模式', '发票类型', '开票方式', '开票内容', '开票/收款时间', '付款条件', '付款条件说明']],
   ['交付与验收', ['是否允许分批交付', '验收条件', '验收说明', '装机承担方', '维护承担方', '交付地点', '交付条款', '出货单编号']],
   ['联系与收件', ['采购联系人', '采购联系电话', '采购联系邮箱', '收货人', '收货联系电话', '收货邮箱', '发票收件人', '发票收件电话', '发票收件邮箱']],
@@ -444,8 +455,7 @@ function details(doc, fonts, order, items, y, includeVoidReason = true, reserveB
   for (const [group, labels] of DETAIL_GROUPS) for (const label of labels) groupOf.set(label, group)
   const grouped = DETAIL_GROUPS.map(([group]) => [group, entries.filter(([label]) => groupOf.get(label) === group)]).filter(([, list]) => list.length)
   const drawTitle = () => {
-    text(doc, fonts, '订购与交付资料', left, y, { size: 10, bold: true, color: '#111827' })
-    y += 17
+    y = sectionTitle(doc, fonts, y, '02 订购与交付资料', `· 共 ${entries.length + notes.length} 项`)
   }
   const newPage = () => {
     doc.addPage()
@@ -498,8 +508,8 @@ function approvalBoxHeight(doc, fonts, rows) {
 }
 
 function approvals(doc, fonts, rows, y) {
-  text(doc, fonts, '电子签核记录', PAGE.margin, y, { size: 10, bold: true, color: '#111827' })
-  y += 16
+  y = sectionTitle(doc, fonts, y, '03 电子签核记录')
+  y -= 1
   const width = (PAGE.width - PAGE.margin * 2) / Math.max(1, rows.length)
   const boxHeight = approvalBoxHeight(doc, fonts, rows)
   rows.forEach((approval, index) => {
@@ -579,6 +589,7 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
   const columns = itemColumns(items)
   const bottom = PAGE.height - 45
   let y = summary(doc, fonts, order, header(doc, fonts, order))
+  y = sectionTitle(doc, fonts, y, '01 采购与销售明细', `· ${items.length} 个品项`)
   y = itemHeader(doc, fonts, columns, y)
   items.forEach((item, index) => {
     const needed = itemRowHeight(doc, fonts, item, index, columns)
@@ -593,7 +604,7 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
   // 签核区各有分页保护），避免表格后剩半页空白却整段跳到新页
   const approvalSpace = approvalRows.length ? approvalBoxHeight(doc, fonts, approvalRows) + 24 : 0
   const tailSpace = 5 + 41 + detailsHeight(doc, fonts, order, items, Boolean(watermarkLabel)) + approvalSpace
-  const freshPageCapacity = (PAGE.height - 45) - 58
+  const freshPageCapacity = (PAGE.height - 45) - 62
   if (y + tailSpace > bottom && bottom - y < 150 && tailSpace <= freshPageCapacity) {
     doc.addPage()
     y = header(doc, fonts, order, '客户订购申请单 · 签核归档')
