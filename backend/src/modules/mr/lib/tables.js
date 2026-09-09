@@ -283,6 +283,12 @@ async function ensureTables() {
       KEY idx_mr_recognition_rules_enabled (enabled, scope_type)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  // 活性信号（spec 009 E2E）：规则最近一次命中时间，供“长期未命中建议清理”
+  const ruleColumns = new Set((await query(
+    `SELECT column_name AS name FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'mr_recognition_rules'`,
+  )).map((row) => row.name))
+  if (!ruleColumns.has('last_matched_at')) await query('ALTER TABLE mr_recognition_rules ADD COLUMN last_matched_at DATETIME NULL')
   // 报价表头布局模板：从纠错样本学习“文件模式 + 表头签名 → 列语义映射”，同模板新文件识别时按模板取数
   await query(
     `CREATE TABLE IF NOT EXISTS mr_layout_templates (

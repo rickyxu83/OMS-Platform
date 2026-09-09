@@ -288,9 +288,13 @@ export function QuotationImportDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [coachOpen, setCoachOpen] = useState(false)
+  // 告警区默认折叠（佬反馈：文字太多懒得看），点击展开
+  const [warningsExpanded, setWarningsExpanded] = useState(false)
   // 教练变换撤销栈：每次 AI 调整预览前压入当前快照，支持「撤销上一步」
   const coachUndoRef = useRef<MrItem[][]>([])
   const [coachCanUndo, setCoachCanUndo] = useState(false)
+  // 「全部恢复原样」基线：教练对话打开那一刻的品项快照
+  const coachBaselineRef = useRef<MrItem[] | null>(null)
   // 识别引擎：v1=当前规则+AI；v2=实验引擎（全格式 AI 优先，spec 009）。previewEngine 记录当前预览由哪个引擎产出
   const [engine, setEngine] = useState<'v1' | 'v2'>(initialEngine)
   const [previewEngine, setPreviewEngine] = useState<'v1' | 'v2' | null>(null)
@@ -556,7 +560,10 @@ export function QuotationImportDialog({
       <DialogContent className="w-[calc(100vw-2rem)] max-h-[92vh] max-w-6xl overflow-y-auto sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>报价文件与品项导入</DialogTitle>
-          <DialogDescription>请在左侧添加销售报价或客户订单，在右侧添加供应商报价。销售报价/客户订单用于识别客户、销售金额、客户 P/O、交付与付款信息；供应商报价用于匹配采购价。未匹配到销售报价的供应商报价品项（如补充给客户的项目）会作为待填售价品项一并导入，导入后请在“校对品项”中填写售价。</DialogDescription>
+          <DialogDescription>
+            左侧传销售报价/客户订单，右侧传供应商报价。
+            <span title="销售报价/客户订单用于识别客户、销售金额、客户 P/O、交付与付款信息；供应商报价用于匹配采购价。未匹配到销售报价的供应商报价品项（如补充给客户的项目）会作为待填售价品项一并导入，导入后请在“校对品项”中填写售价。" className="cursor-help text-muted-foreground"> ⓘ 详细说明</span>
+          </DialogDescription>
         </DialogHeader>
 
         {!editable && storedFiles.length ? (
@@ -618,7 +625,12 @@ export function QuotationImportDialog({
                     size="sm"
                     disabled={loading}
                     title="用大白话告诉 AI 你想要的识别效果，满意后可沉淀为长期规则"
-                    onClick={() => setCoachOpen(true)}
+                    onClick={() => {
+                      coachBaselineRef.current = JSON.parse(JSON.stringify(draftItems))
+                      coachUndoRef.current = []
+                      setCoachCanUndo(false)
+                      setCoachOpen(true)
+                    }}
                   >
                     效果不对？告诉 AI
                   </Button>
@@ -674,11 +686,18 @@ export function QuotationImportDialog({
               </div>
               </section>
             {preview.warnings.length || taxConflictCount || ignoredSingleIntegrationItems ? (
-              <div className="border-l-4 border-amber-500 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-                <div className="mb-1 flex items-center gap-2 font-medium"><AlertTriangle className="size-4" />需要人工核对</div>
-                {preview.warnings.map((warning) => <div key={warning}>· {warning}</div>)}
-                {taxConflictCount ? <div>· 当前所选发票类型的适用税率为 6%，但有 {taxConflictCount} 个品项识别出的采购税率为 13%；确认导入后，系统将按既定规则调整为 6%。</div> : null}
-                {ignoredSingleIntegrationItems ? <div>· 当前采用单项系统集成模式，仅导入首个品项作为主项；其余 {ignoredSingleIntegrationItems} 个品项将不予导入，系统将自动生成“技术服务”项。</div> : null}
+              <div className="border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <button type="button" className="flex w-full items-center gap-2 font-medium" onClick={() => setWarningsExpanded((value) => !value)}>
+                  <AlertTriangle className="size-4" />需要人工核对（{preview.warnings.length + (taxConflictCount ? 1 : 0) + (ignoredSingleIntegrationItems ? 1 : 0)} 条提示）
+                  <span className="ml-auto text-xs">{warningsExpanded ? '收起 ▲' : '展开 ▼'}</span>
+                </button>
+                {warningsExpanded ? (
+                  <div className="mt-1">
+                    {preview.warnings.map((warning) => <div key={warning}>· {warning}</div>)}
+                    {taxConflictCount ? <div>· 当前所选发票类型的适用税率为 6%，但有 {taxConflictCount} 个品项识别出的采购税率为 13%；确认导入后，系统将按既定规则调整为 6%。</div> : null}
+                    {ignoredSingleIntegrationItems ? <div>· 当前采用单项系统集成模式，仅导入首个品项作为主项；其余 {ignoredSingleIntegrationItems} 个品项将不予导入，系统将自动生成“技术服务”项。</div> : null}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -804,6 +823,13 @@ export function QuotationImportDialog({
             const previous = coachUndoRef.current.pop()
             if (previous) setDraftItems(previous)
             setCoachCanUndo(coachUndoRef.current.length > 0)
+          }}
+          canRestore={Boolean(coachBaselineRef.current) && coachCanUndo}
+          onRestoreAll={() => {
+            if (coachBaselineRef.current) setDraftItems(coachBaselineRef.current)
+            coachUndoRef.current = []
+            setCoachCanUndo(false)
+            toast.success('已恢复到对话开始前的品项')
           }}
         />
       </DialogContent>

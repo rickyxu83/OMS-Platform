@@ -55,6 +55,63 @@ const DISTILL_SYSTEM = [
   '4. ruleText 必须让非技术人员看懂这条规则以后会干什么',
 ].join('\n')
 
+const FEEDBACK_DISTILL_SYSTEM = [
+  '你是识别规则蒸馏助手。用户在导入报价单后人工修正了识别结果，给你若干「字段改前→改后」的 diff 记录。',
+  '请判断这些修正是否包含可复用的规律。严格只输出一个合法 JSON 对象：',
+  '{ "cards": [ { "scopeType": "category" | "vendor" | "global", "scopeValue": "", "actionType": "summarize_components" | "prompt_rule", "params": null, "ruleText": "", "promptText": "" } ] }',
+  '',
+  '原则：',
+  '1. 只是改价格/数量/一次性内容（如项目名、日期、单号）→ cards 为空数组，这类修正没有复用价值',
+  '2. 有复用价值的规律才产卡（如“供应商全称改简称”“描述统一改成某种写法”“某类品项只留某些信息”），最多 2 条',
+  '3. 能从 diff 推断供应商的，scopeType=vendor；针对某类产品的，scopeType=category；两者都不是才 global',
+  '4. actionType 绝大多数应为 prompt_rule（描述/写法类）；只有“组件明细只留某些类别”才用 summarize_components（params.keep 从 [cpu,memory,disk,raid,nic,psu,rail,warranty,software] 选）',
+  '5. ruleText 让非技术人员能看懂；promptText 是给识别 AI 的指令，简洁明确',
+].join('\n')
+
+/**
+ * 从人工修正 diff 异步蒸馏规则候选（spec 009 E2E：保存/确认导入那一刻触发，候选一律待确认）。
+ * @param {Array} entries [{ fileName, role, diff, sampleItems }] diff 为 [{field,before,after}] 数组
+ * @returns {Promise<Array>} 规则卡数组（可能为空）
+ */
+async function distillFeedbackToRuleCards(entries, { fetchImpl = fetch } = {}) {
+  if (!env.ai.quoteRecognitionEnabled) return []
+  const conn = await resolveAiConnection()
+  if (!conn.apiUrl || !conn.apiKey || !conn.model) return []
+  const compact = entries.slice(0, 6).map((entry) => ({
+    file: String(entry.fileName || '').slice(0, 80),
+    role: entry.role || '',
+    diffs: (entry.diff || []).slice(0, 20).map((d) => ({
+      field: d.field,
+      before: String(d.before ?? '').slice(0, 120),
+      after: String(d.after ?? '').slice(0, 120),
+    })),
+    items: (entry.sampleItems || []).slice(0, 5).map((item) => String(item.name || item.description || '').slice(0, 60)),
+  }))
+  const messages = [
+    { role: 'system', content: FEEDBACK_DISTILL_SYSTEM },
+    { role: 'user', content: JSON.stringify(compact) },
+  ]
+  const content = await callAi(messages, env.ai.quoteTimeoutMs, fetchImpl, conn)
+  const payload = extractJson(content)
+  const cards = Array.isArray(payload?.cards) ? payload.cards : []
+  return cards.slice(0, 2).map((card) => {
+    const scopeType = ['category', 'vendor', 'global'].includes(card.scopeType) ? card.scopeType : 'global'
+    const actionType = card.actionType === 'summarize_components' && Array.isArray(card.params?.keep) && card.params.keep.length
+      ? 'summarize_components'
+      : 'prompt_rule'
+    return {
+      scopeType,
+      scopeValue: String(card.scopeValue || '').slice(0, 128),
+      actionType,
+      params: actionType === 'summarize_components'
+        ? { keep: card.params.keep.filter((k) => Object.keys(CATEGORY_LABELS).includes(k) && k !== 'other') }
+        : null,
+      ruleText: String(card.ruleText || '').slice(0, 512),
+      promptText: actionType === 'prompt_rule' ? String(card.promptText || card.ruleText || '').slice(0, 500) : '',
+    }
+  }).filter((card) => card.ruleText)
+}
+
 /** 品项快照（发给 AI 的上下文，裁剪掉大字段，保留序号/品名/描述/组件数） */
 function itemsSnapshot(items) {
   return (items || []).slice(0, 30).map((item, index) => ({
@@ -188,4 +245,4 @@ async function coachDistill(items, history, { fetchImpl = fetch } = {}) {
   }
 }
 
-module.exports = { coachChat, coachDistill, applyTransform, itemsSnapshot }
+module.exports = { coachChat, coachDistill, applyTransform, itemsSnapshot, distillFeedbackToRuleCards }

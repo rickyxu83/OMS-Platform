@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, BellRing, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, Paperclip, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Undo2, Upload, X, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, BellRing, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, Paperclip, Pencil, Plus, Save, Search, Send, ShieldCheck, Sparkles, Trash2, Undo2, Upload, X, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { SHOW_MR_QUOTE_V2 } from '@/lib/feature-flags'
 import { Button } from '@/components/ui/button'
@@ -60,6 +60,7 @@ import {
   textValue,
 } from './mr-ui'
 import { QuotationImportDialog } from './QuotationImportDialog'
+import { QuoteCoachDialog } from './QuoteCoachDialog'
 import { OfficePreviewContent, isUnsupportedOfficeName, officePreviewType } from '@/components/OfficePreviewContent'
 import { PdfPreview } from '@/components/PdfPreview'
 
@@ -397,6 +398,11 @@ export function MrFormPage() {
   const [error, setError] = useState('')
   const [errors, setErrors] = useState<ValidationError[]>([])
   const [importOpen, setImportOpen] = useState(false)
+  // 表单页教练（spec 009 E2E）：正式导入后仍可叫 AI 改品项；baseline 为对话打开时的快照，供「全部恢复原样」
+  const [coachOpen, setCoachOpen] = useState(false)
+  const coachUndoRef = useRef<MrItem[][]>([])
+  const coachBaselineRef = useRef<MrItem[] | null>(null)
+  const [coachCanUndo, setCoachCanUndo] = useState(false)
   // 报价识别引擎：v1=当前版；v2=实验引擎（全格式 AI 优先，spec 009），由「新版识别（实验）」按钮进入
   const [importEngine, setImportEngine] = useState<'v1' | 'v2'>('v1')
 /** Office 附件在线预览：blob 为 null 表示正在加载 */
@@ -1450,6 +1456,16 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                     <Plus className="mr-2 size-4" />添加品项
                   </Button>
                 ) : null}
+                {SHOW_MR_QUOTE_V2 ? (
+                <Button variant="outline" size="sm" title="用大白话让 AI 调整当前品项（如：明细只留 CPU/内存/硬盘）" disabled={!calculated.items?.length} onClick={() => {
+                  coachBaselineRef.current = JSON.parse(JSON.stringify(calculated.items || []))
+                  coachUndoRef.current = []
+                  setCoachCanUndo(false)
+                  setCoachOpen(true)
+                }}>
+                  <Sparkles className="mr-2 size-4" />AI 帮我改
+                </Button>
+                ) : null}
                 <Button variant="outline" size="sm" onClick={() => { setImportEngine('v1'); setImportOpen(true) }}>
                   <FileSpreadsheet className="mr-2 size-4" />报价导入
                 </Button>
@@ -1711,6 +1727,33 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
           onApply={(result, selectedMode) => void applyQuotationImport(result, selectedMode)}
           onStoredFilesChange={(files) => patch({ quotationFiles: files })}
           onLinkedItemsRemoved={handleLinkedItemsRemoved}
+        />
+      ) : null}
+
+      {id ? (
+        <QuoteCoachDialog
+          orderId={id}
+          open={coachOpen}
+          items={calculated?.items || []}
+          onOpenChange={setCoachOpen}
+          canUndo={coachCanUndo}
+          onItemsTransformed={(next) => {
+            coachUndoRef.current.push(JSON.parse(JSON.stringify(calculated?.items || [])))
+            setCoachCanUndo(true)
+            patch({ items: next as unknown as MrItem[] })
+          }}
+          onUndo={() => {
+            const previous = coachUndoRef.current.pop()
+            if (previous) patch({ items: previous })
+            setCoachCanUndo(coachUndoRef.current.length > 0)
+          }}
+          canRestore={Boolean(coachBaselineRef.current) && coachCanUndo}
+          onRestoreAll={() => {
+            if (coachBaselineRef.current) patch({ items: coachBaselineRef.current })
+            coachUndoRef.current = []
+            setCoachCanUndo(false)
+            toast.success('已恢复到对话开始前的品项')
+          }}
         />
       ) : null}
 

@@ -305,6 +305,8 @@ export interface MrRecognitionRule {
   source: 'coach' | string
   enabled: boolean
   matchCount: number
+  /** 最近一次命中时间（spec 009 E2E 活性信号） */
+  lastMatchedAt?: string | null
   createdBy?: number | null
   createdAt?: string
   updatedAt?: string

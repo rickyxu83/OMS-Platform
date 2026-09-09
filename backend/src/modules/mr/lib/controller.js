@@ -63,7 +63,7 @@ const { applyQuotationLayoutRule } = require('./quotation-layout-rules')
 const { mergeQuotations } = require('./quotation-merge')
 const { recognizeQuotationWithAi, applyAiEntityKeys } = require('./quotation-ai-parser')
 const { applyStructuredRules } = require('./quotation-rules')
-const { coachChat, coachDistill } = require('./quote-coach')
+const { coachChat, coachDistill, distillFeedbackToRuleCards } = require('./quote-coach')
 const {
   constants,
   STEP_ROLES,
@@ -678,6 +678,11 @@ async function update(req, res) {
   const normalized = normalizeOrder(req.body || {})
   await resolveReferences(normalized.order, req.user)
   const params = dbParams(normalized.order)
+  // 表单编辑学习（spec 009 E2E）：保存前取旧品项，保存后 diff 文本字段，有实质修改即异步蒸馏规则候选
+  const oldItems = await query(
+    'SELECT name, description, vendor, oem_spec AS oemSpec FROM mr_items WHERE mr_id = :id ORDER BY row_no',
+    { id: req.params.id },
+  )
   await transaction(async (connection) => {
     const existing = await loadLockedOrder(connection, req.params.id)
     if (!canEdit(existing, req.user, assistantIds)) throw forbidden('当前状态或身份不允许编辑该 MR 申请')
@@ -690,6 +695,28 @@ async function update(req, res) {
     )
     await replaceItems(connection, req.params.id, normalized.items)
   })
+  // 表单编辑 diff → 规则候选（仅文本类字段：品名/描述/供应商/料号；价格数量属一次性内容不学）
+  try {
+    if (oldItems.length) {
+      const newItems = normalized.items || []
+      const diff = []
+      const n = Math.max(oldItems.length, newItems.length)
+      for (let i = 0; i < n; i += 1) {
+        const before = oldItems[i]
+        const after = newItems[i]
+        for (const [field, key] of [['name', 'name'], ['description', 'description'], ['vendor', 'vendor'], ['oemSpec', 'oemSpec']]) {
+          const b = String(before?.[key] ?? '').trim()
+          const a = String(after?.[key] ?? '').trim()
+          if (b !== a) diff.push({ rowNo: i + 1, field, before: b.slice(0, 200), after: a.slice(0, 200) })
+        }
+      }
+      if (diff.length) {
+        distillRuleCandidatesAsync([{ fileName: `MR#${req.params.id} 表单编辑`, role: 'form_edit', diff, sampleItems: newItems }], req.user?.id)
+      }
+    }
+  } catch (error) {
+    console.warn('[mr] 表单编辑学习失败：', error?.message || error)
+  }
   res.json(await loadDetail(req.params.id, req.user))
 }
 
@@ -1522,6 +1549,7 @@ async function recordRecognitionFeedback(mrId, { body = {}, uploads = [], stored
 
   let applied = 0
   let feedback = 0
+  const distillEntries = []
   for (const [fileName, { role, items }] of byFile) {
     const fileHash = hashByName[fileName]
     const normalized = items
@@ -1568,7 +1596,10 @@ async function recordRecognitionFeedback(mrId, { body = {}, uploads = [], stored
       },
     )
     feedback += 1
+    distillEntries.push({ fileName, role, diff, sampleItems: normalized })
   }
+  // 规则候选蒸馏（spec 009 E2E）：纠错样本落库后异步让 AI 总结为「待确认」规则，不阻塞响应
+  if (distillEntries.length) distillRuleCandidatesAsync(distillEntries, user?.id)
   // 布局规则自学习：根据本次纠错样本实时沉淀候选规则（量小，同步执行）
   try {
     await learnLayoutRulesFromFeedback()
@@ -1967,7 +1998,7 @@ async function importQuotation(req, res) {
             const bumpParams = {}
             ruled.applied.forEach((id, i) => { bumpParams[`id${i}`] = id })
             await query(
-              `UPDATE mr_recognition_rules SET match_count = match_count + 1 WHERE id IN (${ruled.applied.map((_, i) => `:id${i}`).join(',')})`,
+              `UPDATE mr_recognition_rules SET match_count = match_count + 1, last_matched_at = NOW() WHERE id IN (${ruled.applied.map((_, i) => `:id${i}`).join(',')})`,
               bumpParams,
             )
           }
@@ -2427,12 +2458,51 @@ async function processStaleMrReminders(limit = 50) {
   return { scanned: rows.length, reminded }
 }
 
-/* ========== 规则教练与识别规则库（spec 009 P1） ========== */
+/** 规则候选入库（spec 009 E2E）：一律 enabled=0 待确认；同 scope+action+ruleText 去重。返回实际插入条数。 */
+async function insertRuleCandidates(cards, userId) {
+  let inserted = 0
+  for (const card of cards) {
+    if (!card.ruleText) continue
+    const dup = await query(
+      `SELECT id FROM mr_recognition_rules WHERE scope_type = :scopeType AND scope_value = :scopeValue
+        AND action_type = :actionType AND rule_text = :ruleText LIMIT 1`,
+      { scopeType: card.scopeType, scopeValue: card.scopeValue, actionType: card.actionType, ruleText: card.ruleText },
+    )
+    if (dup.length) continue
+    await query(
+      `INSERT INTO mr_recognition_rules (scope_type, scope_value, action_type, params, rule_text, prompt_text, source, enabled, created_by)
+       VALUES (:scopeType, :scopeValue, :actionType, :params, :ruleText, :promptText, 'auto_distill', 0, :userId)`,
+      {
+        scopeType: card.scopeType,
+        scopeValue: card.scopeValue,
+        actionType: card.actionType,
+        params: card.params ? JSON.stringify(card.params) : null,
+        ruleText: card.ruleText,
+        promptText: card.promptText || '',
+        userId: userId || null,
+      },
+    )
+    inserted += 1
+  }
+  return inserted
+}
+
+/** 异步蒸馏规则候选（fire-and-forget）：保存/确认导入那一刻触发，失败静默不影响主流程 */
+function distillRuleCandidatesAsync(entries, userId) {
+  setImmediate(() => {
+    distillFeedbackToRuleCards(entries)
+      .then((cards) => (cards.length ? insertRuleCandidates(cards, userId) : 0))
+      .then((inserted) => { if (inserted) console.log(`[mr] 规则教练蒸馏出 ${inserted} 条待确认规则候选`) })
+      .catch((error) => console.warn('[mr] 规则候选蒸馏失败：', error?.message || error))
+  })
+}
+
+/** 规则教练与识别规则库（spec 009 P1） ========== */
 
 async function listRecognitionRules(_req, res) {
   await ensureTables()
   const rows = await query(
-    `SELECT id, scope_type, scope_value, action_type, params, rule_text, prompt_text, source, enabled, match_count, created_by, created_at, updated_at
+    `SELECT id, scope_type, scope_value, action_type, params, rule_text, prompt_text, source, enabled, match_count, last_matched_at, created_by, created_at, updated_at
      FROM mr_recognition_rules ORDER BY enabled DESC, match_count DESC, id DESC LIMIT 500`,
   )
   res.json({
@@ -2447,6 +2517,7 @@ async function listRecognitionRules(_req, res) {
       source: row.source,
       enabled: Boolean(row.enabled),
       matchCount: Number(row.match_count || 0),
+      lastMatchedAt: row.last_matched_at,
       createdBy: row.created_by,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -2509,7 +2580,7 @@ async function quoteCoachDistill(req, res) {
   if (!final.ruleText) throw badRequest('规则描述不能为空')
   const insert = await query(
     `INSERT INTO mr_recognition_rules (scope_type, scope_value, action_type, params, rule_text, prompt_text, source, enabled, created_by)
-     VALUES (:scopeType, :scopeValue, :actionType, :params, :ruleText, :promptText, 'coach', 1, :userId)`,
+     VALUES (:scopeType, :scopeValue, :actionType, :params, :ruleText, :promptText, 'coach', 0, :userId)`,
     {
       scopeType: final.scopeType,
       scopeValue: final.scopeValue,
@@ -2520,7 +2591,7 @@ async function quoteCoachDistill(req, res) {
       userId: req.user.id,
     },
   )
-  res.status(201).json({ ok: true, id: Number(insert.insertId), card: final, draft: card })
+  res.status(201).json({ ok: true, id: Number(insert.insertId), card: final, draft: card, pending: true })
 }
 
 module.exports = {

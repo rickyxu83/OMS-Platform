@@ -10,7 +10,7 @@ process.env.AI_API_URL = 'http://stub.local/chat'
 process.env.AI_API_KEY = 'stub-key'
 process.env.AI_MODEL = 'stub-model'
 
-const { coachChat } = require('../lib/quote-coach')
+const { coachChat, distillFeedbackToRuleCards } = require('../lib/quote-coach')
 
 /** 构造 fetch stub：依次返回给定的 AI content 文本 */
 function stubFetch(contents) {
@@ -70,6 +70,30 @@ async function main() {
   const r3 = await coachChat(items, history, { fetchImpl: s3.fetchImpl })
   assert.equal(r3.transformApplied, true)
   assert.equal(s3.calls.length, 1, '直接命中不追问')
+
+  // 场景 4：反馈蒸馏——改价类 diff 应产空候选，描述规整类产 prompt_rule 卡
+  const s4 = stubFetch([
+    JSON.stringify({ cards: [] }),
+    JSON.stringify({ cards: [{ scopeType: 'vendor', scopeValue: '上海宽泰', actionType: 'prompt_rule', ruleText: '宽泰报价的供应商统一填简称“宽泰”', promptText: 'vendor 为上海宽泰信息科技有限公司时填“宽泰”' }] }),
+  ])
+  const priceOnly = await distillFeedbackToRuleCards([{ fileName: 'a.xlsx', role: 'purchase', diff: [{ field: 'unit_price', before: 100, after: 90 }] }], { fetchImpl: s4.fetchImpl })
+  assert.deepEqual(priceOnly, [])
+  const cards = await distillFeedbackToRuleCards([{ fileName: 'b.xlsx', role: 'purchase', diff: [{ field: 'vendor', before: '上海宽泰信息科技有限公司', after: '宽泰' }] }], { fetchImpl: s4.fetchImpl })
+  assert.equal(cards.length, 1)
+  assert.equal(cards[0].actionType, 'prompt_rule')
+  assert.equal(cards[0].scopeType, 'vendor')
+  assert(cards[0].promptText.length > 0)
+
+  // 场景 5：蒸馏输出的非法 scopeType / 空 ruleText 被拦截
+  const s5 = stubFetch([
+    JSON.stringify({ cards: [
+      { scopeType: 'bogus', scopeValue: 'x', actionType: 'prompt_rule', ruleText: '合法规则' },
+      { scopeType: 'global', scopeValue: '', actionType: 'prompt_rule', ruleText: '' },
+    ] }),
+  ])
+  const c5 = await distillFeedbackToRuleCards([{ fileName: 'c.xlsx', diff: [{ field: 'name', before: 'a', after: 'b' }] }], { fetchImpl: s5.fetchImpl })
+  assert.equal(c5.length, 1, '空 ruleText 被过滤')
+  assert.equal(c5[0].scopeType, 'global', '非法 scopeType 兜底 global')
 
   console.log('quote-coach auto-retry tests passed')
 }

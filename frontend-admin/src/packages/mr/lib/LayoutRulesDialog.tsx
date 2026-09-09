@@ -113,6 +113,51 @@ export function LayoutRulesDialog({ open, onOpenChange }: { open: boolean; onOpe
     return rule.scopeValue ? `${base}：${rule.scopeValue}` : base
   }
 
+  const lastMatchedLabel = (rule: MrRecognitionRule) => {
+    if (!rule.lastMatchedAt) return '从未命中'
+    const days = Math.floor((Date.now() - new Date(rule.lastMatchedAt).getTime()) / 86400000)
+    return days <= 0 ? '今天' : days === 1 ? '昨天' : `${days} 天前`
+  }
+
+  const renderCoachRow = (rule: MrRecognitionRule) => (
+    <TableRow key={rule.id}>
+      <TableCell className="font-medium">{rule.ruleText}</TableCell>
+      <TableCell>{scopeLabel(rule)}</TableCell>
+      <TableCell className="text-center">
+        <Badge variant="outline">{rule.actionType === 'summarize_components' ? '组件摘要' : '提示词'}</Badge>
+      </TableCell>
+      <TableCell className="text-center">{rule.matchCount}</TableCell>
+      <TableCell className="text-center text-xs text-muted-foreground">{lastMatchedLabel(rule)}</TableCell>
+      <TableCell className="text-center">
+        <Badge variant={rule.enabled ? 'default' : 'secondary'}>{rule.enabled ? '已启用' : '待确认'}</Badge>
+      </TableCell>
+      <TableCell className="text-center">
+        <Button variant="outline" size="sm" disabled={saving} onClick={() => void toggleCoach(rule)}>
+          {rule.enabled ? '停用' : '启用'}
+        </Button>
+        <Button variant="ghost" size="icon" title={rule.enabled ? '删除' : '丢弃'} disabled={saving} onClick={() => void removeCoach(rule)}>
+          <Trash2 className="size-4 text-destructive" />
+        </Button>
+      </TableCell>
+    </TableRow>
+  )
+
+  const coachTableHead = (
+    <TableHeader>
+      <TableRow>
+        <TableHead>规则</TableHead>
+        <TableHead>作用范围</TableHead>
+        <TableHead className="w-[100px] text-center">执行方式</TableHead>
+        <TableHead className="w-[80px] text-center">命中</TableHead>
+        <TableHead className="w-[90px] text-center">最近命中</TableHead>
+        <TableHead className="w-[80px] text-center">状态</TableHead>
+        <TableHead className="w-[110px] text-center">操作</TableHead>
+      </TableRow>
+    </TableHeader>
+  )
+  const pendingCoachRules = coachRules.filter((rule) => !rule.enabled)
+  const activeCoachRules = coachRules.filter((rule) => rule.enabled)
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
@@ -129,48 +174,32 @@ export function LayoutRulesDialog({ open, onOpenChange }: { open: boolean; onOpe
         </div>
 
         {tab === 'coach' ? (
-          <div className="max-h-[50vh] overflow-auto rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>规则</TableHead>
-                  <TableHead>作用范围</TableHead>
-                  <TableHead className="w-[100px] text-center">执行方式</TableHead>
-                  <TableHead className="w-[90px] text-center">命中次数</TableHead>
-                  <TableHead className="w-[80px] text-center">状态</TableHead>
-                  <TableHead className="w-[110px] text-center">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading && !coachRules.length ? (
-                  <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground"><Loader2 className="mr-2 inline size-4 animate-spin" />加载中…</TableCell></TableRow>
-                ) : null}
-                {!loading && !coachRules.length ? (
-                  <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">暂无规则；在报价导入校对页点「效果不对？告诉 AI」，满意后沉淀即出现在这里</TableCell></TableRow>
-                ) : null}
-                {coachRules.map((rule) => (
-                  <TableRow key={rule.id}>
-                    <TableCell className="font-medium">{rule.ruleText}</TableCell>
-                    <TableCell>{scopeLabel(rule)}</TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant="outline">{rule.actionType === 'summarize_components' ? '组件摘要' : '提示词'}</Badge>
-                    </TableCell>
-                    <TableCell className="text-center">{rule.matchCount}</TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant={rule.enabled ? 'default' : 'secondary'}>{rule.enabled ? '已启用' : '已停用'}</Badge>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Button variant="outline" size="sm" disabled={saving} onClick={() => void toggleCoach(rule)}>
-                        {rule.enabled ? '停用' : '启用'}
-                      </Button>
-                      <Button variant="ghost" size="icon" title="删除" disabled={saving} onClick={() => void removeCoach(rule)}>
-                        <Trash2 className="size-4 text-destructive" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="space-y-4">
+            {pendingCoachRules.length ? (
+              <div>
+                <div className="mb-1.5 text-sm font-medium text-amber-700">待确认（{pendingCoachRules.length}）——保存/导入时从人工修正自动总结，确认启用后才生效</div>
+                <div className="max-h-[24vh] overflow-auto rounded-md border border-amber-200">
+                  <Table>{coachTableHead}<TableBody>{pendingCoachRules.map(renderCoachRow)}</TableBody></Table>
+                </div>
+              </div>
+            ) : null}
+            <div>
+              {pendingCoachRules.length ? <div className="mb-1.5 text-sm font-medium">生效中（{activeCoachRules.length}）</div> : null}
+              <div className="max-h-[40vh] overflow-auto rounded-md border">
+                <Table>
+                  {coachTableHead}
+                  <TableBody>
+                    {loading && !coachRules.length ? (
+                      <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground"><Loader2 className="mr-2 inline size-4 animate-spin" />加载中…</TableCell></TableRow>
+                    ) : null}
+                    {!loading && !activeCoachRules.length ? (
+                      <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">暂无生效中规则；在报价导入校对页点「效果不对？告诉 AI」，或保存 MR 后由系统自动总结候选</TableCell></TableRow>
+                    ) : null}
+                    {activeCoachRules.map(renderCoachRow)}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
           </div>
         ) : (
         <>

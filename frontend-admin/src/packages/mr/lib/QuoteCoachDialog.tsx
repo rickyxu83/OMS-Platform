@@ -25,6 +25,8 @@ export function QuoteCoachDialog({
   onItemsTransformed,
   onUndo,
   canUndo = false,
+  canRestore = false,
+  onRestoreAll,
 }: {
   orderId: string | number
   open: boolean
@@ -35,6 +37,9 @@ export function QuoteCoachDialog({
   /** 撤销上一步变换（父组件持有历史栈） */
   onUndo?: () => void
   canUndo?: boolean
+  /** 全部恢复原样：回到对话打开时的品项快照 */
+  canRestore?: boolean
+  onRestoreAll?: () => void
 }) {
   const [messages, setMessages] = useState<QuoteCoachMessage[]>([])
   const [input, setInput] = useState('')
@@ -103,7 +108,7 @@ export function QuoteCoachDialog({
         messages,
         confirmedCard: { ...draft, scopeValue: ruleScope.trim(), ruleText: ruleText.trim() },
       })
-      toast.success('规则已沉淀并启用：后续同类文件识别自动应用')
+      toast.success('已加入待确认规则：保存/导入的修改也会自动总结规则，统一在 MR 列表「识别规则 → 教练规则」中确认启用')
       setDraft(null)
       onOpenChange(false)
     } catch (err) {
@@ -119,21 +124,27 @@ export function QuoteCoachDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><MessageSquareText className="size-5" />识别效果教练</DialogTitle>
           <DialogDescription>
-            用大白话描述你想要的识别效果（比如"这个服务器的明细太细了，我只要 CPU、内存、硬盘"），AI 会立即调整预览；满意后点「沉淀为规则」，以后同类文件自动照此识别。
+            说人话描述想要的效果，AI 立即调整预览；满意后沉淀为规则，以后的单子自动照此识别。
           </DialogDescription>
         </DialogHeader>
+
+        {!messages.length ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {['明细只要 CPU/内存/硬盘', '品名不要带料号', '供应商改成简称'].map((hint) => (
+              <button key={hint} type="button" onClick={() => setInput(hint)}
+                className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary">
+                {hint}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <div ref={scrollRef} className="min-h-[240px] flex-1 space-y-3 overflow-y-auto rounded-md border bg-muted/30 p-3">
           {!messages.length ? (
             <div className="flex h-full items-center justify-center py-16 text-center text-sm text-muted-foreground">
               <div>
                 <Sparkles className="mx-auto mb-2 size-6" />
-                描述你碰到的问题或想要的效果，例如：
-                <div className="mt-2 space-y-1 text-xs">
-                  <div>「这个服务器明细太细了，我只要 CPU、内存、硬盘」</div>
-                  <div>「品名前面不要带料号」</div>
-                  <div>「维保单的供应商应该是 xxx」</div>
-                </div>
+                描述你碰到的问题或想要的效果
               </div>
             </div>
           ) : null}
@@ -182,13 +193,18 @@ export function QuoteCoachDialog({
             <div className="flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setDraft(null)}>再改改</Button>
               <Button size="sm" disabled={savingRule || !ruleText.trim()} onClick={() => void saveRule()}>
-                {savingRule ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}确认沉淀，立即生效
+                {savingRule ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}加入待确认规则
               </Button>
             </div>
           </div>
         ) : null}
 
         <div className="flex items-center gap-2">
+          {canRestore ? (
+            <Button variant="ghost" size="sm" title="放弃本轮对话的全部调整，回到对话打开时的品项" onClick={() => onRestoreAll?.()}>
+              全部恢复原样
+            </Button>
+          ) : null}
           {canUndo ? (
             <Button variant="ghost" size="sm" title="撤销上一步 AI 对预览的调整" onClick={() => onUndo?.()}>
               <Undo2 className="mr-1 size-4" />撤销上一步
