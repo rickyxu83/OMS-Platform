@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, BellRing, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, Paperclip, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Undo2, Upload, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, BellRing, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, Paperclip, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Undo2, Upload, X, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -396,6 +396,8 @@ export function MrFormPage() {
   const [error, setError] = useState('')
   const [errors, setErrors] = useState<ValidationError[]>([])
   const [importOpen, setImportOpen] = useState(false)
+  // 报价识别引擎：v1=当前版；v2=实验引擎（配置组收敛，spec 008），由「新版识别（实验）」按钮进入
+  const [importEngine, setImportEngine] = useState<'v1' | 'v2'>('v1')
 /** Office 附件在线预览：blob 为 null 表示正在加载 */
 const [officePreview, setOfficePreview] = useState<{ file: QuotationFile; blob: Blob | null } | null>(null)
 /** PDF 附件弹窗预览：data 为 null 表示正在加载 */
@@ -1447,8 +1449,11 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                     <Plus className="mr-2 size-4" />添加品项
                   </Button>
                 ) : null}
-                <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+                <Button variant="outline" size="sm" onClick={() => { setImportEngine('v1'); setImportOpen(true) }}>
                   <FileSpreadsheet className="mr-2 size-4" />报价导入
+                </Button>
+                <Button variant="outline" size="sm" className="border-amber-300 text-amber-700 hover:bg-amber-50" title="实验引擎 v2：配置组收敛识别（针对 HPE 整机 CTO 捆绑报价单），与当前版可对比" onClick={() => { setImportEngine('v2'); setImportOpen(true) }}>
+                  <Zap className="mr-2 size-4" />新版识别（实验）
                 </Button>
               </div>
             ) : null}
@@ -1699,6 +1704,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
           vendors={vendors}
           initialItems={calculated.items || []}
           onOpenChange={setImportOpen}
+          initialEngine={importEngine}
           onApply={(result, selectedMode) => void applyQuotationImport(result, selectedMode)}
           onStoredFilesChange={(files) => patch({ quotationFiles: files })}
           onLinkedItemsRemoved={handleLinkedItemsRemoved}

@@ -62,6 +62,7 @@ const { validateParsedQuotation } = require('./quotation-validation')
 const { applyQuotationLayoutRule } = require('./quotation-layout-rules')
 const { mergeQuotations } = require('./quotation-merge')
 const { recognizeQuotationWithAi, applyAiEntityKeys } = require('./quotation-ai-parser')
+const { collapseConfigGroups } = require('./quotation-config-groups')
 const {
   constants,
   STEP_ROLES,
@@ -1763,6 +1764,8 @@ async function importQuotation(req, res) {
   // persist 回写场景（仅留存文件、无新上传，确认导入补漏校对）：凭 sourceHashes 回写修正，允许 uploads 为空
   const persistOnly = String(req.body?.persistOnly || '') === '1'
   const persist = String(req.body?.persist || '') === '1'
+  // 识别引擎版本：v1=当前规则+AI（默认）；v2=实验引擎（配置组收敛，spec 008），仅影响识别路径，其余流程一致
+  const engine = String(req.body?.engine || '') === 'v2' ? 'v2' : 'v1'
   if (!uploads.length && !(persist && persistOnly)) throw badRequest('请选择报价单或订单文件')
 
   const taskId = String(req.body?.taskId || '').trim()
@@ -1807,9 +1810,15 @@ async function importQuotation(req, res) {
     let systemItemCount = 0
     let aiItemCount = 0
     let aiDocumentType = null
-    parsed = extension === '.pdf'
+    // 实验引擎 v2（spec 008 / Issue #86）：Excel 先尝试配置组收敛（HPE 整机 CTO 捆绑报价）；
+    // 门控未命中（非配置组结构）返回 null，原样回退常规规则解析，两引擎对普通文件行为一致
+    let collapsedV2 = null
+    if (engine === 'v2' && (extension === '.xls' || extension === '.xlsx')) {
+      try { collapsedV2 = collapseConfigGroups(file.buffer) } catch (_error) { collapsedV2 = null }
+    }
+    parsed = collapsedV2 || (extension === '.pdf'
         ? await parsePdf(file.buffer, name)
-        : parseWorkbookWithMetadata(file.buffer, name)
+        : parseWorkbookWithMetadata(file.buffer, name))
       // 表头模板应用：同文件模式 + 表头签名命中已学模板时，用模板列映射重新解析（覆盖启发式识别）
       if (extension === '.xls' || extension === '.xlsx') {
         try {
