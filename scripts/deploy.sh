@@ -201,7 +201,7 @@ check_deploy_overwrite() {
     ok "远端当前为 $remote_branch @ ${remote_commit:0:8}，其提交已全部包含在当前分支，可安全覆盖"
     return 0
   fi
-  err "覆盖预警：${SSH_TARGET} 当前部署的是 $remote_branch @ ${remote_commit:0:8}，其中包含不在当前分支（$local_branch）里的提交："
+  err "覆盖预警：${SSH_TARGET} 当前部署的是 $remote_branch @ ${remote_commit:0:8}，其中包含不在当前分支（${local_branch}）里的提交："
   if git -C "$ROOT_DIR" cat-file -e "$remote_commit" 2>/dev/null; then
     git -C "$ROOT_DIR" log --oneline "HEAD..$remote_commit" 2>/dev/null | head -10 | sed 's/^/    /' >&2
   else
