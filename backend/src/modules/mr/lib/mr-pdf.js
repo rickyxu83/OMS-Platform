@@ -22,7 +22,7 @@ const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
 // 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 52
+const PDF_FORMAT_VERSION = 53
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -452,70 +452,101 @@ function drawNoteCard(doc, fonts, entries, x, y, width) {
 }
 
 // 与 details() 同口径的高度估算：签名区防孤儿页时用来预判“合计+资料+签核”整段高度
-function detailsHeight(doc, fonts, order, items, includeVoidReason = true) {
-  const width = PAGE.width - PAGE.margin * 2
-  const entries = detailEntries(order, items)
-  const notes = noteEntries(order, includeVoidReason)
-  const groupOf = new Map()
-  for (const [group, labels] of DETAIL_GROUPS) for (const label of labels) groupOf.set(label, group)
-  const grouped = DETAIL_GROUPS.map(([group]) => [group, entries.filter(([label]) => groupOf.get(label) === group)]).filter(([, list]) => list.length)
-  const cardGap = 8
-  const cardWidth = (width - cardGap) / 2
-  let height = 17
-  for (let start = 0; start < grouped.length; start += 2) {
-    const cards = grouped.slice(start, start + 2)
-    height += Math.max(...cards.map(([, groupEntries]) => detailCardHeight(doc, fonts, groupEntries, 3, (cardWidth - 18) / 3))) + 7
+/**
+ * 通用块排版引擎（2026-09-09 治根重构，替代叠床架屋的分页特判）
+ * 块：{ height, draw(y)=>实际消耗高度, keepNext?, keepPrev?, pageTitle?, contTitle? }
+ * keepNext/keepPrev 相连的块组成粘连簇；簇在当前页放不下就整簇翻页（孤儿标题/孤儿签核/生硬断页同机制消灭）；
+ * 簇比整页还高时退化为逐块放置（极端长备注兜底，避免死循环）。
+ */
+function placeBlocks(doc, fonts, order, blocks, y, bottom, countSuffix) {
+  const openPage = (block) => {
+    doc.addPage()
+    let yy = header(doc, fonts, order, block.pageTitle || '客户订购申请单 · 资料续页')
+    if (block.contTitle) yy = sectionTitle(doc, fonts, yy, '02 订购与交付资料', `${countSuffix}（续）`)
+    return yy
   }
-  if (notes.length) height += noteCardHeight(doc, fonts, notes, width) + 7
-  return height + 2
+  const freshCapacity = bottom - 62 - 17 // 页眉 + 可能的续节标题
+  let i = 0
+  while (i < blocks.length) {
+    let end = i
+    while (end + 1 < blocks.length && (blocks[end].keepNext || blocks[end + 1].keepPrev)) end += 1
+    const cluster = blocks.slice(i, end + 1)
+    const clusterHeight = cluster.reduce((sum, block) => sum + block.height, 0)
+    if (y + clusterHeight > bottom && clusterHeight <= freshCapacity) {
+      y = openPage(cluster[0])
+      for (const block of cluster) y += block.draw(y)
+    } else if (y + clusterHeight > bottom) {
+      for (const block of cluster) {
+        if (y + block.height > bottom) y = openPage(block)
+        y += block.draw(y)
+      }
+    } else {
+      for (const block of cluster) y += block.draw(y)
+    }
+    i = end + 1
+  }
+  return y
 }
 
-function details(doc, fonts, order, items, y, includeVoidReason = true, reserveBottom = 0) {
+/** 组装文档尾部块序列：合计条 → 02 资料区（标题 + 卡片排 + 备注卡）→ 03 签核（粘住前块） */
+function tailBlocks(doc, fonts, order, items, includeVoidReason, approvalRows) {
   const left = PAGE.margin
   const width = PAGE.width - PAGE.margin * 2
-  // reserveBottom：为后续签核区预留的高度（防签名孤儿页），资料卡片分页按收紧后的底线判断
-  const bottom = PAGE.height - 32 - reserveBottom
   const entries = detailEntries(order, items)
   const notes = noteEntries(order, includeVoidReason)
   const groupOf = new Map()
   for (const [group, labels] of DETAIL_GROUPS) for (const label of labels) groupOf.set(label, group)
   const grouped = DETAIL_GROUPS.map(([group]) => [group, entries.filter(([label]) => groupOf.get(label) === group)]).filter(([, list]) => list.length)
-  // 无任何资料字段且无备注时整段跳过（不出现空标题）
-  if (!grouped.length && !notes.length) return y
-  const drawTitle = () => {
-    y = sectionTitle(doc, fonts, y, '02 订购与交付资料', `· 共 ${entries.length + notes.length} 项`)
-  }
-  const newPage = () => {
-    doc.addPage()
-    y = header(doc, fonts, order, '客户订购申请单 · 资料续页')
-    drawTitle()
-  }
   const cardGap = 8
   const cardWidth = (width - cardGap) / 2
-  // 标题不孤儿：若标题下方连第一排卡片（或无卡片时的备注卡）都放不下，整段从新页开始，
-  // 避免页尾只挂一个空标题（2026-09-09 佬反馈）
-  const firstContentHeight = grouped.length
-    ? Math.max(...grouped.slice(0, 2).map(([, list]) => detailCardHeight(doc, fonts, list, 3, (cardWidth - 18) / 3)))
-    : (notes.length ? noteCardHeight(doc, fonts, notes, width) : 0)
-  if (firstContentHeight && y + 17 + firstContentHeight > bottom) {
-    doc.addPage()
-    y = header(doc, fonts, order, '客户订购申请单 · 资料续页')
+
+  const blocks = [{
+    height: 46,
+    pageTitle: '客户订购申请单 · 签核归档',
+    draw: (yy) => totals(doc, fonts, order, items, yy + 5) - yy,
+  }]
+
+  if (grouped.length || notes.length) {
+    blocks.push({
+      height: 17,
+      keepNext: true, // 02 标题粘住首个内容块，标题永不孤悬页尾
+      pageTitle: '客户订购申请单 · 资料续页',
+      draw: (yy) => sectionTitle(doc, fonts, yy, '02 订购与交付资料', `· 共 ${entries.length + notes.length} 项`) - yy,
+    })
+    for (let start = 0; start < grouped.length; start += 2) {
+      const cards = grouped.slice(start, start + 2)
+      const rowHeight = Math.max(...cards.map(([, list]) => detailCardHeight(doc, fonts, list, 3, (cardWidth - 18) / 3))) + 7
+      blocks.push({
+        height: rowHeight,
+        pageTitle: '客户订购申请单 · 资料续页',
+        contTitle: true,
+        draw: (yy) => {
+          cards.forEach(([group, list], cardIndex) => drawDetailCard(doc, fonts, group, list, left + cardIndex * (cardWidth + cardGap), yy, cardWidth))
+          return rowHeight
+        },
+      })
+    }
+    if (notes.length) {
+      const height = noteCardHeight(doc, fonts, notes, width) + 7
+      blocks.push({
+        height,
+        pageTitle: '客户订购申请单 · 资料续页',
+        contTitle: true,
+        draw: (yy) => drawNoteCard(doc, fonts, notes, left, yy, width) + 7,
+      })
+    }
   }
-  drawTitle()
-  for (let start = 0; start < grouped.length; start += 2) {
-    const cards = grouped.slice(start, start + 2)
-    const heights = cards.map(([, groupEntries]) => detailCardHeight(doc, fonts, groupEntries, 3, (cardWidth - 18) / 3))
-    const rowHeight = Math.max(...heights)
-    if (y + rowHeight > bottom) newPage()
-    cards.forEach(([group, groupEntries], index) => drawDetailCard(doc, fonts, group, groupEntries, left + index * (cardWidth + cardGap), y, cardWidth))
-    y += rowHeight + 7
+
+  if (approvalRows.length) {
+    const height = approvalBoxHeight(doc, fonts, approvalRows) + 24
+    blocks.push({
+      height,
+      keepPrev: true, // 签核粘住前一个块（资料区末块或合计条），签核永不单独成页
+      pageTitle: '客户订购申请单 · 签核归档',
+      draw: (yy) => { approvals(doc, fonts, approvalRows, yy); return height },
+    })
   }
-  if (notes.length) {
-    const height = noteCardHeight(doc, fonts, notes, width)
-    if (y + height > bottom) newPage()
-    y += drawNoteCard(doc, fonts, notes, left, y, width) + 7
-  }
-  return y + 2
+  return blocks
 }
 
 function signatureImage(doc, dataUrl, x, y, width, height) {
@@ -636,24 +667,10 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
     }
     y = itemRow(doc, fonts, item, index, columns, y, bottom - y)
   })
-  // 合计紧跟明细表落本页；签名孤儿由 details 的 reserveBottom 预留机制防住，不再整段搬页
-  const approvalSpace = approvalRows.length ? approvalBoxHeight(doc, fonts, approvalRows) + 24 : 0
-  if (y + 45 > bottom) {
-    doc.addPage()
-    y = header(doc, fonts, order, '客户订购申请单 · 签核归档')
-  }
-  y = totals(doc, fonts, order, items, y + 5)
-  // 防签名孤儿页：给资料区预留签核区高度（含两侧底线差 13pt），排不进预留带的卡片/备注自动落到
-  // 下一页与签核作伴；签核区因此总能跟在最后一张卡片/备注后面，不会单独成页
-  y = details(doc, fonts, order, items, y, Boolean(watermarkLabel), approvalRows.length ? approvalSpace + 13 : 0)
-  if (approvalRows.length) {
-    const approvalSpace = approvalBoxHeight(doc, fonts, approvalRows) + 24
-    if (y + approvalSpace > bottom) {
-      doc.addPage()
-      y = header(doc, fonts, order, '客户订购申请单 · 签核归档')
-    }
-    approvals(doc, fonts, approvalRows, y)
-  }
+  // 文档尾部（合计/资料区/签核）由块排版引擎统一分页：粘连规则声明在各块上，无特判
+  const tail = tailBlocks(doc, fonts, order, items, Boolean(watermarkLabel), approvalRows)
+  const entriesCount = detailEntries(order, items).length + noteEntries(order, Boolean(watermarkLabel)).length
+  placeBlocks(doc, fonts, order, tail, y, bottom, `· 共 ${entriesCount} 项`)
   drawWatermarks(doc, fonts, watermarkLabel)
   drawFooters(doc, fonts, order)
   return doc
