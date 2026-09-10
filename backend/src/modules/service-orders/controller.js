@@ -3431,6 +3431,11 @@ async function latestCustomerSignature(req, res) {
   if (!filters.length) {
     throw badRequest('请先选择或填写客户名称或联系人')
   }
+  // 同签收人优先（2026-09-10 佬裁决）：签名是个人笔迹，优先复用当前联系人本人的最近一次签名，
+  // 没有同人签名时才退回该客户任意最新签名；避免被其他人更新的签名顶掉
+  const signerMatchRank = contactName
+    ? 'CASE WHEN TRIM(sr.customer_name) = :contactName THEN 0 ELSE 1 END,'
+    : ''
   const customerMatchRank = customerFilters.length && contactFilters.length
     ? `CASE WHEN (${customerFilters.join(' OR ')}) THEN 0 ELSE 1 END,`
     : ''
@@ -3458,7 +3463,7 @@ async function latestCustomerSignature(req, res) {
      JOIN customers c ON c.id = so.customer_id
      WHERE sr.customer_signature_file_id IS NOT NULL
        AND (${filters.join(' OR ')})${engineerScopeSql}
-     ORDER BY ${customerMatchRank} COALESCE(sr.updated_at, sr.created_at) DESC, sr.id DESC
+     ORDER BY ${signerMatchRank} ${customerMatchRank} COALESCE(sr.updated_at, sr.created_at) DESC, sr.id DESC
      LIMIT 1`,
     params,
   )
