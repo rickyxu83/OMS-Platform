@@ -898,7 +898,8 @@ export function compactDraftLabel(form: Partial<ReportForm>) {
     .map((device) => [device.model, device.serialNo].filter(Boolean).join(" / "))
     .filter(Boolean)
     .join("、");
-  return [form.customerName, installedDevices && `安装设备：${installedDevices}`, form.issueDescription, form.workContent]
+  // 不含客户名：列表/卡片首列已单独展示客户，此处只呈现服务内容（2026-09-10 佬反馈列内容重复）
+  return [installedDevices && `安装设备：${installedDevices}`, form.issueDescription, form.workContent]
     .filter(Boolean)
     .join(" · ")
     .slice(0, 120) || "未填写内容的草稿";
