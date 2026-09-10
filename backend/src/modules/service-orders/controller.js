@@ -3432,9 +3432,12 @@ async function latestCustomerSignature(req, res) {
     throw badRequest('请先选择或填写客户名称或联系人')
   }
   // 同签收人优先（2026-09-10 佬裁决）：签名是个人笔迹，优先复用当前联系人本人的最近一次签名，
-  // 没有同人签名时才退回该客户任意最新签名；避免被其他人更新的签名顶掉
+  // 没有同人签名时才退回该客户任意最新签名；避免被其他人更新的签名顶掉。
+  // 且优先取「原始签名」（文件是为该单生成的，files.owner_id = 工单 id）：
+  // 历史上存在跨人复用（A 的笔迹被套在 B 的报告上），复用产生的记录不计入「本人签名」
   const signerMatchRank = contactName
-    ? 'CASE WHEN TRIM(sr.customer_name) = :contactName THEN 0 ELSE 1 END,'
+    ? `CASE WHEN TRIM(sr.customer_name) = :contactName AND sig_file.owner_id = sr.service_order_id THEN 0
+            WHEN TRIM(sr.customer_name) = :contactName THEN 1 ELSE 2 END,`
     : ''
   const customerMatchRank = customerFilters.length && contactFilters.length
     ? `CASE WHEN (${customerFilters.join(' OR ')}) THEN 0 ELSE 1 END,`
@@ -3461,9 +3464,10 @@ async function latestCustomerSignature(req, res) {
      FROM service_reports sr
      JOIN service_orders so ON so.id = sr.service_order_id
      JOIN customers c ON c.id = so.customer_id
+     LEFT JOIN files sig_file ON sig_file.id = sr.customer_signature_file_id
      WHERE sr.customer_signature_file_id IS NOT NULL
        AND (${filters.join(' OR ')})${engineerScopeSql}
-     ORDER BY ${signerMatchRank} ${customerMatchRank} COALESCE(sr.updated_at, sr.created_at) DESC, sr.id DESC
+     ORDER BY ${signerMatchRank} ${customerMatchRank} COALESCE(sig_file.created_at, sr.updated_at, sr.created_at) DESC, sr.id DESC
      LIMIT 1`,
     params,
   )
