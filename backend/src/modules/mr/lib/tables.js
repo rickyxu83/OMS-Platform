@@ -99,6 +99,14 @@ async function ensureTables() {
     ['remaining_taiwan_business_transfer', 'DECIMAL(14,2) NULL'],
     ['gross_profit_recognitions', 'JSON NULL'],
     ['taiwan_business_transfers', 'JSON NULL'],
+    // spec 010：作废申请-审批三段式（pending=审批中锁定；rejected=已驳回解锁，可重新申请）
+    ['void_request_status', 'VARCHAR(20) NULL'],
+    ['void_request_stage', 'VARCHAR(20) NULL'],
+    ['void_requested_by', 'BIGINT UNSIGNED NULL'],
+    ['void_requested_at', 'DATETIME NULL'],
+    ['void_reject_reason', 'VARCHAR(500) NULL'],
+    ['void_rejected_by', 'BIGINT UNSIGNED NULL'],
+    ['void_rejected_at', 'DATETIME NULL'],
   ])
   const existingOrderColumns = new Map((await query(
     `SELECT column_name AS name, character_maximum_length AS maxLength FROM information_schema.columns
@@ -200,6 +208,23 @@ async function ensureTables() {
       PRIMARY KEY (id),
       KEY idx_mr_approvals_mr (mr_id, cycle, seq),
       CONSTRAINT fk_mr_approvals_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
+  // spec 010：作废审批留痕（stage: admin_review=行政主管 / sales_review=业务主管；action NULL=待审批）
+  await query(
+    `CREATE TABLE IF NOT EXISTS mr_void_approvals (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      mr_id BIGINT UNSIGNED NOT NULL,
+      round INT NOT NULL DEFAULT 1,
+      stage VARCHAR(20) NOT NULL,
+      approver_id BIGINT UNSIGNED NOT NULL,
+      action VARCHAR(16) NULL,
+      reason VARCHAR(500) NULL,
+      decided_at DATETIME NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_mr_void_approvals_mr (mr_id, action),
+      CONSTRAINT fk_mr_void_approvals_order FOREIGN KEY (mr_id) REFERENCES mr_orders (id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
   // 报价识别缓存：同一文件内容（hash + 解析器版本一致）直接复用首次识别结果，避免重复调 AI 且结果稳定

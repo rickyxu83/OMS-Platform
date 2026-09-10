@@ -149,6 +149,7 @@ function orderPayload(row) {
 
 function canView(order, user, assistantIds = []) {
   if (user.role === 'admin') return true
+  if (Number(order.voidPendingApproverId || 0) === Number(user.id)) return true
   if (user.role === 'operations_director' && ['approved', 'voided'].includes(order.status)) return true
   if (SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id)) return true
   if (ASSISTANT_LIKE_ROLES.has(user.role) && assistantIds.includes(Number(order.assistantUserId))) return true
@@ -179,11 +180,24 @@ function canDelete(order, user, assistantIds = []) {
   return EDITABLE_STATUSES.has(order.status) && Number(order.createdBy) === Number(user.id) && canEdit(order, user, assistantIds)
 }
 
-function canVoid(order, user, assistantIds = []) {
+// spec 010：作废申请入口。采购未完成→业务负责人/对应助理发起（业务主管仅本人单）；采购已完成→仅采购发起
+function canVoidRequest(order, user, assistantIds = []) {
   if (order.status !== 'approved') return false
-  if (['admin', 'operations_director', 'sales_supervisor'].includes(user.role)) return true
+  if (isVoidLocked(order)) return false
+  if (String(order.purchaseStatus || '') === 'done') {
+    return user.role === 'purchaser' && Number(order.purchaseAssigneeUserId) === Number(user.id)
+  }
   return (SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id))
     || (ASSISTANT_LIKE_ROLES.has(user.role) && assistantIds.includes(Number(order.assistantUserId)))
+}
+
+// 作废审批中：单据锁定，禁止编辑/采购/合同编号等一切变更
+function isVoidLocked(order) {
+  return String(order.voidRequestStatus || '') === 'pending'
+}
+
+function canVoidApprove(order, user) {
+  return isVoidLocked(order) && Number(order.voidPendingApproverId || 0) === Number(user.id)
 }
 
 function canPurchase(order, user) {
@@ -250,6 +264,9 @@ async function loadRawOrder(id, user = null) {
             c.code AS customer_code,
             pending.step_key AS current_step_key, pending.step_label AS current_step_label,
             pending.assignee_user_id AS current_assignee_user_id, pending.assignment_error,
+            (SELECT va.approver_id FROM mr_void_approvals va
+             WHERE va.mr_id = o.id AND va.action IS NULL
+             ORDER BY va.id DESC LIMIT 1) AS void_pending_approver_id,
             EXISTS (
               SELECT 1 FROM mr_approvals participant
               WHERE participant.mr_id = o.id
@@ -381,6 +398,7 @@ async function loadDetail(id, user) {
     purchasedByName: order.purchasedByName ?? null,
     purchaseNote: order.purchaseNote ?? null,
   }
+  const voidLocked = isVoidLocked(order)
   return {
     ...displayed,
     ...purchaseLive,
@@ -395,14 +413,15 @@ async function loadDetail(id, user) {
     archivedDocumentTypes: documentRows.map((row) => row.document_type),
     fileName: `${order.customerCode || order.customerName || 'MR'}_${order.ctrlNo || `草稿-${order.id}`}`,
     permissions: {
-      canEdit: canEdit(order, user, assistantIds),
-      canDelete: canDelete(order, user, assistantIds),
-      canVoid: canVoid(order, user, assistantIds),
+      canEdit: !voidLocked && canEdit(order, user, assistantIds),
+      canDelete: !voidLocked && canDelete(order, user, assistantIds),
+      canVoid: canVoidRequest(order, user, assistantIds),
+      canVoidApprove: canVoidApprove(order, user),
       canApprove: canApprove(order, user, assistantIds),
-      canWithdraw: canWithdraw(order, user),
+      canWithdraw: !voidLocked && canWithdraw(order, user),
       canRemind: canRemind(order, user, assistantIds, approvals),
-      canPurchase: canPurchase(order, user),
-      canFillContractNo: canFillContractNo(order, user, assistantIds),
+      canPurchase: !voidLocked && canPurchase(order, user),
+      canFillContractNo: !voidLocked && canFillContractNo(order, user, assistantIds),
     },
   }
 }
@@ -525,8 +544,11 @@ async function list(req, res) {
         AND (visible.assignee_user_id IN (${ASSISTANT_SCOPE_SQL}) OR visible.approver_id IN (${ASSISTANT_SCOPE_SQL}))
     ))`)
   } else if (req.user.role !== 'admin') {
-    const participantClause = `EXISTS (SELECT 1 FROM mr_approvals visible
-      WHERE visible.mr_id = o.id AND (visible.assignee_user_id = :userId OR visible.approver_id = :userId))`
+    // spec 010：作废审批人（行政主管等）即使不在签核链也可查看该单
+    const voidApproverClause = `EXISTS (SELECT 1 FROM mr_void_approvals vvisible
+      WHERE vvisible.mr_id = o.id AND vvisible.approver_id = :userId)`
+    const participantClause = `(EXISTS (SELECT 1 FROM mr_approvals visible
+      WHERE visible.mr_id = o.id AND (visible.assignee_user_id = :userId OR visible.approver_id = :userId)) OR ${voidApproverClause})`
     where.push(req.user.role === 'operations_director' ? `(o.status IN ('approved', 'voided') OR ${participantClause})` : participantClause)
     params.userId = req.user.id
   }
@@ -569,9 +591,12 @@ async function list(req, res) {
     where.push('o.sales_owner_id = :salesOwnerId')
     params.salesOwnerId = salesOwnerId
   }
-  // 只看待我签核：当前待处理步骤的签核人是我（导航角标/待办中心深链）
+  // 只看待我处理：当前待签核步骤是我，或有待我审批的作废申请（spec 010）
   if (String(req.query.pendingMine || '').trim() === '1') {
-    where.push('pending.assignee_user_id = :permissionUserId')
+    where.push(`(pending.assignee_user_id = :permissionUserId OR EXISTS (
+      SELECT 1 FROM mr_void_approvals vpending
+      WHERE vpending.mr_id = o.id AND vpending.action IS NULL AND vpending.approver_id = :permissionUserId
+    ))`)
   }
   const dateFrom = String(req.query.dateFrom || '').trim()
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
@@ -592,6 +617,9 @@ async function list(req, res) {
             c.code AS customer_code, (SELECT COUNT(*) FROM mr_items i WHERE i.mr_id = o.id) AS item_count,
             pending.step_key AS current_step_key, pending.step_label AS current_step_label,
             pending.assignee_user_id AS current_assignee_user_id, current_assignee.real_name AS current_assignee_name, pending.assignment_error,
+            (SELECT va.approver_id FROM mr_void_approvals va
+             WHERE va.mr_id = o.id AND va.action IS NULL
+             ORDER BY va.id DESC LIMIT 1) AS void_pending_approver_id,
             CASE WHEN pending.assignee_user_id = :permissionUserId THEN 1 ELSE 0 END AS approval_participant
      FROM mr_orders o
      LEFT JOIN users creator ON creator.id = o.created_by
@@ -635,7 +663,8 @@ async function list(req, res) {
   }
   res.json({ items: rows.map((row) => {
     const order = orderPayload(row)
-    return { ...order, approvalSteps: approvalsByMr[row.id] || [], permissions: { canEdit: canEdit(order, req.user, assistantIds), canDelete: canDelete(order, req.user, assistantIds), canVoid: canVoid(order, req.user, assistantIds), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: canWithdraw(order, req.user), canRemind: canRemind(order, req.user, assistantIds, [], row.assistant_user_id), canPurchase: canPurchase(order, req.user), canFillContractNo: canFillContractNo(order, req.user, assistantIds) } }
+    const voidLocked = isVoidLocked(order)
+    return { ...order, approvalSteps: approvalsByMr[row.id] || [], permissions: { canEdit: !voidLocked && canEdit(order, req.user, assistantIds), canDelete: !voidLocked && canDelete(order, req.user, assistantIds), canVoid: canVoidRequest(order, req.user, assistantIds), canVoidApprove: canVoidApprove(order, req.user), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: !voidLocked && canWithdraw(order, req.user), canRemind: canRemind(order, req.user, assistantIds, [], row.assistant_user_id), canPurchase: !voidLocked && canPurchase(order, req.user), canFillContractNo: !voidLocked && canFillContractNo(order, req.user, assistantIds) } }
   }) })
 }
 
@@ -1091,39 +1120,231 @@ async function withdraw(req, res) {
   res.json(await loadDetail(req.params.id, req.user))
 }
 
+// spec 010：作废生效副作用（状态置 voided + 归档重建 + 撤销待办通知与采购任务）
+async function applyVoid(connection, order, userId, reason) {
+  await connection.execute(
+    `UPDATE mr_orders SET status = 'voided', voided_at = NOW(), void_reason = :reason,
+            void_request_status = 'approved', void_request_stage = NULL,
+            archive_status = 'pending', archive_attempts = 0, archive_next_attempt_at = NOW(), archive_error = NULL,
+            updated_by = :userId WHERE id = :id`,
+    { id: order.id, userId, reason },
+  )
+  await connection.execute(
+    `UPDATE mr_notification_outbox SET status = 'cancelled', last_error = 'MR 已作废'
+     WHERE mr_id = :mrId AND event = 'approved' AND status IN ('pending', 'failed')`,
+    { mrId: order.id },
+  )
+  await connection.execute(
+    `UPDATE mr_purchase_tasks SET status = 'cancelled', completed_at = NOW()
+     WHERE mr_id = :mrId AND status = 'pending'`,
+    { mrId: order.id },
+  )
+  await connection.execute(
+    `UPDATE mr_notification_outbox SET status = 'cancelled', last_error = 'MR 已作废'
+     WHERE mr_id = :mrId AND event IN ('purchase_task', 'purchase_transfer', 'contract_no_task', 'contract_no_transfer') AND status IN ('pending', 'failed')`,
+    { mrId: order.id },
+  )
+}
+
+// 签核链「处级单位」步骤签核人=作废审批的业务主管；无此步骤（业务主管本人单）返回 null
+async function findVoidSupervisorApprover(connection, mrId) {
+  const [rows] = await connection.execute(
+    `SELECT assignee_user_id FROM mr_approvals
+     WHERE mr_id = :mrId AND step_key = 'supervisor' AND assignee_user_id IS NOT NULL
+     ORDER BY cycle DESC, seq DESC LIMIT 1`,
+    { mrId },
+  )
+  return rows[0] ? Number(rows[0].assignee_user_id) : null
+}
+
+// 行政主管与签核链角色步骤一致：系统内在职账号必须唯一
+async function findAdministrativeSupervisor(connection) {
+  const [rows] = await connection.execute(
+    "SELECT id FROM users WHERE role = 'administrative_supervisor' AND status = 'active' ORDER BY id",
+  )
+  if (rows.length !== 1) {
+    throw badRequest(rows.length
+      ? '行政主管在职账号有多位，无法确定作废审批人，请联系管理员'
+      : '未配置在职行政主管，无法发起作废申请，请联系管理员')
+  }
+  return Number(rows[0].id)
+}
+
+// 采购通知对象：已指派采购→指派对象；未指派→全体在职采购（防止有人接单继续采购）
+async function voidPurchaserRecipients(connection, order) {
+  if (order.purchaseAssigneeUserId) return [Number(order.purchaseAssigneeUserId)]
+  const [rows] = await connection.execute("SELECT id FROM users WHERE role = 'purchaser' AND status = 'active'")
+  return rows.map((row) => Number(row.id))
+}
+
+async function insertOutbox(connection, mrId, recipientIds, event) {
+  const unique = [...new Set(recipientIds.map(Number).filter((id) => id > 0))]
+  for (const recipientId of unique) {
+    await connection.execute(
+      `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+       VALUES (:mrId, :recipientId, :event)`,
+      { mrId, recipientId, event },
+    )
+  }
+}
+
+// 作废生效周知：签核链所有签核人（排除指定审批人）+ 采购（采购已完成时采购是发起人，不重复通知）
+async function notifyVoidEffective(connection, order, excludeUserId) {
+  const [rows] = await connection.execute(
+    `SELECT DISTINCT assignee_user_id AS uid FROM mr_approvals WHERE mr_id = :mrId AND assignee_user_id IS NOT NULL
+     UNION
+     SELECT DISTINCT approver_id AS uid FROM mr_approvals WHERE mr_id = :mrId AND approver_id IS NOT NULL`,
+    { mrId: order.id },
+  )
+  const exclude = new Set([Number(excludeUserId || 0)])
+  let recipients = rows.map((row) => Number(row.uid)).filter((id) => id > 0 && !exclude.has(id))
+  if (String(order.purchaseStatus || '') !== 'done') {
+    const purchasers = await voidPurchaserRecipients(connection, order)
+    recipients = recipients.concat(purchasers.filter((id) => !exclude.has(id)))
+  }
+  await insertOutbox(connection, order.id, recipients, 'void')
+}
+
+async function nextVoidRound(connection, mrId) {
+  const [rows] = await connection.execute(
+    'SELECT COALESCE(MAX(round), 0) + 1 AS nextRound FROM mr_void_approvals WHERE mr_id = :mrId',
+    { mrId },
+  )
+  return Number(rows[0].nextRound) || 1
+}
+
+// spec 010：作废申请（原一步到位作废已废弃，admin/运营负责人不再有权）
 async function voidOrder(req, res) {
   const reason = String(req.body?.reason || '').trim().slice(0, 500)
-  if (!reason) throw badRequest('作废时必须填写原因')
+  if (!reason) throw badRequest('申请作废时必须填写原因')
   await ensureTables()
   const assistantIds = await assistantIdsFor(req.user)
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
-    if (!canVoid(order, req.user, assistantIds)) throw forbidden('当前状态或身份不允许作废该 MR 申请')
+    if (!canVoidRequest(order, req.user, assistantIds)) throw forbidden('当前状态或身份不允许申请作废该 MR 申请')
+    const purchaseDone = String(order.purchaseStatus || '') === 'done'
+    if (!purchaseDone) {
+      // 场景一：采购未完成。业务主管本人单（签核链无处级单位步骤）跳过自审直接生效
+      const supervisorId = await findVoidSupervisorApprover(connection, order.id)
+      if (!supervisorId || supervisorId === Number(req.user.id)) {
+        await applyVoid(connection, order, req.user.id, reason)
+        await notifyVoidEffective(connection, order, req.user.id)
+      } else {
+        const round = await nextVoidRound(connection, order.id)
+        await connection.execute(
+          `UPDATE mr_orders SET void_request_status = 'pending', void_request_stage = 'sales_review',
+                  void_requested_by = :userId, void_requested_at = NOW(), void_reason = :reason,
+                  void_reject_reason = NULL, void_rejected_by = NULL, void_rejected_at = NULL,
+                  updated_by = :userId WHERE id = :id`,
+          { id: order.id, userId: req.user.id, reason },
+        )
+        await connection.execute(
+          `INSERT INTO mr_void_approvals (mr_id, round, stage, approver_id) VALUES (:mrId, :round, 'sales_review', :approverId)`,
+          { mrId: order.id, round, approverId: supervisorId },
+        )
+        // 发起即通知：业务主管审批 + 采购暂停动作
+        await insertOutbox(connection, order.id, [supervisorId], 'void_request_supervisor')
+        await insertOutbox(connection, order.id, await voidPurchaserRecipients(connection, order), 'void_request_purchaser')
+      }
+    } else {
+      // 场景二：采购已完成。仅采购可发起 → 行政主管（第一级）
+      const adminId = await findAdministrativeSupervisor(connection)
+      const round = await nextVoidRound(connection, order.id)
+      await connection.execute(
+        `UPDATE mr_orders SET void_request_status = 'pending', void_request_stage = 'admin_review',
+                void_requested_by = :userId, void_requested_at = NOW(), void_reason = :reason,
+                void_reject_reason = NULL, void_rejected_by = NULL, void_rejected_at = NULL,
+                updated_by = :userId WHERE id = :id`,
+        { id: order.id, userId: req.user.id, reason },
+      )
+      await connection.execute(
+        `INSERT INTO mr_void_approvals (mr_id, round, stage, approver_id) VALUES (:mrId, :round, 'admin_review', :approverId)`,
+        { mrId: order.id, round, approverId: adminId },
+      )
+      await insertOutbox(connection, order.id, [adminId], 'void_request_admin')
+    }
     await connection.execute(
-      `UPDATE mr_orders SET status = 'voided', voided_at = NOW(), void_reason = :reason,
-              archive_status = 'pending', archive_attempts = 0, archive_next_attempt_at = NOW(), archive_error = NULL,
-              updated_by = :userId WHERE id = :id`,
-      { id: req.params.id, userId: req.user.id, reason },
+      `INSERT INTO audit_logs (actor_id, target_type, target_id, action, detail_json)
+       VALUES (:actorId, 'mr', :targetId, 'void_request', :detailJson)`,
+      {
+        actorId: req.user.id,
+        targetId: order.id,
+        detailJson: JSON.stringify({ reason, purchaseDone }),
+      },
     )
-    await connection.execute(
-      `UPDATE mr_notification_outbox SET status = 'cancelled', last_error = 'MR 已作废'
-       WHERE mr_id = :mrId AND event = 'approved' AND status IN ('pending', 'failed')`,
-      { mrId: req.params.id },
+  })
+  res.json(await loadDetail(req.params.id, req.user))
+}
+
+// spec 010：作废审批（同意/驳回）。驳回必填原因，驳回后解锁可重新申请
+async function decideVoid(req, res) {
+  const action = String(req.body?.action || '').trim()
+  if (!['approve', 'reject'].includes(action)) throw badRequest('无效的审批动作')
+  const reason = String(req.body?.reason || '').trim().slice(0, 500)
+  if (action === 'reject' && !reason) throw badRequest('驳回作废申请时必须填写原因')
+  await ensureTables()
+  await transaction(async (connection) => {
+    const order = await loadLockedOrder(connection, req.params.id)
+    if (String(order.voidRequestStatus || '') !== 'pending') throw badRequest('该 MR 当前没有待审批的作废申请')
+    const [pendingRows] = await connection.execute(
+      'SELECT * FROM mr_void_approvals WHERE mr_id = :mrId AND action IS NULL ORDER BY id DESC LIMIT 1 FOR UPDATE',
+      { mrId: order.id },
     )
+    const pending = pendingRows[0]
+    if (!pending || Number(pending.approver_id) !== Number(req.user.id)) throw forbidden('当前作废审批待办不属于你')
+    if (action === 'reject') {
+      await connection.execute(
+        `UPDATE mr_void_approvals SET action = 'rejected', reason = :reason, decided_at = NOW() WHERE id = :id`,
+        { id: pending.id, reason },
+      )
+      await connection.execute(
+        `UPDATE mr_orders SET void_request_status = 'rejected', void_request_stage = NULL,
+                void_reject_reason = :reason, void_rejected_by = :userId, void_rejected_at = NOW(),
+                updated_by = :userId WHERE id = :id`,
+        { id: order.id, userId: req.user.id, reason },
+      )
+      // 驳回通知：发起人 + 采购（含驳回原因，采购据此判断是否继续采购）
+      const recipients = [Number(order.voidRequestedBy)]
+      if (String(order.purchaseStatus || '') !== 'done') {
+        recipients.push(...await voidPurchaserRecipients(connection, order))
+      }
+      await insertOutbox(connection, order.id, recipients, 'void_rejected')
+    } else {
+      await connection.execute(
+        `UPDATE mr_void_approvals SET action = 'approved', decided_at = NOW() WHERE id = :id`,
+        { id: pending.id },
+      )
+      if (pending.stage === 'admin_review') {
+        // 场景二第二级：业务主管。签核链无处级单位步骤（业务负责人即业务主管）视同跳过自审直接生效
+        const supervisorId = await findVoidSupervisorApprover(connection, order.id)
+        if (!supervisorId) {
+          await applyVoid(connection, order, req.user.id, order.voidReason)
+          await notifyVoidEffective(connection, order, null)
+        } else {
+          await connection.execute(
+            `INSERT INTO mr_void_approvals (mr_id, round, stage, approver_id) VALUES (:mrId, :round, 'sales_review', :approverId)`,
+            { mrId: order.id, round: pending.round, approverId: supervisorId },
+          )
+          await connection.execute(
+            `UPDATE mr_orders SET void_request_stage = 'sales_review', updated_by = :userId WHERE id = :id`,
+            { id: order.id, userId: req.user.id },
+          )
+          await insertOutbox(connection, order.id, [supervisorId], 'void_request_supervisor2')
+        }
+      } else {
+        await applyVoid(connection, order, req.user.id, order.voidReason)
+        await notifyVoidEffective(connection, order, req.user.id)
+      }
+    }
     await connection.execute(
-      `UPDATE mr_purchase_tasks SET status = 'cancelled', completed_at = NOW()
-       WHERE mr_id = :mrId AND status = 'pending'`,
-      { mrId: req.params.id },
-    )
-    await connection.execute(
-      `UPDATE mr_notification_outbox SET status = 'cancelled', last_error = 'MR 已作废'
-       WHERE mr_id = :mrId AND event IN ('purchase_task', 'purchase_transfer', 'contract_no_task', 'contract_no_transfer') AND status IN ('pending', 'failed')`,
-      { mrId: req.params.id },
-    )
-    await connection.execute(
-      `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
-       VALUES (:mrId, :recipientId, 'void')`,
-      { mrId: req.params.id, recipientId: order.salesOwnerId },
+      `INSERT INTO audit_logs (actor_id, target_type, target_id, action, detail_json)
+       VALUES (:actorId, 'mr', :targetId, :auditAction, :detailJson)`,
+      {
+        actorId: req.user.id,
+        targetId: order.id,
+        auditAction: action === 'approve' ? 'void_approve' : 'void_reject',
+        detailJson: JSON.stringify({ stage: pending.stage, reason: reason || null }),
+      },
     )
   })
   res.json(await loadDetail(req.params.id, req.user))
@@ -1136,6 +1357,7 @@ async function submitContractNo(req, res) {
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
     if (order.status !== 'approved') throw badRequest('仅签核通过的 MR 可以补填合同编号')
+    if (isVoidLocked(order)) throw badRequest('该 MR 正在作废审批中，已锁定，请等待审批结果')
     if (String(order.purchaseStatus || '') !== 'waiting_contract') throw badRequest('当前 MR 不在待补填合同编号环节')
     if (!Number(order.hasContract)) throw badRequest('该 MR 为无合同单，无需补填合同编号')
     // 合同编号由助理补填：补填期待 purchase_assignee_user_id 记录的是被指派的助理
@@ -1199,6 +1421,7 @@ async function submitPurchase(req, res) {
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
     if (order.status !== 'approved') throw badRequest('仅已通过的 MR 可以填写采购单号')
+    if (isVoidLocked(order)) throw badRequest('该 MR 正在作废审批中，已锁定，请等待审批结果')
     if (!['pending', 'done'].includes(String(order.purchaseStatus || ''))) throw badRequest('当前 MR 不在采购订单填写环节')
     if (!canPurchase(order, req.user)) throw forbidden('当前采购填写任务不属于你')
     wasDone = String(order.purchaseStatus || '') === 'done'
@@ -2558,6 +2781,7 @@ module.exports = {
   reassignSalesOwner,
   withdraw,
   voidOrder,
+  decideVoid,
   submitContractNo,
   submitPurchase,
   remove,

@@ -1189,9 +1189,18 @@ async function sendMrApprovalMail(order, recipient, event = 'task') {
     remind_manual: 'MR 签核待办催办提醒（手动催办）',
     remind_auto: 'MR 签核停留超 24 小时，请尽快处理',
     void: 'MR 已作废',
+    void_request_supervisor: 'MR 作废申请待你审批',
+    void_request_purchaser: 'MR 进入作废审批，请暂停采购动作',
+    void_request_admin: 'MR 作废申请待你审批（行政复核）',
+    void_request_supervisor2: 'MR 作废申请待你审批（业务复核）',
+    void_rejected: 'MR 作废申请已被驳回',
     assignment_error: 'MR 签核人配置异常，签核流程已暂停',
   }
   const action = eventLabels[event] || 'MR 状态已更新'
+  // spec 010：作废相关邮件带出原因；驳回邮件带驳回原因，便于采购判断后续动作
+  const voidNote = event === 'void_rejected'
+    ? `驳回原因：${order.void_reject_reason || '-'}`
+    : (event === 'void' || String(event).startsWith('void_request') ? `作废原因：${order.void_reason || '-'}` : null)
   const currentStepKey = order.currentStepKey || order.current_step_key
   const rawCurrentStepLabel = order.currentStepLabel || order.current_step_label
   const currentStepLabel = currentStepKey === 'sales' ? '业务负责人' : currentStepKey === 'engineering' ? '工程会签' : rawCurrentStepLabel || '-'
@@ -1247,6 +1256,7 @@ async function sendMrApprovalMail(order, recipient, event = 'task') {
         <tr><td style="padding:5px 0;color:#64748b">装机承担方 / 维护承担方</td><td>${htmlEscape(mrOptionText(order.installOptions || order.install_options))} / ${htmlEscape(mrOptionText(order.maintenanceOptions || order.maintenance_options))}</td></tr>
         <tr><td style="padding:5px 0;color:#64748b">合同编号 / 罚则说明</td><td>${htmlEscape(order.contractNo || order.contract_no || '-')} / ${htmlEscape(order.penaltyContent || order.penalty_content || '-')}</td></tr>
         <tr><td style="padding:5px 0;color:#64748b">备注</td><td>${htmlEscape(order.remark || '-')}</td></tr>
+        ${voidNote ? `<tr><td style="padding:5px 0;color:#b91c1c">作废/驳回说明</td><td style="color:#b91c1c;font-weight:bold">${htmlEscape(voidNote)}</td></tr>` : ''}
       </table>
       <h3 style="margin:14px 0 4px">报价原始附件</h3>
       ${quotationList}

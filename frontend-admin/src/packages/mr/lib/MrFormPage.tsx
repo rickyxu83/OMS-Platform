@@ -32,6 +32,7 @@ import {
   updateMr,
   uploadMrAttachments,
   voidMr,
+  decideVoidMr,
   withdrawMr,
 } from '../client'
 import type { CustomerOption, MrConstants, MrItem, MrOrder, QuotationFile, QuotationImportResult, SalesPreferences, ScheduleEntry, UserOption, VendorOption } from '../types'
@@ -87,7 +88,7 @@ function suggestInvoiceType(result: QuotationImportResult) {
   return rate === 13 ? '13%普通发票' : ''
 }
 type ValidationError = { field?: string; message?: string }
-type Decision = 'approve' | 'reject' | 'withdraw' | 'void' | null
+type Decision = 'approve' | 'reject' | 'withdraw' | 'void' | 'voidApprove' | 'voidReject' | null
 
 function syncInstallOptions(items: MrItem[], previous: string[], next: string[]) {
   const oldDefaults = new Set(previous.filter((value) => value !== 'NO'))
@@ -908,7 +909,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
   }
 
   const confirmDecision = async () => {
-    if (!id || !decision || (decision !== 'approve' && !reason.trim())) return
+    if (!id || !decision || (!['approve', 'voidApprove'].includes(decision) && !reason.trim())) return
     if (decision === 'approve' && user && user.hasEngineerSignature === false) {
       setError('签核前请先设置手写签名：右上角头像 → 我的设置 → 手写签名')
       setDecision(null)
@@ -922,7 +923,11 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
           ? await rejectMr(id, reason.trim(), rejectTarget)
           : decision === 'withdraw'
             ? await withdrawMr(id, reason.trim())
-            : await voidMr(id, reason.trim())
+            : decision === 'voidApprove'
+              ? await decideVoidMr(id, 'approve', reason.trim())
+              : decision === 'voidReject'
+                ? await decideVoidMr(id, 'reject', reason.trim())
+                : await voidMr(id, reason.trim())
       setForm(next)
       setEditing(false)
       setDecision(null)
@@ -931,7 +936,14 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
       if (decision === 'approve' && next.autoApprovedStep) {
         toast.success(`当前签核已完成，因您同时负责下一环节，已一并完成「${next.autoApprovedStep}」签核`)
       } else {
-        const messages = { approve: next.status === 'approved' ? 'MR 已完成全部签核' : '当前签核步骤已完成，流程已转至下一步', reject: '已驳回并退回修改', withdraw: 'MR 已撤回并恢复为草稿', void: 'MR 已作废' }
+        const messages = {
+          approve: next.status === 'approved' ? 'MR 已完成全部签核' : '当前签核步骤已完成，流程已转至下一步',
+          reject: '已驳回并退回修改',
+          withdraw: 'MR 已撤回并恢复为草稿',
+          void: next.status === 'voided' ? 'MR 已作废' : '作废申请已提交，单据已锁定并通知审批人',
+          voidApprove: next.status === 'voided' ? '已同意作废，MR 已作废' : '已同意，作废申请转至下一级审批',
+          voidReject: '已驳回作废申请，单据已解锁恢复',
+        }
         toast.success(messages[decision])
       }
     } catch (err) {
@@ -1225,7 +1237,13 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
               </Button>
             ) : null}
             {user?.role === 'admin' && !['approved', 'voided'].includes(status) ? <Button variant="outline" onClick={() => { setReassignSalesId(String(calculated.salesOwnerId || salespeople[0]?.id || '')); setReassignOpen(true) }}>变更业务负责人</Button> : null}
-            {calculated.permissions?.canVoid ? <Button variant="outline" onClick={() => { setDecision('void'); setReason('') }}>作废</Button> : null}
+            {calculated.permissions?.canVoid ? <Button variant="outline" onClick={() => { setDecision('void'); setReason('') }}>申请作废</Button> : null}
+            {calculated.permissions?.canVoidApprove ? (
+              <>
+                <Button variant="outline" onClick={() => { setDecision('voidApprove'); setReason('') }}>同意作废</Button>
+                <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => { setDecision('voidReject'); setReason('') }}>驳回作废申请</Button>
+              </>
+            ) : null}
             {calculated.permissions?.canDelete ? (
               <Button variant="outline" disabled={busy} className="text-destructive hover:text-destructive" onClick={() => void removeDraft()}>
                 <Trash2 className="mr-2 size-4" />删除草稿
@@ -1307,6 +1325,18 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
             <div className="rounded-xl border-l-4 border-zinc-400 bg-zinc-100 px-4 py-3 text-sm text-zinc-700">
               <div className="font-medium">该申请单已作废</div>
               <div className="mt-1">{calculated.voidReason}</div>
+            </div>
+          ) : null}
+          {calculated.voidRequestStatus === 'pending' ? (
+            <div className="rounded-xl border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <div className="font-medium">作废审批中，单据已锁定</div>
+              <div className="mt-1">作废原因：{calculated.voidReason || '-'}；审批结果出来前，编辑、采购等操作均已暂停。</div>
+            </div>
+          ) : null}
+          {calculated.voidRequestStatus === 'rejected' && calculated.voidRejectReason ? (
+            <div className="rounded-xl border-l-4 border-emerald-500 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              <div className="font-medium">作废申请已被驳回，单据已解锁</div>
+              <div className="mt-1">驳回原因：{calculated.voidRejectReason}</div>
             </div>
           ) : null}
 
@@ -1802,7 +1832,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
       <Dialog open={Boolean(decision)} onOpenChange={(open) => { if (!open) setDecision(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{decision === 'approve' ? '确认电子签核' : decision === 'reject' ? '驳回 MR 申请' : decision === 'withdraw' ? '撤回 MR 申请' : '作废 MR 申请'}</DialogTitle>
+            <DialogTitle>{decision === 'approve' ? '确认电子签核' : decision === 'reject' ? '驳回 MR 申请' : decision === 'withdraw' ? '撤回 MR 申请' : decision === 'voidApprove' ? '同意作废申请' : decision === 'voidReject' ? '驳回作废申请' : '申请作废 MR 申请'}</DialogTitle>
             <DialogDescription>
               {decision === 'approve'
                 ? `本次操作将以当前登录账号完成电子签核。签核版本为 V${assistantReview ? Number(calculated.versionNo || 0) + 1 : calculated.versionNo || calculated.currentVersion?.versionNo || 1}，未税总计为 ¥ ${money(calculated.totals?.salesExcludingTax)}；签核完成后，该版本不可修改。`
@@ -1810,7 +1840,11 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
                   ? '请选择退回对象并填写原因；完成修改后，签核流程将从助理步骤重新开始。'
                   : decision === 'withdraw'
                     ? '撤回后，当前待办将关闭，MR 申请将恢复为草稿；重新提交时，签核流程将从助理步骤开始。'
-                    : '作废后，将生成作废归档 PDF。'}
+                    : decision === 'voidApprove'
+                      ? '同意后该 MR 将正式作废（或流转下一级审批），并邮件周知签核链相关人员。'
+                      : decision === 'voidReject'
+                        ? '驳回后单据将解锁恢复原状，驳回原因会邮件通知发起人与采购，可再次发起作废申请。'
+                        : '提交后单据将锁定并进入作废审批，审批通过后生成作废归档 PDF。'}
             </DialogDescription>
           </DialogHeader>
           {decision === 'reject' ? (
@@ -1821,15 +1855,15 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
               </Select>
             </Field>
           ) : null}
-          {decision !== 'approve' ? (
-            <Field label={decision === 'reject' ? '驳回原因' : decision === 'withdraw' ? '撤回原因' : '作废原因'}>
+          {decision && decision !== 'approve' ? (
+            <Field label={decision === 'reject' ? '驳回原因' : decision === 'withdraw' ? '撤回原因' : decision === 'voidApprove' ? '审批意见（选填）' : decision === 'voidReject' ? '驳回原因（必填，将通知发起人与采购）' : '作废原因'}>
               <Textarea rows={4} value={reason} onChange={(e) => setReason(e.target.value)} />
             </Field>
           ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDecision(null)}>取消</Button>
-            <Button variant={decision === 'void' ? 'destructive' : 'default'} disabled={busy || (decision !== 'approve' && !reason.trim())} onClick={() => void confirmDecision()}>
-              {decision === 'approve' ? '确认签核' : decision === 'reject' ? '确认驳回' : decision === 'withdraw' ? '确认撤回' : '确认作废'}
+            <Button variant={decision === 'void' || decision === 'voidReject' ? 'destructive' : 'default'} disabled={busy || Boolean(decision && !['approve', 'voidApprove'].includes(decision) && !reason.trim())} onClick={() => void confirmDecision()}>
+              {decision === 'approve' ? '确认签核' : decision === 'reject' ? '确认驳回' : decision === 'withdraw' ? '确认撤回' : decision === 'voidApprove' ? '确认同意' : decision === 'voidReject' ? '确认驳回' : '提交作废申请'}
             </Button>
           </DialogFooter>
         </DialogContent>

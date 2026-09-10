@@ -27,6 +27,7 @@ export const reassignMrSales = (id: string | number, salesOwnerId: string | numb
 export const withdrawMr = (id: string | number, reason: string) => api.post(`/mr/${pathId(id)}/withdraw`, { reason }) as Promise<MrOrder>
 export const remindMr = (id: string | number) => api.post(`/mr/${pathId(id)}/remind`) as Promise<{ ok: boolean; remindedAt: string }>
 export const voidMr = (id: string | number, reason: string) => api.post(`/mr/${pathId(id)}/void`, { reason }) as Promise<MrOrder>
+export const decideVoidMr = (id: string | number, action: 'approve' | 'reject', reason = '') => api.post(`/mr/${pathId(id)}/void-decision`, { action, reason }) as Promise<MrOrder>
 export const submitMrContractNo = (id: string | number, body: { contractNo: string }) => api.put(`/mr/${pathId(id)}/contract-no`, body) as Promise<MrOrder>
 export const submitMrPurchase = (id: string | number, body: { items: Array<{ id: string | number; companyPartNo: string; purchaseOrderNo: string; shipmentNo: string }>; note?: string }) => api.put(`/mr/${pathId(id)}/purchase`, body) as Promise<MrOrder>
 export const deleteMr = (id: string | number) => api.delete(`/mr/${pathId(id)}`)

@@ -148,6 +148,9 @@ export interface MrOrder {
   approvedAt?: string | null
   rejectedAt?: string | null
   voidedAt?: string | null
+  voidRequestStatus?: 'pending' | 'rejected' | 'approved' | null
+  voidRequestStage?: 'admin_review' | 'sales_review' | null
+  voidRejectReason?: string | null
   itemCount?: number
   items?: MrItem[]
   approvals?: MrApproval[]
@@ -165,6 +168,7 @@ export interface MrOrder {
     canEdit?: boolean
     canDelete?: boolean
     canVoid?: boolean
+    canVoidApprove?: boolean
     canApprove?: boolean
     canWithdraw?: boolean
     canRemind?: boolean

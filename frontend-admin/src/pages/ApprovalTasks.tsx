@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  CalendarClock, CheckCircle2, CircleCheck, CircleCheckBig, CircleDot, CircleMinus, CircleSlash, CircleX,
+  CalendarClock, Ban, CheckCircle2, CircleCheck, CircleCheckBig, CircleDot, CircleMinus, CircleSlash, CircleX,
   Clock3, FileSignature, FileText, Forward, Hourglass, ListTodo, Loader2, Package,
   PauseCircle, Pencil, RefreshCw, RotateCcw, Search, Send, BellRing, type LucideIcon,
 } from 'lucide-react'
@@ -70,6 +70,7 @@ const BIZ_INDICATOR: Record<string, { icon: LucideIcon; color: string; label: st
   mr: { icon: FileSignature, color: 'text-indigo-600', label: 'MR·签核' },
   mr_purchase: { icon: Package, color: 'text-cyan-600', label: 'MR·采购' },
   mr_contract_no: { icon: FileText, color: 'text-purple-600', label: 'MR·合同' },
+  mr_void: { icon: Ban, color: 'text-rose-600', label: 'MR·作废' },
   attendance: { icon: CalendarClock, color: 'text-orange-600', label: '假勤' },
 }
 
