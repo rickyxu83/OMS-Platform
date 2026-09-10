@@ -1,8 +1,8 @@
 import type { MrItem, MrOrder } from '../types'
 
-// 供应商为敦阳（含繁体/英文写法）表示内部承担、无需采购（2026-09-08 佬裁决），
+// 供应商为敦阳/敦沪（含繁体/英文写法）表示内部承担、无需采购（2026-09-08 佬裁决；2026-09-10 spec 011 加敦沪），
 // 与后端 mr/lib/domain.js 的 isInternalVendor 同口径
-const INTERNAL_VENDOR_RE = /(敦阳|敦陽|stark|dunyang)/i
+const INTERNAL_VENDOR_RE = /(敦阳|敦陽|stark|dunyang|敦沪|dunhu)/i
 
 export function isInternalVendor(vendor?: string | null) {
   return INTERNAL_VENDOR_RE.test(String(vendor || '').trim())

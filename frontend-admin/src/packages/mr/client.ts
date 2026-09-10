@@ -4,11 +4,12 @@ import type { ApprovalTask, AssistantSetting, CustomerOption, MrConstants, MrLay
 function pathId(id: string | number) {
   return encodeURIComponent(String(id).replace(/^\/+|\/+$/g, ''))
 }
-export async function listMr(params: { q?: string; status?: string; purchaseStatus?: string; customerId?: string; salesOwnerId?: string; dateFrom?: string; dateTo?: string; pendingMine?: boolean } = {}) {
+export async function listMr(params: { q?: string; status?: string; purchaseStatus?: string; company?: string; customerId?: string; salesOwnerId?: string; dateFrom?: string; dateTo?: string; pendingMine?: boolean } = {}) {
   const search = new URLSearchParams()
   if (params.q) search.set('q', params.q)
   if (params.status) search.set('status', params.status)
   if (params.purchaseStatus) search.set('purchaseStatus', params.purchaseStatus)
+  if (params.company) search.set('company', params.company)
   if (params.customerId) search.set('customerId', params.customerId)
   if (params.salesOwnerId) search.set('salesOwnerId', params.salesOwnerId)
   if (params.dateFrom) search.set('dateFrom', params.dateFrom)

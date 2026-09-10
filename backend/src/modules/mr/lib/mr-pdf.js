@@ -2,6 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const PDFDocument = require('pdfkit')
 const { registerFonts } = require('../../service-orders/service-record-pdf')
+const { companyOf } = require('./domain')
 
 // 页眉 logo：用裁掉内部留白的 trimmed 版（原图 180×180 里墨迹只有 80×126，直接按框放会虚小且偏低）
 const LOGO_PATH = path.join(__dirname, '..', 'assets', 'dunyang-mark-trimmed.png')
@@ -142,8 +143,14 @@ function header(doc, fonts, order, title = '客户订购申请单（境内单）
   const LOGO_H = 26.4
   if (logoImage) doc.image(logoImage, left, 35.8 - LOGO_H / 2, { height: LOGO_H })
   const textLeft = left + (logoImage ? 46 : 0)
-  text(doc, fonts, 'STARK (NINGBO) TECHNOLOGY INC.', textLeft, 19.5, { size: 7, color: MUTED })
-  text(doc, fonts, '敦阳（宁波）科技有限公司', textLeft, 29.5, { size: 13, bold: true, color: '#402080' })
+  // 页眉公司名按签单主体输出（spec 011）；无英文名时中文名垂直居中替代两行布局
+  const company = companyOf(order.company)
+  if (company.enName) {
+    text(doc, fonts, company.enName, textLeft, 19.5, { size: 7, color: MUTED })
+    text(doc, fonts, company.label, textLeft, 29.5, { size: 13, bold: true, color: '#402080' })
+  } else {
+    text(doc, fonts, company.label, textLeft, 26.5, { size: 13, bold: true, color: '#402080' })
+  }
   text(doc, fonts, title, 280, 24, { size: 17, bold: true, color: '#111827', width: 282, align: 'center' })
   text(doc, fonts, `Ctrl.No: ${value(order.ctrlNo || order.ctrl_no)}`, right - 190, 34, { size: 9, width: 190, align: 'right' })
   // 标题与分隔线之间留足呼吸空间（字号全局放大后原 50 位置视觉上贴字）

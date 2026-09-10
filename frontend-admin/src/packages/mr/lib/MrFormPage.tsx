@@ -42,6 +42,7 @@ import { MrContractNoCard } from './MrContractNoCard'
 import { MrPurchaseCard } from './MrPurchaseCard'
 import { MrDocumentView } from './MrPrintPage'
 import { calculateForm, blankItem, defaultCostTaxRate, normalizeCostTaxRates, quotationDetailItems, singleIntegrationItems } from './form-logic'
+import { MR_COMPANIES, mrCompanyOf, mrWorkOptionsFor } from './companies'
 import { MR_SECTIONS, itemIndexOf, scrollToSection, sectionOfField } from './form-sections'
 import { SectionNav, SummaryPanel, WorkbenchMetrics } from './MrFormRail'
 import { MrItemTable } from './MrItemTable'
@@ -620,6 +621,18 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
     patch({ pricingMode: nextMode, totalExcludingTax: currentSalesTotal, items: nextItems })
   }
 
+  // 签单主体切换（spec 011）：remap 承担方选项里的本公司简称；目标公司不允许当前计价模式时自动切到其首个允许模式（敦沪→开明细）
+  const changeCompany = (nextValue: string) => {
+    if (!form || !calculated) return
+    const list = constants?.COMPANIES?.length ? constants.COMPANIES : MR_COMPANIES
+    const current = mrCompanyOf(form.company, list)
+    const next = mrCompanyOf(nextValue, list)
+    if (current.value === next.value) return
+    const remap = (values: string[]) => (values || []).map((value) => (value === current.shortLabel ? next.shortLabel : value))
+    patch({ company: next.value, installOptions: remap(form.installOptions || []), maintenanceOptions: remap(form.maintenanceOptions || []) })
+    if (!next.pricingModes.includes(Number(form.pricingMode))) changePricingMode(next.pricingModes[0])
+  }
+
   const changeInvoiceType = (invoiceType: string) => {
     patch({ invoiceType, items: normalizeCostTaxRates(form?.items || [], invoiceType) })
   }
@@ -763,7 +776,10 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
   const applyQuotationImport = async (result: QuotationImportResult, selectedMode?: number) => {
     const salesTotal = result.salesTotalExcludingTax ?? result.sources.find((source) => source.role === 'sales')?.total
     const suggested = suggestPricingMode(result)
-    const importedMode = Number(selectedMode) || Number(calculated?.pricingMode) || suggested.mode
+    let importedMode = Number(selectedMode) || Number(calculated?.pricingMode) || suggested.mode
+    // 签单主体计价模式白名单兜底（spec 011）：敦沪单无论识别建议如何都锁定开明细
+    const importCompany = mrCompanyOf(calculated?.company, constants?.COMPANIES?.length ? constants.COMPANIES : MR_COMPANIES)
+    if (!importCompany.pricingModes.includes(importedMode)) importedMode = importCompany.pricingModes[0]
     const importedInvoiceType = calculated?.invoiceType || suggestInvoiceType(result)
     const imported = normalizeCostTaxRates(result.items, importedInvoiceType)
     const items = importedMode === 2
@@ -1146,6 +1162,11 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
   }
 
   const status = calculated.status || 'draft'
+// 签单主体（spec 011）：优先用后端 constants 下发的 COMPANIES，缺失时用共享常量兜底
+const companies = constants.COMPANIES?.length ? constants.COMPANIES : MR_COMPANIES
+const activeCompany = mrCompanyOf(calculated.company, companies)
+const workOptions = mrWorkOptionsFor(calculated.company, companies)
+const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompany.pricingModes.includes(mode.value))
   const contactCandidates = linkedContacts.filter((item) => item.id && item.name)
   const contactChoices = Array.from(new Map([...contactCandidates.filter((item) => String(item.id) === String(calculated.customerContactId)), ...contactCandidates].map((item) => [String(item.id), item])).values())
   const selectedCustomer = customers.find((item) => String(item.id) === String(calculated.customerId))
@@ -1403,9 +1424,15 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
           <SectionCard id="trade" title="交易信息" icon={SECTION_ICON('trade')} description="当前计价模式和发票类型同时适用于报价导入及手动录入。" flash={flashSection === 'trade'}>
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="计价与发票">
+                <Field label="签单主体" editable={editable && status === 'draft'} readonlyText={activeCompany.label} help="选择开票/签单公司。上海敦沪信息科技有限公司的单仅支持“开明细”计价模式；提交签核后不可更换（撤回回草稿后可改）。">
+                  <Select value={activeCompany.value} onValueChange={changeCompany}>
+                    <SelectTrigger><SelectValue placeholder="选择签单主体" /></SelectTrigger>
+                    <SelectContent>{companies.map((company) => <SelectItem key={company.value} value={company.value}>{company.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </Field>
                 <Field label="计价模式" editable={editable} readonlyText={PRICING_LABELS[Number(calculated.pricingMode)] || '-'} help="决定金额分摊方式：多项系统集成＝整单未税总计按各品项成本占比分摊；单项系统集成＝固定拆为主项 99%＋技术服务 1%；开明细＝各品项小计加总即为总计，不做整单分摊。切换模式会重算品项单价与必填规则。">
                   <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border bg-background p-1">
-                    {constants.pricingModes.map((mode) => (
+                    {allowedPricingModes.map((mode) => (
                       <Button key={mode.value} type="button" size="sm" variant={Number(calculated.pricingMode) === mode.value ? 'default' : 'ghost'} onClick={() => changePricingMode(mode.value)}>
                         {mode.label}
                       </Button>
@@ -1504,7 +1531,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
               order={calculated}
               editable={editable && itemSetupReady}
               vendors={vendors}
-              workOptions={constants.WORK_OPTIONS}
+              workOptions={workOptions}
               focusIndex={focusItemIndex}
               onFocusHandled={() => setFocusItemIndex(null)}
               onChange={(items: MrItem[]) => patch({ items })}
@@ -1645,20 +1672,20 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
               <WorkOptions
                 label="装机承担方"
                 value={calculated.installOptions || []}
-                choices={constants.WORK_OPTIONS}
+                choices={workOptions}
                 editable={editable}
                 onChange={(value) => patch({ installOptions: value, items: syncInstallOptions(calculated.items || [], calculated.installOptions || [], value) })}
               />
               <WorkOptions
                 label="维护承担方"
                 value={calculated.maintenanceOptions || []}
-                choices={constants.WORK_OPTIONS}
+                choices={workOptions}
                 editable={editable}
                 onChange={(value) => patch({ maintenanceOptions: value })}
               />
             </div>
-            {editable && ((calculated.installOptions || []).includes('敦阳') || (calculated.maintenanceOptions || []).includes('敦阳')) ? (
-              <p className="mt-3 text-xs text-muted-foreground">装机或维护承担方包含“敦阳”时，签核流程将增加工程会签步骤。</p>
+            {editable && ((calculated.installOptions || []).includes(activeCompany.shortLabel) || (calculated.maintenanceOptions || []).includes(activeCompany.shortLabel)) ? (
+              <p className="mt-3 text-xs text-muted-foreground">装机或维护承担方包含“{activeCompany.shortLabel}”时，签核流程将增加工程会签步骤。</p>
             ) : null}
           </SectionCard>
 

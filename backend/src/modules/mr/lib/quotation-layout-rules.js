@@ -5,7 +5,7 @@ const RULES = [
   { id: 'shiluo', file: /石洛/i, vendor: '上海石洛信息科技有限公司' },
 ]
 
-const OWN_COMPANY = /(敦阳|敦陽|stark|dunyang)/i
+const OWN_COMPANY = /(敦阳|敦陽|stark|dunyang|敦沪|dunhu)/i
 
 /** 文件名/模式规范化：连字符与下划线统一为空格，避免提取模式与真实文件名分隔符不一致导致匹配失败。 */
 function normalizePatternText(input) {

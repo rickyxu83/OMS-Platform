@@ -475,6 +475,7 @@ async function assertCreateOwner(order, user) {
 }
 
 const ORDER_COLUMNS = [
+  ['company', 'company'],
   ['customerId', 'customer_id'], ['customerContactId', 'customer_contact_id'], ['salesOwnerId', 'sales_owner_id'],
   ['customerName', 'customer_name'], ['contactName', 'contact_name'], ['caseCategory', 'case_category'],
   ['customerPo', 'customer_po'], ['ctrlNo', 'ctrl_no'], ['invoiceType', 'invoice_type'],
@@ -561,6 +562,12 @@ async function list(req, res) {
   if (purchaseStatus) {
     where.push('o.purchase_status = :purchaseStatus')
     params.purchaseStatus = purchaseStatus
+  }
+  // 签单主体筛选（spec 011）
+  const company = String(req.query.company || '').trim()
+  if (company) {
+    where.push('o.company = :company')
+    params.company = company
   }
   // 全文搜索：单头（客户/Ctrl.NO/客户P/O/备注）+ 品项明细（品名/描述/原厂规格/料号/供应商/采购单号/出货单号）
   // 设备型号查单场景：型号命中 oem_spec/description/name 的品项即可定位所属 MR 单
@@ -711,6 +718,8 @@ async function update(req, res) {
     const existing = await loadLockedOrder(connection, req.params.id)
     if (!canEdit(existing, req.user, assistantIds)) throw forbidden('当前状态或身份不允许编辑该 MR 申请')
     if (req.user.role !== 'admin' || existing.status !== 'draft') params.sales_owner_id = existing.salesOwnerId
+    // 签单主体仅 draft 状态可改（spec 011）：提交签核后锁定，防止签核中途换主体
+    if (existing.status !== 'draft') params.company = existing.company || 'dunyang'
     await connection.execute(
       `UPDATE mr_orders SET
        ${ORDER_COLUMNS.map(([, column]) => `${column} = :${column}`).join(', ')}, updated_by = :userId

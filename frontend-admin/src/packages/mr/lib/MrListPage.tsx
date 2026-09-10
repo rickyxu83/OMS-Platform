@@ -16,6 +16,7 @@ import { createMr, listMr, listSalespeople, remindMr } from '../client'
 import { LayoutRulesDialog } from './LayoutRulesDialog'
 import { HelpTooltip } from '@/components/HelpTooltip'
 import type { MrOrder, MrStatus, UserOption } from '../types'
+import { MR_COMPANIES, mrCompanyOf } from './companies'
 
 const STATUS_LABELS: Record<MrStatus, string> = {
   draft: '草稿',
@@ -156,6 +157,8 @@ export function MrListPage() {
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
   const [purchaseStatus, setPurchaseStatus] = useState('all')
+  // 签单主体筛选（spec 011）
+  const [company, setCompany] = useState('all')
   // 只看待我签核：导航角标/待办中心深链 ?pendingMine=1 进入
   const [pendingMine, setPendingMine] = useState(searchParams.get('pendingMine') === '1')
   const [dateFrom, setDateFrom] = useState('')
@@ -183,6 +186,7 @@ export function MrListPage() {
         q: q.trim(),
         status: status === 'all' ? '' : status,
         purchaseStatus: purchaseStatus === 'all' ? '' : purchaseStatus,
+        company: company === 'all' ? '' : company,
         customerId: customerFilterId,
         salesOwnerId: salesFilterId === 'all' ? '' : salesFilterId,
         dateFrom,
@@ -195,7 +199,7 @@ export function MrListPage() {
     } finally {
       setLoading(false)
     }
-  }, [q, status, purchaseStatus, customerFilterId, salesFilterId, dateFrom, dateTo, pendingMine])
+  }, [q, status, purchaseStatus, company, customerFilterId, salesFilterId, dateFrom, dateTo, pendingMine])
 
   // pendingMine 与 URL 同步（清除筛选 chip 时摘掉参数）
   useEffect(() => {
@@ -219,7 +223,7 @@ export function MrListPage() {
   // 无限滚动：数据一次拉全,滚动触底把已展示条数扩一档（slice 累积,非翻页替换）
   const pagedItems = useMemo(() => items.slice(0, page * PAGE_SIZE), [items, page])
   // 筛选/搜索变化时回到第一页；数据变少时收敛页码
-  useEffect(() => { setPage(1) }, [q, status, purchaseStatus, customerFilterId, salesFilterId, dateFrom, dateTo, pendingMine])
+  useEffect(() => { setPage(1) }, [q, status, purchaseStatus, company, customerFilterId, salesFilterId, dateFrom, dateTo, pendingMine])
   // 无限滚动：接近最近滚动祖先底部时扩展示条数
   useEffect(() => {
     if (!items.length) return
@@ -241,6 +245,7 @@ export function MrListPage() {
     setQ('')
     setStatus('all')
     setPurchaseStatus('all')
+    setCompany('all')
     setDateFrom('')
     setDateTo('')
     setSalesFilterId('all')
@@ -390,17 +395,27 @@ export function MrListPage() {
                 ariaLabel="填表日期范围"
               />
             </div>
+            <div className="w-[170px]">
+              <Select value={company} onValueChange={setCompany}>
+                <SelectTrigger aria-label="按签单主体筛选"><SelectValue placeholder="签单主体：全部" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">签单主体：全部</SelectItem>
+                  {MR_COMPANIES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={resetFilters}><RotateCcw className="mr-1.5 size-4" />重置</Button>
               <Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`mr-1.5 size-4 ${loading ? 'animate-spin' : ''}`} />刷新</Button>
             </div>
           </div>
-          {status !== 'all' || purchaseStatus !== 'all' || salesFilterId !== 'all' || customerFilterId || pendingMine ? (
+          {status !== 'all' || purchaseStatus !== 'all' || company !== 'all' || salesFilterId !== 'all' || customerFilterId || pendingMine ? (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-muted-foreground">已选筛选（点击取消）：</span>
               {pendingMine ? <FilterChip label="只看待我签核" onClear={() => setPendingMine(false)} /> : null}
               {status !== 'all' ? <FilterChip label={`状态：${STATUS_LABELS[status as MrStatus] || status}`} onClear={() => setStatus('all')} /> : null}
               {purchaseStatus !== 'all' ? <FilterChip label={`采购状态：${PURCHASE_LABELS[purchaseStatus] || purchaseStatus}`} onClear={() => setPurchaseStatus('all')} /> : null}
+              {company !== 'all' ? <FilterChip label={`签单主体：${mrCompanyOf(company).label}`} onClear={() => setCompany('all')} /> : null}
               {salesFilterId !== 'all' ? <FilterChip label={`销售：${salesFilterName || salesFilterId}`} onClear={() => { setSalesFilterId('all'); setSalesFilterName('') }} /> : null}
               {customerFilterId ? <FilterChip label={`客户：${customerFilterName || customerFilterId}`} onClear={() => { setCustomerFilterId(''); setCustomerFilterName('') }} /> : null}
             </div>
@@ -457,6 +472,12 @@ export function MrListPage() {
                       <span title={order.customerName || '未选择客户'} className="block truncate font-medium">{order.customerName || '未选择客户'}</span>
                       <span title={order.ctrlNo || '未填写 Ctrl.NO'} className="block truncate text-xs text-muted-foreground">{order.ctrlNo || '未填写 Ctrl.NO'}</span>
                     </button>
+                    {/* 非默认签单主体（敦沪）用徽标标出，点击可按公司筛选（spec 011） */}
+                    {order.company && order.company !== 'dunyang' ? (
+                      <button type="button" className="mt-1 inline-flex items-center rounded border border-violet-200 bg-violet-50 px-1.5 py-px text-[11px] font-medium text-violet-700 transition-colors hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300" title={`按签单主体筛选：${mrCompanyOf(order.company).label}`} onClick={(event) => { event.stopPropagation(); setCompany(order.company || 'all') }}>
+                        {mrCompanyOf(order.company).shortLabel}
+                      </button>
+                    ) : null}
                   </TableCell>
                   <TableCell className="truncate">
                     {order.salesOwnerId ? (

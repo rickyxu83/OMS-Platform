@@ -56,6 +56,8 @@ export interface MrApproval {
 export interface MrOrder {
   id?: string | number
   status?: MrStatus
+  // 签单主体（spec 011）：dunyang=敦阳 / dunhu=上海敦沪，仅 draft 可改
+  company?: string
   customerId?: string | number | null
   customerContactId?: string | number | null
   salesOwnerId?: string | number | null
@@ -186,6 +188,8 @@ export interface MrConstants {
   ACCEPTANCE_TYPES: string[]
   WORK_OPTIONS: string[]
   pricingModes: Array<{ value: number; label: string }>
+  // 签单主体（spec 011），后端 constants 下发；旧后端缺失时前端用 lib/companies.ts 兜底
+  COMPANIES?: Array<{ value: string; label: string; shortLabel: string; enName: string; pricingModes: number[] }>
 }
 
 export interface CustomerOption {

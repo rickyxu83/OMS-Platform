@@ -6,6 +6,22 @@ const CASE_CATEGORIES = ['软件买卖', '硬件买卖', '系统整合', '维护
 const ACCEPTANCE_TYPES = ['交货即验收', '装机完成', '测试完成', '验收报告', '其他']
 const WORK_OPTIONS = ['敦阳', '供应商', 'NO', '其他']
 
+// 签单主体（2026-09-10 spec 011）：敦沪单仅允许"开明细"计价模式；enName 为空时 PDF/打印页眉不渲染英文行
+const COMPANIES = [
+  { value: 'dunyang', label: '敦阳（宁波）科技有限公司', shortLabel: '敦阳', enName: 'STARK (NINGBO) TECHNOLOGY INC.', pricingModes: [1, 2, 3] },
+  { value: 'dunhu', label: '上海敦沪信息科技有限公司', shortLabel: '敦沪', enName: '', pricingModes: [3] },
+]
+const DEFAULT_COMPANY = COMPANIES[0].value
+
+function companyOf(value) {
+  return COMPANIES.find((company) => company.value === value) || COMPANIES[0]
+}
+
+// 装机/维护承担方选项按签单主体派生：敦阳单显示"敦阳"，敦沪单显示"敦沪"
+function workOptionsFor(companyValue) {
+  return [companyOf(companyValue).shortLabel, '供应商', 'NO', '其他']
+}
+
 const STEP_ROLES = Object.freeze({
   assistant: 'assistant',
   sales: 'sales',
@@ -18,9 +34,9 @@ function text(value, max = 500) {
   return String(value ?? '').trim().slice(0, max) || null
 }
 
-// 供应商为敦阳（含繁体/英文写法）表示内部承担、无需采购（2026-09-08 佬裁决）。
+// 供应商为敦阳/敦沪（含繁体/英文写法）表示内部承担、无需采购（2026-09-08 佬裁决；2026-09-10 spec 011 加敦沪）。
 // 与报价导入的内部供应商判定同口径，采购环节据此跳过采购单号必填。
-const INTERNAL_VENDOR_RE = /(敦阳|敦陽|stark|dunyang)/i
+const INTERNAL_VENDOR_RE = /(敦阳|敦陽|stark|dunyang|敦沪|dunhu)/i
 
 function isInternalVendor(vendor) {
   return INTERNAL_VENDOR_RE.test(String(vendor || '').trim())
@@ -54,9 +70,10 @@ function date(value) {
     : null
 }
 
-function options(value) {
+function options(value, companyValue = DEFAULT_COMPANY) {
+  const allowed = workOptionsFor(companyValue)
   const source = Array.isArray(value) ? value : []
-  return [...new Set(source.map((item) => normalizedLabel(item, 16)).filter((item) => WORK_OPTIONS.includes(item)))]
+  return [...new Set(source.map((item) => normalizedLabel(item, 16)).filter((item) => allowed.includes(item)))]
 }
 
 function taxRate(value) {
@@ -194,9 +211,11 @@ function round(value, digits) {
 }
 
 function normalizeOrder(body = {}) {
+  const company = companyOf(body.company).value
   const pricingMode = optionalNumber(body.pricingMode ?? body.pricing_mode)
   const rawTotal = optionalNumber(body.totalExcludingTax ?? body.total_excluding_tax)
   const order = {
+    company,
     customerId: optionalNumber(body.customerId ?? body.customer_id),
     customerContactId: optionalNumber(body.customerContactId ?? body.customer_contact_id),
     salesOwnerId: optionalNumber(body.salesOwnerId ?? body.sales_owner_id),
@@ -231,8 +250,8 @@ function normalizeOrder(body = {}) {
     splitDelivery: bool(body.splitDelivery ?? body.split_delivery),
     acceptance: text(body.acceptance, 32),
     acceptanceOther: text(body.acceptanceOther ?? body.acceptance_other, 255),
-    installOptions: options(body.installOptions ?? body.install_options),
-    maintenanceOptions: options(body.maintenanceOptions ?? body.maintenance_options),
+    installOptions: options(body.installOptions ?? body.install_options, company),
+    maintenanceOptions: options(body.maintenanceOptions ?? body.maintenance_options, company),
     contractNo: text(body.contractNo ?? body.contract_no, 255),
     fillDate: date(body.fillDate ?? body.fill_date),
     latestDeliveryDate: date(body.latestDeliveryDate ?? body.latest_delivery_date),
@@ -305,6 +324,7 @@ function validateSubmission(order, items) {
   }
   if (order.invoiceType && !INVOICE_TYPES.includes(order.invoiceType)) errors.push({ field: 'invoiceType', message: '发票类型无效' })
   if (![1, 2, 3].includes(order.pricingMode)) errors.push({ field: 'pricingMode', message: '计价模式无效' })
+  if (!companyOf(order.company).pricingModes.includes(order.pricingMode)) errors.push({ field: 'pricingMode', message: `${companyOf(order.company).label}的 MR 单仅支持开明细计价模式` })
   if (order.invoiceProcess && !INVOICE_PROCESSES.includes(order.invoiceProcess)) errors.push({ field: 'invoiceProcess', message: '开票方式无效' })
   if (order.paymentTerms && !PAYMENT_TERMS.includes(order.paymentTerms)) errors.push({ field: 'paymentTerms', message: '付款条件无效' })
   if (order.paymentTerms === '其他') requireValue('paymentOther', order.paymentOther, '请填写付款条件说明')
@@ -374,8 +394,9 @@ function computeApprovalSteps(order, items) {
     { seq: 1, key: 'assistant', label: '助理', role: STEP_ROLES.assistant },
     { seq: 2, key: 'sales', label: '业务负责人', role: STEP_ROLES.sales },
   ]
-  // 装机或维护承担方含“敦阳”均需工程会签（2026-09-07 佬裁决：维护是敦阳也要流转工程部主管）
-  if (order.installOptions.includes('敦阳') || order.maintenanceOptions.includes('敦阳')) steps.push({ seq: steps.length + 1, key: 'engineering', label: '工程会签', role: STEP_ROLES.engineering })
+  // 装机或维护承担方含本公司内部承担方均需工程会签（2026-09-07 佬裁决：维护是敦阳也要流转工程部主管；2026-09-10 spec 011 按签单主体派生）
+  const internalLabel = companyOf(order.company).shortLabel
+  if (order.installOptions.includes(internalLabel) || order.maintenanceOptions.includes(internalLabel)) steps.push({ seq: steps.length + 1, key: 'engineering', label: '工程会签', role: STEP_ROLES.engineering })
   // 业务主管（处级主管）发起的 MR 单：跳过“处级单位”自签步骤（签核人即本人），无条件签核至运营负责人（副总经理）
   const isDepartmentSupervisor = order.salesOwnerRole === 'sales_supervisor'
   if (!isDepartmentSupervisor) steps.push({ seq: steps.length + 1, key: 'supervisor', label: '处级单位', role: STEP_ROLES.supervisor })
@@ -386,8 +407,11 @@ function computeApprovalSteps(order, items) {
 }
 
 module.exports = {
-  constants: { INVOICE_TYPES, CONTRACT_TYPES, INVOICE_PROCESSES, PAYMENT_TERMS, CASE_CATEGORIES, ACCEPTANCE_TYPES, WORK_OPTIONS },
+  constants: { INVOICE_TYPES, CONTRACT_TYPES, INVOICE_PROCESSES, PAYMENT_TERMS, CASE_CATEGORIES, ACCEPTANCE_TYPES, WORK_OPTIONS, COMPANIES },
   STEP_ROLES,
+  COMPANIES,
+  companyOf,
+  workOptionsFor,
   normalizeOrder,
   validateSubmission,
   totals,
