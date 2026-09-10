@@ -2613,6 +2613,15 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     const draftEngineerText = draftEngineerNames.length
       ? draftEngineerNames.join("、")
       : user?.realName || user?.username || user?.name || "本人草稿";
+    // 与已完成工单同款：内容=问题描述/工作内容/服务项（单字段），不再拼接详细内容
+    const explicitModules = Array.isArray(createDraft.serviceModules)
+      ? createDraft.serviceModules.filter(isServiceModuleId)
+      : null;
+    const hasModules = draftMode === "office"
+      || (explicitModules ? explicitModules.length > 0 : normalizeServiceModules(createDraft, draftMode).length > 0);
+    const draftMainContent = String(
+      createDraft.issueDescription || createDraft.workContent || (hasModules ? serviceItemLabels(createDraft).join("、") : "") || "未填写服务内容",
+    ).replace(/\s+/g, " ").trim();
     const updatedText = formatDateTime(draftItem.updatedAt || draftItem.createdAt || "");
     const timeShort = (value: string) => (value.length >= 16 ? value.slice(11, 16) : value);
     return (
@@ -2635,7 +2644,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
         </div>
         <div className="flex items-start gap-2">
           <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{draftModeLabel}</span>
-          <span title={compactDraftLabel(createDraft)} className="min-w-0 flex-1 line-clamp-2 break-all text-[13px] leading-5 text-muted-foreground">{compactDraftLabel(createDraft)}</span>
+          <span title={draftMainContent} className="min-w-0 flex-1 line-clamp-2 break-all text-[13px] leading-5 text-muted-foreground">{draftMainContent}</span>
         </div>
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-3 text-[12.5px] text-muted-foreground">
@@ -2711,6 +2720,10 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                   const draftHasSelectedModules = draftMode === "office"
                     || (explicitDraftModules ? explicitDraftModules.length > 0 : normalizeServiceModules(createDraft, draftMode).length > 0);
                   const draftItemLabels = draftHasSelectedModules ? serviceItemLabels(createDraft) : ["未选择模块"];
+                  // 与已完成工单「服务内容 / 模式」列同款：主行=问题描述/工作内容/服务项（单字段），副行仅模式
+                  const draftMainContent = String(
+                    createDraft.issueDescription || createDraft.workContent || (draftHasSelectedModules ? draftItemLabels.join("、") : "") || "未填写服务内容",
+                  ).replace(/\s+/g, " ").trim();
                   const draftRoute = `/service-report/new?mode=${draftMode}&draft=1&draftKey=${encodeURIComponent(draftItem.draftKey)}`;
                   const draftEngineerNames = createDraft.engineerIds?.length
                     ? engineers
@@ -2759,11 +2772,8 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                       </TableCell>
                       <TableCell className="min-w-0">
                         <div className="min-w-0">
-                          <div className="truncate font-medium" title={compactDraftLabel(createDraft)}>{compactDraftLabel(createDraft)}</div>
-                          <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
-                            {modeIndicator(draftMode, draftModeLabel)}
-                            <span title={draftItemLabels.join("、")} className="truncate text-xs text-muted-foreground">{draftItemLabels.join("、")}</span>
-                          </div>
+                          <div className="truncate font-medium" title={draftMainContent}>{draftMainContent}</div>
+                          <div className="mt-0.5">{modeIndicator(draftMode, draftModeLabel)}</div>
                         </div>
                       </TableCell>
                       <TableCell className="min-w-0">
