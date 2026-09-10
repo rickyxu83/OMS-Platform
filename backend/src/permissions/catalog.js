@@ -75,12 +75,14 @@ const RAW_PERMISSION_ENTRIES = Object.freeze([
   ['audit-log.view', '查看审计日志', ['admin', 'operations_director', 'engineering_supervisor']],
   ['settings.view', '查看系统设置', ['admin', 'operations_director', 'engineering_supervisor']],
   ['settings.edit', '编辑系统设置', ['admin', 'operations_director', 'engineering_supervisor']],
-  ['mr.view', '查看订购申请', ['admin', 'assistant', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales', 'purchaser']],
+  ['mr.view', '查看订购申请', ['admin', 'assistant', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales', 'purchaser']],
   ['mr.create', '创建订购申请', ['admin', 'assistant', 'sales', 'sales_supervisor']],
   ['mr.edit', '编辑订购申请', ['admin', 'assistant', 'sales', 'sales_supervisor']],
   ['mr.approve', '签核订购申请', ['assistant', 'sales', 'engineering_supervisor', 'sales_supervisor', 'operations_director']],
   ['mr.delete', '删除订购申请', ['admin', 'assistant', 'sales', 'sales_supervisor']],
-  ['mr.void', '作废订购申请', ['admin', 'assistant', 'sales', 'operations_director', 'sales_supervisor']],
+  // spec 010：作废改申请审批制。mr.void=发起申请（业务/助理/采购按场景）；mr.void_approve=审批（业务主管/行政主管）
+  ['mr.void', '申请作废订购申请', ['assistant', 'sales', 'sales_supervisor', 'purchaser']],
+  ['mr.void_approve', '审批作废申请', ['sales_supervisor', 'administrative_supervisor']],
   ['mr.purchase', '填写采购单号', ['admin', 'purchaser']],
 ])
 

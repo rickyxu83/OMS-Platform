@@ -28,6 +28,7 @@ router.post('/:id/reassign-sales', requirePermission('mr.edit'), controller.reas
 router.post('/:id/withdraw', requirePermission('mr.edit'), controller.withdraw)
 router.post('/:id/remind', requirePermission('mr.view'), controller.remind)
 router.post('/:id/void', requirePermission('mr.void'), controller.voidOrder)
+router.post('/:id/void-decision', requirePermission('mr.void_approve'), controller.decideVoid)
 router.put('/:id/contract-no', requirePermission('mr.edit'), controller.submitContractNo)
 router.put('/:id/purchase', requirePermission('mr.purchase'), controller.submitPurchase)
 router.post('/:id/import', requirePermission('mr.edit'), controller.quotationUpload, controller.importQuotation)

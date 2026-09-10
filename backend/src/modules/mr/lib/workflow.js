@@ -732,7 +732,23 @@ const MERGED_TASKS_SUBQUERY = `
        FROM mr_purchase_tasks t
        LEFT JOIN users assignee ON assignee.id = t.assignee_user_id
        LEFT JOIN users initiator ON initiator.id = t.initiator_user_id
-       LEFT JOIN mr_orders o ON o.id = t.mr_id`
+       LEFT JOIN mr_orders o ON o.id = t.mr_id
+       UNION ALL
+       -- spec 010：作废审批待办（action NULL=待审批；已审批进「已办」视图）
+       SELECT v.id, 'mr_void' AS business_type, v.mr_id AS business_id, NULL AS approval_id,
+              CASE WHEN v.stage = 'admin_review' THEN 'MR 作废审批（行政复核）' ELSE 'MR 作废审批（业务复核）' END AS title,
+              v.approver_id AS assignee_user_id, o.void_requested_by AS initiator_user_id,
+              CASE WHEN v.action IS NULL THEN 'pending' ELSE 'done' END AS status,
+              CONCAT('/mr/', v.mr_id) AS detail_path,
+              v.decided_at AS completed_at, v.created_at, COALESCE(v.decided_at, v.created_at) AS updated_at,
+              assignee.real_name AS assignee_name, initiator.real_name AS initiator_name,
+              o.status AS business_status,
+              CASE WHEN v.stage = 'admin_review' THEN '作废审批·行政主管' ELSE '作废审批·业务主管' END AS current_step_label,
+              o.customer_name, o.ctrl_no
+       FROM mr_void_approvals v
+       LEFT JOIN mr_orders o ON o.id = v.mr_id
+       LEFT JOIN users assignee ON assignee.id = v.approver_id
+       LEFT JOIN users initiator ON initiator.id = o.void_requested_by`
 
 async function listApprovalTasks(userId, view = 'pending', extraAssigneeIds = []) {
   await ensureWorkflowTables()
@@ -782,6 +798,7 @@ async function listApprovalTasks(userId, view = 'pending', extraAssigneeIds = []
     `SELECT (
        (SELECT COUNT(*) FROM approval_tasks WHERE assignee_user_id IN (${assigneePlaceholders}) AND status = 'pending')
        + (SELECT COUNT(*) FROM mr_purchase_tasks WHERE assignee_user_id = :userId AND status = 'pending')
+       + (SELECT COUNT(*) FROM mr_void_approvals WHERE approver_id = :userId AND action IS NULL)
      ) AS count`,
     { userId, ...assigneeParams },
   )
