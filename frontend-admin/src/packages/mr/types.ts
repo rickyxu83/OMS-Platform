@@ -152,6 +152,9 @@ export interface MrOrder {
   voidedAt?: string | null
   voidRequestStatus?: 'pending' | 'rejected' | 'approved' | null
   voidRequestStage?: 'admin_review' | 'sales_review' | null
+  voidRequestedAt?: string | null
+  /** 作废审批中：最新一轮作废审批链（列表「作废审批中」hover 进度卡用） */
+  voidSteps?: Array<{ stage: string; stageLabel: string; approverName: string | null; action: string | null; decidedAt: string | null; createdAt: string | null }>
   voidRejectReason?: string | null
   itemCount?: number
   items?: MrItem[]
@@ -365,6 +368,8 @@ export interface ApprovalTask {
   businessStatus?: string | null
   /** spec 012：MR 系任务的采购子状态（pending/done/skipped/waiting_contract），待办中心状态列组合展示用 */
   businessPurchaseStatus?: string | null
+  /** 作废申请状态（pending=作废审批中、单据锁定），状态列「已通过 → 作废审批中」组合展示用 */
+  businessVoidStatus?: string | null
   currentStepLabel?: string | null
   customerName?: string | null
   ctrlNo?: string | null

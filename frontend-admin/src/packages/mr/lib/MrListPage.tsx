@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, X, Pencil, Hourglass, CircleCheck, CircleX, CircleSlash, Package, PackageCheck, Minus, FileText, CircleDot, ArrowRight, BellRing, type LucideIcon } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, X, Pencil, Hourglass, CircleCheck, CircleX, CircleSlash, Package, PackageCheck, Minus, FileText, CircleDot, ArrowRight, BellRing, Ban, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
@@ -18,12 +18,14 @@ import { HelpTooltip } from '@/components/HelpTooltip'
 import type { MrOrder, MrStatus, UserOption } from '../types'
 import { MR_COMPANIES, mrCompanyOf } from './companies'
 
-const STATUS_LABELS: Record<MrStatus, string> = {
+const STATUS_LABELS: Record<string, string> = {
   draft: '草稿',
   in_review: '签核中',
   approved: '已通过',
   rejected: '已驳回',
   voided: '已作废',
+  // 伪状态：单据仍为 approved，但作废申请待审批、单据锁定（spec 010 审批链中间态）
+  voiding: '作废审批中',
 }
 
 const STATUS_CLASSES: Record<MrStatus, string> = {
@@ -35,12 +37,13 @@ const STATUS_CLASSES: Record<MrStatus, string> = {
 }
 
 // —— 工单处理风格扩散：状态/采购 徽章 → 图标+文字 ——
-const STATUS_INDICATOR: Record<MrStatus, { icon: LucideIcon; color: string }> = {
+const STATUS_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
   draft: { icon: Pencil, color: 'text-slate-400' },
   in_review: { icon: Hourglass, color: 'text-amber-600' },
   approved: { icon: CircleCheck, color: 'text-emerald-600' },
   rejected: { icon: CircleX, color: 'text-rose-500' },
   voided: { icon: CircleSlash, color: 'text-zinc-400' },
+  voiding: { icon: Ban, color: 'text-amber-600' },
 }
 const PURCHASE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
   pending: { icon: Package, color: 'text-amber-600' },
@@ -50,7 +53,7 @@ const PURCHASE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = 
 }
 
 /** 状态按钮 + hover 悬浮时间线卡（fixed 定位，脱离表格层叠上下文，不被下行遮挡） */
-function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilter }: { orderStatus: MrStatus; order: { createdAt?: string | null; submittedAt?: string | null; approvedAt?: string | null; rejectedAt?: string | null; voidedAt?: string | null; approvalSteps?: Array<{ seq: number; stepKey: string; stepLabel: string; approverName: string | null; action: string | null; decidedAt: string | null }> }; stepLabel?: string; assigneeName?: string | null; onFilter: () => void }) {
+function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilter }: { orderStatus: MrStatus; order: { createdAt?: string | null; submittedAt?: string | null; approvedAt?: string | null; rejectedAt?: string | null; voidedAt?: string | null; voidRequestStatus?: string | null; voidRequestedAt?: string | null; approvalSteps?: Array<{ seq: number; stepKey: string; stepLabel: string; approverName: string | null; action: string | null; decidedAt: string | null }> }; stepLabel?: string; assigneeName?: string | null; onFilter: () => void }) {
   const [hover, setHover] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -59,6 +62,8 @@ function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilt
   const segs = ([
     { label: '创建', at: order.createdAt },
     { label: '提交签核', at: order.submittedAt },
+    // 作废审批中的单：时间线补「申请作废」节点
+    ...(order.voidRequestStatus === 'pending' ? [{ label: '申请作废', at: order.voidRequestedAt }] : []),
   ]).filter((seg) => seg.at)
   const steps = (order.approvalSteps || [])
   return (
@@ -101,6 +106,65 @@ function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilt
                         {step.action === 'approve' ? <CircleCheck className="h-2.5 w-2.5" /> : step.action === 'reject' ? <CircleX className="h-2.5 w-2.5" /> : <Hourglass className="h-2.5 w-2.5" />}
                       </span>
                       <span className={`flex-1 truncate ${isCurrent ? 'font-medium' : ''}`}>{step.stepLabel}{step.approverName ? ` · ${step.approverName}` : ''}{isCurrent ? '（签核中）' : isWaiting ? '' : ''}</span>
+                      {step.decidedAt ? <span className="shrink-0 text-[11px]">{shortDate(step.decidedAt)}</span> : null}
+                    </div>
+                  )
+                })
+              })()}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </span>
+  )
+}
+
+/** 「作废审批中」状态按钮 + hover 悬浮进度卡（与 StatusHoverButton 同款交互）：申请作废时间线 + 作废审批链 */
+function VoidStatusHoverButton({ order, onFilter }: { order: { voidRequestedAt?: string | null; voidReason?: string | null; voidSteps?: Array<{ stage: string; stageLabel: string; approverName: string | null; action: string | null; decidedAt: string | null; createdAt: string | null }> }; onFilter: () => void }) {
+  const [hover, setHover] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const steps = order.voidSteps || []
+  return (
+    <span className="inline-block">
+      <button
+        ref={btnRef}
+        type="button"
+        className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80"
+        onClick={(event) => { event.stopPropagation(); onFilter() }}
+        onMouseEnter={() => {
+          if (btnRef.current) {
+            const rect = btnRef.current.getBoundingClientRect()
+            setPos({ top: rect.bottom + 4, left: rect.left })
+          }
+          setHover(true)
+        }}
+        onMouseLeave={() => setHover(false)}
+      >
+        <Ban className="h-3.5 w-3.5 text-amber-600" />
+        作废审批中
+      </button>
+      {hover && pos && (order.voidRequestedAt || steps.length) ? (
+        <div className="pointer-events-none fixed z-[100] min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ top: pos.top, left: pos.left }}>
+          {order.voidRequestedAt ? (
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#582b8b]/10 text-[#582b8b]"><CircleDot className="h-2.5 w-2.5" /></span>
+              申请作废 <span className="font-medium text-foreground">{shortDate(order.voidRequestedAt)}</span>
+            </div>
+          ) : null}
+          {order.voidReason ? <div className="mt-1 truncate text-muted-foreground" title={order.voidReason}>原因：{order.voidReason}</div> : null}
+          {steps.length ? (
+            <div className="mt-1.5 border-t border-slate-100 pt-1.5">
+              {(() => {
+                const currentIdx = steps.findIndex((step) => !step.action)
+                return steps.map((step, idx) => {
+                  const isCurrent = idx === currentIdx
+                  return (
+                    <div key={`${step.stage}-${idx}`} className={`flex items-center gap-1.5 py-0.5 ${isCurrent ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${step.action === 'approve' ? 'bg-emerald-100 text-emerald-700' : step.action === 'reject' ? 'bg-rose-100 text-rose-600' : isCurrent ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-400'}`}>
+                        {step.action === 'approve' ? <CircleCheck className="h-2.5 w-2.5" /> : step.action === 'reject' ? <CircleX className="h-2.5 w-2.5" /> : <Hourglass className="h-2.5 w-2.5" />}
+                      </span>
+                      <span className={`flex-1 truncate ${isCurrent ? 'font-medium' : ''}`}>{step.stageLabel}{step.approverName ? ` · ${step.approverName}` : ''}{isCurrent ? '（审批中）' : ''}</span>
                       {step.decidedAt ? <span className="shrink-0 text-[11px]">{shortDate(step.decidedAt)}</span> : null}
                     </div>
                   )
@@ -353,14 +417,15 @@ export function MrListPage() {
             { key: 'draft', label: '草稿', icon: STATUS_INDICATOR.draft.icon },
             { key: 'in_review', label: '签核中', icon: STATUS_INDICATOR.in_review.icon },
             { key: 'approved', label: '已通过', icon: STATUS_INDICATOR.approved.icon },
+            { key: 'voiding', label: '作废审批中', icon: STATUS_INDICATOR.voiding.icon },
             { key: 'rejected', label: '已驳回', icon: STATUS_INDICATOR.rejected.icon },
             { key: 'voided', label: '已作废', icon: STATUS_INDICATOR.voided.icon },
           ] as Array<{ key: string; label: string; icon: LucideIcon | null }>
         ).map((item) => {
-          const count = item.key === 'all' ? items.length : items.filter((o) => (o.status || 'draft') === item.key).length
+          const count = item.key === 'all' ? items.length : item.key === 'voiding' ? items.filter((o) => o.voidRequestStatus === 'pending' && (o.status || 'draft') === 'approved').length : items.filter((o) => (o.status || 'draft') === item.key).length
           const active = status === item.key
           const Icon = item.icon
-          const color = item.key === 'all' ? '' : STATUS_INDICATOR[item.key as MrStatus].color
+          const color = item.key === 'all' ? '' : (STATUS_INDICATOR[item.key]?.color || '')
           return (
             <button
               key={item.key}
@@ -501,7 +566,12 @@ export function MrListPage() {
                           {remindingId === order.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BellRing className="h-3.5 w-3.5" />}
                         </button>
                       ) : null}
-                      {orderStatus === 'approved' && order.purchaseStatus ? (
+                      {orderStatus === 'approved' && order.voidRequestStatus === 'pending' ? (
+                        <>
+                          <ArrowRight className="h-3 w-3 shrink-0 text-amber-600/80" />
+                          <VoidStatusHoverButton order={order} onFilter={() => setStatus('voiding')} />
+                        </>
+                      ) : orderStatus === 'approved' && order.purchaseStatus ? (
                         <>
                           {/* 流程递进箭头：常驻琥珀色（呼应采购状态色）,无打扰动效 */}
                           <ArrowRight className="h-3 w-3 shrink-0 text-amber-600/80" />

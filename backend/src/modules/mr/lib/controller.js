@@ -562,7 +562,10 @@ async function list(req, res) {
     params.userId = req.user.id
   }
   const status = String(req.query.status || '').trim()
-  if (status) {
+  if (status === 'voiding') {
+    // 伪状态「作废审批中」：单据仍为 approved，但作废申请待审批、单据锁定（spec 010 审批链中间态）
+    where.push(`o.status = 'approved' AND o.void_request_status = 'pending'`)
+  } else if (status) {
     where.push('o.status = :status')
     params.status = status
   }
@@ -676,10 +679,35 @@ async function list(req, res) {
       })
     }
   }
+  // 作废审批中的单：批量查最新一轮作废审批链（列表「作废审批中」hover 进度卡用）
+  const voidStepsByMr = {}
+  const voidingIds = rows.filter((row) => row.void_request_status === 'pending').map((row) => row.id).filter(Boolean)
+  if (voidingIds.length) {
+    const voidRows = await query(
+      `SELECT v.mr_id, v.stage, v.action, v.decided_at, v.created_at, approver.real_name AS approver_name
+       FROM mr_void_approvals v
+       INNER JOIN (SELECT mr_id, MAX(round) AS max_round FROM mr_void_approvals WHERE mr_id IN (${voidingIds.map(() => '?').join(',')}) GROUP BY mr_id) latest
+         ON latest.mr_id = v.mr_id AND latest.max_round = v.round
+       LEFT JOIN users approver ON approver.id = v.approver_id
+       ORDER BY v.mr_id, v.id`,
+      voidingIds,
+    )
+    for (const v of voidRows) {
+      if (!voidStepsByMr[v.mr_id]) voidStepsByMr[v.mr_id] = []
+      voidStepsByMr[v.mr_id].push({
+        stage: v.stage,
+        stageLabel: v.stage === 'admin_review' ? '行政复核' : '业务复核',
+        approverName: v.approver_name || null,
+        action: v.action || null,
+        decidedAt: v.decided_at || null,
+        createdAt: v.created_at || null,
+      })
+    }
+  }
   res.json({ items: rows.map((row) => {
     const order = orderPayload(row)
     const voidLocked = isVoidLocked(order)
-    return { ...order, approvalSteps: approvalsByMr[row.id] || [], permissions: { canEdit: !voidLocked && canEdit(order, req.user, assistantIds), canDelete: !voidLocked && canDelete(order, req.user, assistantIds), canVoid: canVoidRequest(order, req.user, assistantIds), canVoidApprove: canVoidApprove(order, req.user), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: !voidLocked && canWithdraw(order, req.user), canRemind: canRemind(order, req.user, assistantIds, [], row.assistant_user_id), canPurchase: !voidLocked && canPurchase(order, req.user), canFillContractNo: !voidLocked && canFillContractNo(order, req.user, assistantIds) } }
+    return { ...order, approvalSteps: approvalsByMr[row.id] || [], voidSteps: voidStepsByMr[row.id] || [], permissions: { canEdit: !voidLocked && canEdit(order, req.user, assistantIds), canDelete: !voidLocked && canDelete(order, req.user, assistantIds), canVoid: canVoidRequest(order, req.user, assistantIds), canVoidApprove: canVoidApprove(order, req.user), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: !voidLocked && canWithdraw(order, req.user), canRemind: canRemind(order, req.user, assistantIds, [], row.assistant_user_id), canPurchase: !voidLocked && canPurchase(order, req.user), canFillContractNo: !voidLocked && canFillContractNo(order, req.user, assistantIds) } }
   }) })
 }
 
