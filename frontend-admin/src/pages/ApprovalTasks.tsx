@@ -607,7 +607,7 @@ export function ApprovalTasks() {
                         <TableCell><TaskStatusHover task={task} /></TableCell>
                         <TableCell className="whitespace-normal">{timeCell(task)}</TableCell>
                         <TableCell onClick={(event) => event.stopPropagation()}>
-                          <div className="flex items-center gap-1">{quickActions(task, false)}{remindAction(task, false)}</div>
+                          <div className="flex items-center gap-1">{quickActions(task, false) ?? remindAction(task, false) ?? <span className="text-xs text-muted-foreground">-</span>}</div>
                         </TableCell>
                       </TableRow>
                     )
