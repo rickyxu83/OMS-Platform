@@ -470,14 +470,16 @@ export function MrListPage() {
                   <TableCell>
                     <button type="button" className="block max-w-full text-left transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={order.customerName ? `按客户筛选：${order.customerName}` : undefined} onClick={(event) => { event.stopPropagation(); if (order.customerId) { setCustomerFilterId(String(order.customerId)); setCustomerFilterName(order.customerName || '') } else { navigate(`/mr/${order.id}`) } }}>
                       <span title={order.customerName || '未选择客户'} className="block truncate font-medium">{order.customerName || '未选择客户'}</span>
-                      <span title={order.ctrlNo || '未填写 Ctrl.NO'} className="block truncate text-xs text-muted-foreground">{order.ctrlNo || '未填写 Ctrl.NO'}</span>
                     </button>
-                    {/* 非默认签单主体（敦沪）用徽标标出，点击可按公司筛选（spec 011） */}
-                    {order.company && order.company !== 'dunyang' ? (
-                      <button type="button" className="mt-1 inline-flex items-center rounded border border-violet-200 bg-violet-50 px-1.5 py-px text-[11px] font-medium text-violet-700 transition-colors hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300" title={`按签单主体筛选：${mrCompanyOf(order.company).label}`} onClick={(event) => { event.stopPropagation(); setCompany(order.company || 'all') }}>
-                        {mrCompanyOf(order.company).shortLabel}
-                      </button>
-                    ) : null}
+                    {/* Ctrl.NO 与签单主体徽标同一行（2026-09-11 佬反馈）；非默认主体（敦沪）才显示徽标，点击可按公司筛选（spec 011） */}
+                    <div className="flex items-center gap-1.5">
+                      <span title={order.ctrlNo || '未填写 Ctrl.NO'} className="min-w-0 truncate text-xs text-muted-foreground">{order.ctrlNo || '未填写 Ctrl.NO'}</span>
+                      {order.company && order.company !== 'dunyang' ? (
+                        <button type="button" className="inline-flex shrink-0 items-center rounded border border-violet-200 bg-violet-50 px-1.5 py-px text-[11px] font-medium text-violet-700 transition-colors hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300" title={`按签单主体筛选：${mrCompanyOf(order.company).label}`} onClick={(event) => { event.stopPropagation(); setCompany(order.company || 'all') }}>
+                          {mrCompanyOf(order.company).shortLabel}
+                        </button>
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell className="truncate">
                     {order.salesOwnerId ? (
