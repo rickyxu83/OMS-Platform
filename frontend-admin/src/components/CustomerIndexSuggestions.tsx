@@ -5,6 +5,7 @@
  * devices/DeviceCustomerSuggestions。供 工单填写 / 设备资产 / MR 等页面的客户选择复用。
  * 通过 idPrefix 区分各页面的分组锚点 DOM id，emptyText 适配各场景空态文案。
  */
+import { useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import type { IndexedCustomer } from "@/lib/customer-index";
 import { CUSTOMER_INDEX_LETTERS, customerMeta, customerName } from "@/lib/customer-index";
@@ -30,10 +31,16 @@ export function CustomerIndexSuggestions<T extends IndexedCustomer>({
 }) {
   const availableLetters = new Set(groups.map((group) => group.letter));
   const hasResults = recentCustomers.length || groups.some((group) => group.items.length);
+  const listRef = useRef<HTMLDivElement | null>(null);
   if (!open) return null;
 
   function scrollToLetter(letter: string) {
-    document.getElementById(`${idPrefix}-${letter}`)?.scrollIntoView({ block: "start" });
+    // 不用 scrollIntoView：它会连带滚动所有祖先滚动容器，iPad 上点索引字母会把整页顶到最上方（2026-09-11 佬反馈）。
+    // 改为只滚动下拉内部的滚动容器；保留 scroll-mt-2 的 8px 顶部间距。
+    const list = listRef.current;
+    const target = document.getElementById(`${idPrefix}-${letter}`);
+    if (!list || !target) return;
+    list.scrollTop += target.getBoundingClientRect().top - list.getBoundingClientRect().top - 8;
   }
 
   function renderCustomer(customer: T, badge?: string) {
@@ -62,7 +69,7 @@ export function CustomerIndexSuggestions<T extends IndexedCustomer>({
   return (
     <div className="absolute left-0 right-0 top-[calc(100%+0.375rem)] z-50 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg">
       <div className="relative">
-        <div className="max-h-[68dvh] overflow-y-auto p-2 pr-7 sm:max-h-96 sm:pr-8">
+        <div ref={listRef} className="max-h-[68dvh] overflow-y-auto p-2 pr-7 sm:max-h-96 sm:pr-8">
           {searching ? (
             <div className="mb-2 flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
               <span className="btn-loader" aria-hidden="true" />
