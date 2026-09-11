@@ -18,6 +18,7 @@ async function ensureTables() {
     `CREATE TABLE IF NOT EXISTS mr_orders (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       status VARCHAR(20) NOT NULL DEFAULT 'draft',
+      company VARCHAR(16) NOT NULL DEFAULT 'dunyang',
       customer_id BIGINT UNSIGNED NULL,
       customer_contact_id BIGINT UNSIGNED NULL,
       sales_owner_id BIGINT UNSIGNED NULL,
@@ -99,6 +100,8 @@ async function ensureTables() {
     ['remaining_taiwan_business_transfer', 'DECIMAL(14,2) NULL'],
     ['gross_profit_recognitions', 'JSON NULL'],
     ['taiwan_business_transfers', 'JSON NULL'],
+    // spec 011：签单主体（dunyang=敦阳 / dunhu=上海敦沪，存量默认敦阳）
+    ['company', "VARCHAR(16) NOT NULL DEFAULT 'dunyang'"],
     // spec 010：作废申请-审批三段式（pending=审批中锁定；rejected=已驳回解锁，可重新申请）
     ['void_request_status', 'VARCHAR(20) NULL'],
     ['void_request_stage', 'VARCHAR(20) NULL'],

@@ -1,5 +1,6 @@
 import { Check, Clock3, Minus, X } from 'lucide-react'
 import type { MrApproval, MrOrder } from '../types'
+import { mrCompanyOf } from './companies'
 
 function time(value?: string | null) {
   return value ? String(value).replace('T', ' ').slice(0, 16) : ''
@@ -23,7 +24,9 @@ const MARKERS: Record<StepState, { icon: typeof Check; dot: string; text: string
 
 function projectedApprovals(order: MrOrder): MrApproval[] {
   const steps: Array<[string, string]> = [['assistant', '助理'], ['sales', '业务负责人']]
-  if ((order.installOptions || []).includes('敦阳') || (order.maintenanceOptions || []).includes('敦阳')) steps.push(['engineering', '工程会签'])
+  // 装机/维护承担方含本公司内部承担方时需工程会签（spec 011 按签单主体派生，与后端 computeApprovalSteps 同口径）
+  const internalLabel = mrCompanyOf(order.company).shortLabel
+  if ((order.installOptions || []).includes(internalLabel) || (order.maintenanceOptions || []).includes(internalLabel)) steps.push(['engineering', '工程会签'])
   // 业务主管（处级主管）发起的 MR 单：流程跳过“处级单位”自签步骤，草稿预览保持一致
   if (order.salesOwnerRole !== 'sales_supervisor') steps.push(['supervisor', '处级单位'])
   const margin = order.totals?.marginRate

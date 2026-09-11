@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { downloadMrDocument, getMr, withdrawMr } from '../client'
 import type { MrApproval, MrItem, MrOrder } from '../types'
+import { mrCompanyOf } from './companies'
 
 const STATUS: Record<string, string> = { draft: '草稿', in_review: '签核中', approved: '已通过', rejected: '已驳回', voided: '已作废' }
 const PRICING: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
@@ -78,7 +79,9 @@ function vendorAbbreviation(value: unknown, fallback = '-') {
 function Header({ order, emptyText, formal }: { order: MrOrder; emptyText: string; formal: boolean }) {
   // 客户 P/O 只在订货条显示，页眉不再重复
   const controlNumber = hasValue(order.ctrlNo || order.fileName) ? text(order.ctrlNo || order.fileName, emptyText) : formal ? '' : `Ctrl.NO · ${emptyText}`
-  return <header className="a-header"><div className="a-brand"><img src={`${import.meta.env.BASE_URL}dunyang-mark.png`} alt="" /><div><span>STARK (NINGBO) TECHNOLOGY INC.</span><strong>敦阳（宁波）科技有限公司</strong></div></div><div className="a-title"><h1>客户订购申请单（境内单）</h1></div><div className="a-ref"><span>Ctrl.No:</span><b>{controlNumber}</b></div></header>
+  // 页眉公司名按签单主体输出（spec 011）：中文在上、英文在下（2026-09-10 佬反馈）；logo 暂两家共用敦阳标；无英文名时不渲染英文行
+  const company = mrCompanyOf(order.company)
+  return <header className="a-header"><div className="a-brand"><img src={`${import.meta.env.BASE_URL}dunyang-mark.png`} alt="" /><div><strong>{company.label}</strong>{company.enName ? <span>{company.enName}</span> : null}</div></div><div className="a-title"><h1>客户订购申请单（境内单）</h1></div><div className="a-ref"><span>Ctrl.No:</span><b>{controlNumber}</b></div></header>
 }
 function Fact({ label, value, wide }: { label: string; value: ReactNode; wide?: boolean }) { return <div className={wide ? 'a-fact a-fact-wide' : 'a-fact'}><small>{label}</small><div>{value}</div></div> }
 function Section({ index, title, children }: { index: string; title: string; children: ReactNode }) { return <section className="a-section"><div className="a-section-title"><span>{index}</span><h2>{title}</h2></div>{children}</section> }

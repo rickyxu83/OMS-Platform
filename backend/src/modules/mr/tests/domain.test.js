@@ -312,4 +312,36 @@ function validBody(overrides = {}) {
   assert.equal(isInternalVendor(null), false)
 }
 
+// spec 011：签单主体（敦沪）规则
+{
+  // 默认/未知公司归敦阳
+  assert.equal(normalizeOrder(validBody()).order.company, 'dunyang')
+  assert.equal(normalizeOrder(validBody({ company: '不存在' })).order.company, 'dunyang')
+  assert.equal(normalizeOrder(validBody({ company: 'dunhu' })).order.company, 'dunhu')
+
+  // 敦沪单仅允许开明细（模式 3），提交时拒绝其他模式
+  const dunhuOk = normalizeOrder(validBody({ company: 'dunhu', pricingMode: 3 }))
+  assert.deepStrictEqual(validateSubmission(dunhuOk.order, dunhuOk.items), [])
+  const dunhuBad = normalizeOrder(validBody({ company: 'dunhu', pricingMode: 1, totalExcludingTax: 100 }))
+  assert.ok(validateSubmission(dunhuBad.order, dunhuBad.items).some((error) => error.field === 'pricingMode' && error.message.includes('开明细')))
+
+  // 承担方选项按公司派生：敦沪单接受“敦沪”，丢弃“敦阳”；敦阳单反之
+  const dunhuOptions = normalizeOrder(validBody({ company: 'dunhu', installOptions: ['敦沪', '敦阳', '供应商'], maintenanceOptions: ['敦沪'] }))
+  assert.deepStrictEqual(dunhuOptions.order.installOptions, ['敦沪', '供应商'])
+  assert.deepStrictEqual(dunhuOptions.order.maintenanceOptions, ['敦沪'])
+  const dunyangOptions = normalizeOrder(validBody({ installOptions: ['敦沪'], maintenanceOptions: ['NO'] }))
+  assert.deepStrictEqual(dunyangOptions.order.installOptions, [], '敦阳单不接受“敦沪”承担方')
+
+  // 工程会签按签单主体触发：敦沪单含“敦沪”也要工程会签；敦阳单不含“敦阳”不触发
+  const dunhuSteps = computeApprovalSteps(dunhuOptions.order, dunhuOptions.items)
+  assert.ok(dunhuSteps.some((step) => step.key === 'engineering'), '敦沪单承担方含“敦沪”应加工程会签')
+  const dunyangSteps = computeApprovalSteps(dunyangOptions.order, dunyangOptions.items)
+  assert.ok(!dunyangSteps.some((step) => step.key === 'engineering'), '敦阳单承担方不含“敦阳”不应触发工程会签')
+
+  // 敦沪作为供应商视为内部承担
+  assert.equal(isInternalVendor('敦沪'), true)
+  assert.equal(isInternalVendor('上海敦沪信息科技有限公司'), true)
+  assert.equal(isInternalVendor('dunhu'), true)
+}
+
 console.log('mr domain OK')
