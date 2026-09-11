@@ -247,6 +247,13 @@ function normalizeSerialNo(value) {
   return text || null
 }
 
+// 存储用展示形态：繁转简 + NFKC（全角分号/字母数字转半角）+ 去首尾空白，
+// 但保留多值分隔符（;）与原始大小写。2026-09-11 修复：create 误存归一化值导致 "SN1;SN2" 入库变 "SN1SN2"，编辑重存（update 走 normalizeText）又恢复
+function displaySerialNo(value) {
+  const text = String(toSimplified(value) || '').normalize('NFKC').trim()
+  return text || null
+}
+
 function levenshteinDistance(left, right) {
   if (left === right) return 0
   const aLen = left.length
@@ -1508,7 +1515,8 @@ async function create(req, res) {
   } = req.body || {}
   const normalizedModel = normalizeText(model)
   const normalizedSerialNo = normalizeSerialNo(serialNo)
-  if (!customerId || !normalizedModel || !normalizedSerialNo) {
+  const displaySerial = displaySerialNo(serialNo)
+  if (!customerId || !normalizedModel || !normalizedSerialNo || !displaySerial) {
     throw badRequest('客户、设备型号和 S/N 序列号不能为空')
   }
   await assertSalesCanUseCustomer(customerId, req.user)
@@ -1556,7 +1564,7 @@ async function create(req, res) {
       name: normalizedName,
       model: effectiveModel,
       pn: normalizeText(pn),
-      serialNo: normalizedSerialNo,
+      serialNo: displaySerial,
       mrNo: normalizeText(mrNo),
       remark: remark || null,
       maintenanceType: normalizedMaintenanceType,
@@ -2454,4 +2462,6 @@ module.exports = {
   update,
   remove,
   normalizeMaintenanceType,
+  normalizeSerialNo,
+  displaySerialNo,
 }
