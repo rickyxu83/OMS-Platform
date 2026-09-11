@@ -717,7 +717,7 @@ async function reconcilePendingPurchaseAssignments() {
 // listApprovalTasks 列表查询与 approvalTaskCounts 计数查询共用，保证口径一致。
 const MERGED_TASKS_SUBQUERY = `
        SELECT t.*, assignee.real_name AS assignee_name, initiator.real_name AS initiator_name,
-              o.status AS business_status, o.purchase_status AS business_purchase_status, approval.step_label AS current_step_label, o.customer_name, o.ctrl_no
+              o.status AS business_status, o.purchase_status AS business_purchase_status, o.void_request_status AS business_void_status, approval.step_label AS current_step_label, o.customer_name, o.ctrl_no
        FROM approval_tasks t
        LEFT JOIN users assignee ON assignee.id = t.assignee_user_id
        LEFT JOIN users initiator ON initiator.id = t.initiator_user_id
@@ -728,7 +728,7 @@ const MERGED_TASKS_SUBQUERY = `
               t.title, t.assignee_user_id, t.initiator_user_id, t.status, t.detail_path,
               t.completed_at, t.created_at, t.updated_at,
               assignee.real_name AS assignee_name, initiator.real_name AS initiator_name,
-              o.status AS business_status, o.purchase_status AS business_purchase_status, CASE WHEN t.task_type = 'contract_no' THEN '合同编号补填' ELSE '采购单号填写' END AS current_step_label, o.customer_name, o.ctrl_no
+              o.status AS business_status, o.purchase_status AS business_purchase_status, o.void_request_status AS business_void_status, CASE WHEN t.task_type = 'contract_no' THEN '合同编号补填' ELSE '采购单号填写' END AS current_step_label, o.customer_name, o.ctrl_no
        FROM mr_purchase_tasks t
        LEFT JOIN users assignee ON assignee.id = t.assignee_user_id
        LEFT JOIN users initiator ON initiator.id = t.initiator_user_id
@@ -742,7 +742,7 @@ const MERGED_TASKS_SUBQUERY = `
               CONCAT('/mr/', v.mr_id) AS detail_path,
               v.decided_at AS completed_at, v.created_at, COALESCE(v.decided_at, v.created_at) AS updated_at,
               assignee.real_name AS assignee_name, initiator.real_name AS initiator_name,
-              o.status AS business_status, o.purchase_status AS business_purchase_status,
+              o.status AS business_status, o.purchase_status AS business_purchase_status, o.void_request_status AS business_void_status,
               CASE WHEN v.stage = 'admin_review' THEN '作废审批·行政主管' ELSE '作废审批·业务主管' END AS current_step_label,
               o.customer_name, o.ctrl_no
        FROM mr_void_approvals v
@@ -821,6 +821,7 @@ async function listApprovalTasks(userId, view = 'pending', extraAssigneeIds = []
     status: row.status,
     businessStatus: row.business_status,
     businessPurchaseStatus: row.business_purchase_status ?? null,
+    businessVoidStatus: row.business_void_status ?? null,
     currentStepLabel: row.current_step_label,
     customerName: row.customer_name,
     ctrlNo: row.ctrl_no,

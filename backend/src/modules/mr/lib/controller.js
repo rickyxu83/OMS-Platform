@@ -562,7 +562,10 @@ async function list(req, res) {
     params.userId = req.user.id
   }
   const status = String(req.query.status || '').trim()
-  if (status) {
+  if (status === 'voiding') {
+    // 伪状态「作废审批中」：单据仍为 approved，但作废申请待审批、单据锁定（spec 010 审批链中间态）
+    where.push(`o.status = 'approved' AND o.void_request_status = 'pending'`)
+  } else if (status) {
     where.push('o.status = :status')
     params.status = status
   }

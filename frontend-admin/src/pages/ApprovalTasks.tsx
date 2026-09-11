@@ -80,16 +80,20 @@ function statusIndicator(task: ApprovalTask) {
   if (task.businessType.startsWith('mr') && task.businessStatus) {
     const biz = MR_BIZ_STATUS_INDICATOR[task.businessStatus]
     if (biz) {
-      const purchase = task.businessStatus === 'approved' && task.businessPurchaseStatus
-        ? MR_PURCHASE_STATUS_INDICATOR[task.businessPurchaseStatus]
-        : null
+      // 作废审批中（单据锁定）优先于采购子状态展示——此时采购操作已暂停
+      const voiding = task.businessStatus === 'approved' && task.businessVoidStatus === 'pending'
+      const sub = voiding
+        ? { icon: Ban, color: 'text-amber-600', label: '作废审批中' }
+        : task.businessStatus === 'approved' && task.businessPurchaseStatus
+          ? MR_PURCHASE_STATUS_INDICATOR[task.businessPurchaseStatus]
+          : null
       return (
         <span className="inline-flex items-center gap-1.5">
           {indicatorSpan(biz.icon, biz.color, biz.label)}
-          {purchase ? (
+          {sub ? (
             <>
               <ArrowRight className="h-3 w-3 shrink-0 text-amber-600/80" />
-              {indicatorSpan(purchase.icon, purchase.color, purchase.label)}
+              {indicatorSpan(sub.icon, sub.color, sub.label)}
             </>
           ) : null}
         </span>
