@@ -153,6 +153,8 @@ export interface MrOrder {
   voidRequestStatus?: 'pending' | 'rejected' | 'approved' | null
   voidRequestStage?: 'admin_review' | 'sales_review' | null
   voidRequestedAt?: string | null
+  /** 作废审批中：最新一轮作废审批链（列表「作废审批中」hover 进度卡用） */
+  voidSteps?: Array<{ stage: string; stageLabel: string; approverName: string | null; action: string | null; decidedAt: string | null; createdAt: string | null }>
   voidRejectReason?: string | null
   itemCount?: number
   items?: MrItem[]

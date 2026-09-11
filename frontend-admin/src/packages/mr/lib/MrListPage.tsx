@@ -119,6 +119,65 @@ function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilt
   )
 }
 
+/** 「作废审批中」状态按钮 + hover 悬浮进度卡（与 StatusHoverButton 同款交互）：申请作废时间线 + 作废审批链 */
+function VoidStatusHoverButton({ order, onFilter }: { order: { voidRequestedAt?: string | null; voidReason?: string | null; voidSteps?: Array<{ stage: string; stageLabel: string; approverName: string | null; action: string | null; decidedAt: string | null; createdAt: string | null }> }; onFilter: () => void }) {
+  const [hover, setHover] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const steps = order.voidSteps || []
+  return (
+    <span className="inline-block">
+      <button
+        ref={btnRef}
+        type="button"
+        className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80"
+        onClick={(event) => { event.stopPropagation(); onFilter() }}
+        onMouseEnter={() => {
+          if (btnRef.current) {
+            const rect = btnRef.current.getBoundingClientRect()
+            setPos({ top: rect.bottom + 4, left: rect.left })
+          }
+          setHover(true)
+        }}
+        onMouseLeave={() => setHover(false)}
+      >
+        <Ban className="h-3.5 w-3.5 text-amber-600" />
+        作废审批中
+      </button>
+      {hover && pos && (order.voidRequestedAt || steps.length) ? (
+        <div className="pointer-events-none fixed z-[100] min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ top: pos.top, left: pos.left }}>
+          {order.voidRequestedAt ? (
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#582b8b]/10 text-[#582b8b]"><CircleDot className="h-2.5 w-2.5" /></span>
+              申请作废 <span className="font-medium text-foreground">{shortDate(order.voidRequestedAt)}</span>
+            </div>
+          ) : null}
+          {order.voidReason ? <div className="mt-1 truncate text-muted-foreground" title={order.voidReason}>原因：{order.voidReason}</div> : null}
+          {steps.length ? (
+            <div className="mt-1.5 border-t border-slate-100 pt-1.5">
+              {(() => {
+                const currentIdx = steps.findIndex((step) => !step.action)
+                return steps.map((step, idx) => {
+                  const isCurrent = idx === currentIdx
+                  return (
+                    <div key={`${step.stage}-${idx}`} className={`flex items-center gap-1.5 py-0.5 ${isCurrent ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${step.action === 'approve' ? 'bg-emerald-100 text-emerald-700' : step.action === 'reject' ? 'bg-rose-100 text-rose-600' : isCurrent ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-400'}`}>
+                        {step.action === 'approve' ? <CircleCheck className="h-2.5 w-2.5" /> : step.action === 'reject' ? <CircleX className="h-2.5 w-2.5" /> : <Hourglass className="h-2.5 w-2.5" />}
+                      </span>
+                      <span className={`flex-1 truncate ${isCurrent ? 'font-medium' : ''}`}>{step.stageLabel}{step.approverName ? ` · ${step.approverName}` : ''}{isCurrent ? '（审批中）' : ''}</span>
+                      {step.decidedAt ? <span className="shrink-0 text-[11px]">{shortDate(step.decidedAt)}</span> : null}
+                    </div>
+                  )
+                })
+              })()}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </span>
+  )
+}
+
 const PURCHASE_LABELS: Record<string, string> = {
   pending: '待采购',
   done: '采购完成',
@@ -510,10 +569,7 @@ export function MrListPage() {
                       {orderStatus === 'approved' && order.voidRequestStatus === 'pending' ? (
                         <>
                           <ArrowRight className="h-3 w-3 shrink-0 text-amber-600/80" />
-                          <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title="作废审批中：单据已锁定，等待作废审批（点击筛选）" onClick={(event) => { event.stopPropagation(); setStatus('voiding') }}>
-                            <Ban className="h-3.5 w-3.5 text-amber-600" />
-                            作废审批中
-                          </button>
+                          <VoidStatusHoverButton order={order} onFilter={() => setStatus('voiding')} />
                         </>
                       ) : orderStatus === 'approved' && order.purchaseStatus ? (
                         <>
