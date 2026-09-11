@@ -28,7 +28,7 @@ companies: [
     value: "dunhu",
     label: "上海敦沪信息科技有限公司",
     shortLabel: "敦沪",
-    enName: "SHANGHAI DUNHU INFORMATION TECHNOLOGY CO.,LTD.", // 2026-09-10 佬提供
+    enName: "", // 佬 2026-09-10 裁决：直译英文名过长无品牌感，取消；中文名单行居中
     pricingModes: [3], // 仅"开明细"
   },
 ];

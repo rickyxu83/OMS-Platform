@@ -143,11 +143,15 @@ function header(doc, fonts, order, title = '客户订购申请单（境内单）
   const LOGO_H = 26.4
   if (logoImage) doc.image(logoImage, left, 35.8 - LOGO_H / 2, { height: LOGO_H })
   const textLeft = left + (logoImage ? 46 : 0)
-  // 页眉公司名按签单主体输出（spec 011）；无英文名时中文名垂直居中替代两行布局
+  // 页眉公司名按签单主体输出（spec 011）：中文在上、英文在下（2026-09-10 佬反馈）；无英文名时中文名垂直居中替代两行布局
   const company = companyOf(order.company)
   if (company.enName) {
-    text(doc, fonts, company.enName, textLeft, 19.5, { size: 7, color: MUTED })
-    text(doc, fonts, company.label, textLeft, 29.5, { size: 13, bold: true, color: '#402080' })
+    text(doc, fonts, company.label, textLeft, 18.5, { size: 13, bold: true, color: '#402080' })
+    // 英文名最长不得超过标题区左缘（x=280）：敦沪英文名较长，超宽时等比缩小字号防顶到单据标题
+    const enMaxWidth = 280 - textLeft - 8
+    doc.font(fonts.regular).fontSize(7 * FONT_SCALE)
+    const enWidth = doc.widthOfString(company.enName)
+    text(doc, fonts, company.enName, textLeft, 36, { size: enWidth > enMaxWidth ? 7 * enMaxWidth / enWidth : 7, color: MUTED })
   } else {
     text(doc, fonts, company.label, textLeft, 26.5, { size: 13, bold: true, color: '#402080' })
   }

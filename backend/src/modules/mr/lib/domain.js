@@ -9,7 +9,7 @@ const WORK_OPTIONS = ['敦阳', '供应商', 'NO', '其他']
 // 签单主体（2026-09-10 spec 011）：敦沪单仅允许"开明细"计价模式；enName 为空时 PDF/打印页眉不渲染英文行
 const COMPANIES = [
   { value: 'dunyang', label: '敦阳（宁波）科技有限公司', shortLabel: '敦阳', enName: 'STARK (NINGBO) TECHNOLOGY INC.', pricingModes: [1, 2, 3] },
-  { value: 'dunhu', label: '上海敦沪信息科技有限公司', shortLabel: '敦沪', enName: 'SHANGHAI DUNHU INFORMATION TECHNOLOGY CO.,LTD.', pricingModes: [3] },
+  { value: 'dunhu', label: '上海敦沪信息科技有限公司', shortLabel: '敦沪', enName: '', pricingModes: [3] },
 ]
 const DEFAULT_COMPANY = COMPANIES[0].value
 
