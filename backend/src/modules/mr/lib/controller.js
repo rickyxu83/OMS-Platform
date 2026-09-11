@@ -550,7 +550,15 @@ async function list(req, res) {
       WHERE vvisible.mr_id = o.id AND vvisible.approver_id = :userId)`
     const participantClause = `(EXISTS (SELECT 1 FROM mr_approvals visible
       WHERE visible.mr_id = o.id AND (visible.assignee_user_id = :userId OR visible.approver_id = :userId)) OR ${voidApproverClause})`
-    where.push(req.user.role === 'operations_director' ? `(o.status IN ('approved', 'voided') OR ${participantClause})` : participantClause)
+    if (req.user.role === 'purchaser') {
+      // spec 012：采购可见流转到自己手上的单（当前采购负责人，或曾被指派采购/合同任务；作废后任务行保留仍可看到已作废单）
+      where.push(`(o.purchase_assignee_user_id = :userId OR EXISTS (
+        SELECT 1 FROM mr_purchase_tasks pvisible
+        WHERE pvisible.mr_id = o.id AND pvisible.assignee_user_id = :userId
+      ) OR ${participantClause})`)
+    } else {
+      where.push(req.user.role === 'operations_director' ? `(o.status IN ('approved', 'voided') OR ${participantClause})` : participantClause)
+    }
     params.userId = req.user.id
   }
   const status = String(req.query.status || '').trim()
