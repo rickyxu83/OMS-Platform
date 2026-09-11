@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   CalendarClock, Ban, CheckCircle2, CircleCheck, CircleCheckBig, CircleDot, CircleMinus, CircleSlash, CircleX,
-  Clock3, FileSignature, FileText, Forward, Hourglass, ListTodo, Loader2, Package,
-  PauseCircle, Pencil, RefreshCw, RotateCcw, Search, Send, BellRing, type LucideIcon,
+  Clock3, FileSignature, FileText, Forward, Hourglass, ListTodo, Loader2, Minus, Package, PackageCheck,
+  PauseCircle, Pencil, RefreshCw, RotateCcw, Search, Send, BellRing, ArrowRight, type LucideIcon,
 } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -60,7 +60,42 @@ const TASK_STATUS_INDICATOR: Record<string, { icon: LucideIcon; color: string; l
   draft: { icon: Pencil, color: 'text-slate-400', label: '草稿' },
 }
 
+// spec 012：MR 系任务状态列对齐 MR 列表——单据业务状态 + 采购子状态（图标/色值与 MrListPage 同款）
+const MR_BIZ_STATUS_INDICATOR: Record<string, { icon: LucideIcon; color: string; label: string }> = {
+  draft: { icon: Pencil, color: 'text-slate-400', label: '草稿' },
+  in_review: { icon: Hourglass, color: 'text-amber-600', label: '签核中' },
+  approved: { icon: CircleCheck, color: 'text-emerald-600', label: '已通过' },
+  rejected: { icon: CircleX, color: 'text-rose-500', label: '已驳回' },
+  voided: { icon: CircleSlash, color: 'text-zinc-400', label: '已作废' },
+}
+const MR_PURCHASE_STATUS_INDICATOR: Record<string, { icon: LucideIcon; color: string; label: string }> = {
+  pending: { icon: Package, color: 'text-amber-600', label: '待采购' },
+  done: { icon: PackageCheck, color: 'text-emerald-600', label: '采购完成' },
+  skipped: { icon: Minus, color: 'text-slate-400', label: '无需采购' },
+  waiting_contract: { icon: FileText, color: 'text-sky-600', label: '待合同编号' },
+}
+
 function statusIndicator(task: ApprovalTask) {
+  // spec 012：MR 系任务显示单据业务状态（任务状态已由「待我处理/我已处理」视图表达）；考勤任务保持任务状态
+  if (task.businessType.startsWith('mr') && task.businessStatus) {
+    const biz = MR_BIZ_STATUS_INDICATOR[task.businessStatus]
+    if (biz) {
+      const purchase = task.businessStatus === 'approved' && task.businessPurchaseStatus
+        ? MR_PURCHASE_STATUS_INDICATOR[task.businessPurchaseStatus]
+        : null
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          {indicatorSpan(biz.icon, biz.color, biz.label)}
+          {purchase ? (
+            <>
+              <ArrowRight className="h-3 w-3 shrink-0 text-amber-600/80" />
+              {indicatorSpan(purchase.icon, purchase.color, purchase.label)}
+            </>
+          ) : null}
+        </span>
+      )
+    }
+  }
   const conf = TASK_STATUS_INDICATOR[task.status] || { icon: Clock3, color: 'text-slate-400', label: task.status || '-' }
   return indicatorSpan(conf.icon, conf.color, conf.label)
 }

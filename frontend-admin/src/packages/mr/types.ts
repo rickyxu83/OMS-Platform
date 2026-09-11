@@ -363,6 +363,8 @@ export interface ApprovalTask {
   initiatorName?: string | null
   status: string
   businessStatus?: string | null
+  /** spec 012：MR 系任务的采购子状态（pending/done/skipped/waiting_contract），待办中心状态列组合展示用 */
+  businessPurchaseStatus?: string | null
   currentStepLabel?: string | null
   customerName?: string | null
   ctrlNo?: string | null
