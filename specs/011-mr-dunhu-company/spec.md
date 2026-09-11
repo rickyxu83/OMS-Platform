@@ -36,16 +36,16 @@ MR 模块当前只服务敦阳（宁波）科技有限公司，公司名、logo�
 
 ## 关键改动点（现状硬编码清单）
 
-| 位置 | 改动 |
-|---|---|
-| `backend/src/modules/mr/lib/domain.js` | company 白名单校验；WORK_OPTIONS 按公司；内部供应商正则加敦沪；工程会签判定按公司 |
-| `backend/src/modules/mr/lib/controller.js` | ensure 迁移加列；ORDER_COLUMNS 映射；getConstants 下发 companies；列表查询加 company 筛选 |
-| `backend/src/modules/mr/lib/mr-pdf.js` | 页眉公司名/英文名按 company 取常量 |
-| `backend/src/modules/mr/lib/quotation-parser.js`、`quotation-merge.js`、`quotation-layout-rules.js` | own-company 正则加敦沪 |
-| `frontend-admin/src/packages/mr/lib/form-logic.ts` | 内部供应商正则同步；计价模式锁定逻辑 |
-| `frontend-admin/src/packages/mr/lib/MrFormPage.tsx` | 签单主体选择器；模式切换按公司白名单 |
-| `frontend-admin/src/packages/mr/lib/MrPrintPage.tsx` | 页眉按 company |
-| `frontend-admin/src/packages/mr/lib/MrListPage.tsx` | 公司筛选 + 列 |
+| 位置                                                                                                | 改动                                                                                      |
+| --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `backend/src/modules/mr/lib/domain.js`                                                              | company 白名单校验；WORK_OPTIONS 按公司；内部供应商正则加敦沪；工程会签判定按公司         |
+| `backend/src/modules/mr/lib/controller.js`                                                          | ensure 迁移加列；ORDER_COLUMNS 映射；getConstants 下发 companies；列表查询加 company 筛选 |
+| `backend/src/modules/mr/lib/mr-pdf.js`                                                              | 页眉公司名/英文名按 company 取常量                                                        |
+| `backend/src/modules/mr/lib/quotation-parser.js`、`quotation-merge.js`、`quotation-layout-rules.js` | own-company 正则加敦沪                                                                    |
+| `frontend-admin/src/packages/mr/lib/form-logic.ts`                                                  | 内部供应商正则同步；计价模式锁定逻辑                                                      |
+| `frontend-admin/src/packages/mr/lib/MrFormPage.tsx`                                                 | 签单主体选择器；模式切换按公司白名单                                                      |
+| `frontend-admin/src/packages/mr/lib/MrPrintPage.tsx`                                                | 页眉按 company                                                                            |
+| `frontend-admin/src/packages/mr/lib/MrListPage.tsx`                                                 | 公司筛选 + 列                                                                             |
 
 ## 验收标准
 

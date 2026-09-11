@@ -10,7 +10,7 @@ export interface MrCompany {
 
 export const MR_COMPANIES: MrCompany[] = [
   { value: 'dunyang', label: '敦阳（宁波）科技有限公司', shortLabel: '敦阳', enName: 'STARK (NINGBO) TECHNOLOGY INC.', pricingModes: [1, 2, 3] },
-  { value: 'dunhu', label: '上海敦沪信息科技有限公司', shortLabel: '敦沪', enName: '', pricingModes: [3] },
+  { value: 'dunhu', label: '上海敦沪信息科技有限公司', shortLabel: '敦沪', enName: 'SHANGHAI DUNHU INFORMATION TECHNOLOGY CO.,LTD.', pricingModes: [3] },
 ]
 
 export function mrCompanyOf(value: unknown, companies: MrCompany[] = MR_COMPANIES): MrCompany {

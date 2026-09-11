@@ -4,8 +4,8 @@
 
 `mr_orders` 新增一列（`ensure*` 惰性迁移，遵循"先建新"原则，纯加列无破坏性）：
 
-| 列 | 类型 | 默认 | 说明 |
-|---|---|---|---|
+| 列        | 类型                   | 默认        | 说明                                                                           |
+| --------- | ---------------------- | ----------- | ------------------------------------------------------------------------------ |
 | `company` | `VARCHAR(16) NOT NULL` | `'dunyang'` | 签单主体：`dunyang`=敦阳（宁波）科技有限公司；`dunhu`=上海敦沪信息科技有限公司 |
 
 - 存量行自动为 `dunyang`，无需回填脚本。
@@ -18,20 +18,20 @@
 ```js
 companies: [
   {
-    value: 'dunyang',
-    label: '敦阳（宁波）科技有限公司',
-    shortLabel: '敦阳',
-    enName: 'STARK (NINGBO) TECHNOLOGY INC.',
+    value: "dunyang",
+    label: "敦阳（宁波）科技有限公司",
+    shortLabel: "敦阳",
+    enName: "STARK (NINGBO) TECHNOLOGY INC.",
     pricingModes: [1, 2, 3],
   },
   {
-    value: 'dunhu',
-    label: '上海敦沪信息科技有限公司',
-    shortLabel: '敦沪',
-    enName: '',              // 暂无，页眉不渲染英文行
-    pricingModes: [3],       // 仅"开明细"
+    value: "dunhu",
+    label: "上海敦沪信息科技有限公司",
+    shortLabel: "敦沪",
+    enName: "SHANGHAI DUNHU INFORMATION TECHNOLOGY CO.,LTD.", // 2026-09-10 佬提供
+    pricingModes: [3], // 仅"开明细"
   },
-]
+];
 ```
 
 - logo：两家暂共用 `assets/dunyang-mark-trimmed.png`（佬 2026-09-10 拍板），后续提供敦沪 logo 时在常量加 `logo` 键即可。
