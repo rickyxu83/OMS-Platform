@@ -21,13 +21,8 @@ type DutyRecord = { id: number; duty_date: string; duty_end_date: string | null;
 type Batch = { duty_month: string; status: string | null; rejected_reason?: string | null }
 
 const currentMonth = new Date().toISOString().slice(0, 7)
-const typeLabel: Record<string, string> = { monthly_on_call: "月度值班", legal_holiday_on_call: "法定节假日", weekend_on_call: "7×24 值班（旧）" }
 const statusLabel: Record<string, string> = { draft: "待主管确认", pending_admin: "待行政终审", approved: "已终审", rejected: "行政退回" }
 const statusVariant: Record<string, "warning" | "info" | "success" | "destructive" | "secondary"> = { draft: "warning", pending_admin: "info", approved: "success", rejected: "destructive" }
-const DUTY_WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
-function dutyWeekday(date: string) {
-  return DUTY_WEEKDAYS[new Date(`${date}T00:00:00`).getDay()]
-}
 
 export function AttendanceDuty({ embedded = false }: { embedded?: boolean }) {
   const { hasPermission } = useAuth()
@@ -52,6 +47,22 @@ export function AttendanceDuty({ embedded = false }: { embedded?: boolean }) {
   const toggle = (ids: number[], id: number) => ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id]
   const totalUnits = useMemo(() => records.reduce((sum, record) => sum + Number(record.units || 0), 0), [records])
   const peopleCount = useMemo(() => new Set(records.map((record) => record.employee_id)).size, [records])
+  // 方案 B：按人汇总，一人一行——月度值班合并为次数徽章，节假日按段列徽章（与行政终审弹窗同构）
+  const groupedRecords = useMemo(() => {
+    const byEmployee = new Map<number, { employeeId: number; name: string; monthlyCount: number; holidays: Array<{ name: string; units: number; start: string; end: string }>; total: number }>()
+    for (const record of records) {
+      if (!byEmployee.has(record.employee_id)) byEmployee.set(record.employee_id, { employeeId: record.employee_id, name: record.employee_name, monthlyCount: 0, holidays: [], total: 0 })
+      const group = byEmployee.get(record.employee_id)!
+      const units = Number(record.units || 0)
+      group.total += units
+      if (record.duty_type === "legal_holiday_on_call") {
+        group.holidays.push({ name: record.reason || "法定节假日", units, start: String(record.duty_date).slice(5, 10), end: record.duty_end_date ? String(record.duty_end_date).slice(5, 10) : "" })
+      } else {
+        group.monthlyCount += units
+      }
+    }
+    return [...byEmployee.values()].sort((a, b) => a.name.localeCompare(b.name, "zh-CN"))
+  }, [records])
 
   // 页签切换：与考勤页一致的胶囊分段控件
   const tabSwitcher = (
@@ -148,7 +159,7 @@ export function AttendanceDuty({ embedded = false }: { embedded?: boolean }) {
     </div> : <div className="space-y-5">
       <Card><CardHeader><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><CardTitle>{month} 值班津贴</CardTitle><CardDescription>系统每月 1 号按值班设置自动生成当月批次；每条记录为 1 次值班／津贴，目的为加班费，不含实际出勤时数。</CardDescription><div className="mt-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">{records.length} 条记录</Badge><Badge variant="secondary">{totalUnits} 人次</Badge><Badge variant="secondary">{peopleCount} 人参与</Badge>{batch.status ? <Badge variant={statusVariant[batch.status] || "secondary"}>{statusLabel[batch.status] || batch.status}</Badge> : <Badge variant="outline">批次未生成</Badge>}</div></div><div className="flex items-center gap-2"><Input className="w-44" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /><Button variant="outline" onClick={loadMonthly}><RefreshCw className="size-4" /></Button></div></div></CardHeader><CardContent>
         {batch.rejected_reason && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">退回原因：{batch.rejected_reason}（可到「值班设置」调整名单，当月批次会按新设置重算后重新提交）</div>}
-        <div className="overflow-x-auto rounded-lg border"><Table><TableHeader><TableRow><TableHead>日期</TableHead><TableHead>工程师</TableHead><TableHead>值班类型</TableHead><TableHead>事由</TableHead><TableHead>次数</TableHead></TableRow></TableHeader><TableBody>{records.length ? records.map((record) => { const dutyDate = String(record.duty_date).slice(0, 10); const dutyEnd = record.duty_end_date ? String(record.duty_end_date).slice(0, 10) : dutyDate; const isSpan = dutyEnd !== dutyDate; return <TableRow key={record.id}><TableCell><div className="font-medium tabular-nums">{dutyDate}{isSpan ? `~${dutyEnd}` : ""}</div>{isSpan ? <div className="text-xs text-muted-foreground">{Number(record.units)} 天</div> : <div className="text-xs text-muted-foreground">{dutyWeekday(dutyDate)}</div>}</TableCell><TableCell className="font-medium">{record.employee_name}</TableCell><TableCell><Badge variant={record.duty_type === "legal_holiday_on_call" ? "rose" : "cyan"}>{typeLabel[record.duty_type] || record.duty_type}</Badge></TableCell><TableCell className="max-w-56 truncate text-muted-foreground" title={record.reason}>{record.reason}</TableCell><TableCell><span className="font-semibold tabular-nums">{Number(record.units)}</span> <span className="text-xs text-muted-foreground">次</span></TableCell></TableRow> }) : <TableRow><TableCell colSpan={5} className="h-28 text-center text-muted-foreground">{batch.status ? "本月暂无值班记录" : "本月批次尚未生成（系统每月 1 号自动生成，或保存值班设置后重算当月）"}</TableCell></TableRow>}</TableBody></Table></div>
+        <div className="overflow-x-auto rounded-lg border"><Table><TableHeader><TableRow><TableHead>工程师</TableHead><TableHead>月度值班</TableHead><TableHead>法定节假日</TableHead><TableHead className="text-right">合计人次</TableHead></TableRow></TableHeader><TableBody>{groupedRecords.length ? groupedRecords.map((group) => <TableRow key={group.employeeId}><TableCell className="font-medium">{group.name}</TableCell><TableCell>{group.monthlyCount ? <Badge variant="cyan">{group.monthlyCount} 次</Badge> : <span className="text-xs text-muted-foreground">-</span>}</TableCell><TableCell>{group.holidays.length ? <div className="space-y-1">{group.holidays.map((holiday, index) => <div key={index} className="flex flex-wrap items-center gap-1.5"><Badge variant="rose">{holiday.name}</Badge><span className="text-xs text-muted-foreground tabular-nums">{holiday.start}{holiday.end && holiday.end !== holiday.start ? `~${holiday.end}` : ""} × {holiday.units} 天</span></div>)}</div> : <span className="text-xs text-muted-foreground">-</span>}</TableCell><TableCell className="text-right"><span className="font-semibold tabular-nums">{group.total}</span><span className="ml-1 text-xs text-muted-foreground">人次</span></TableCell></TableRow>) : <TableRow><TableCell colSpan={4} className="h-28 text-center text-muted-foreground">{batch.status ? "本月暂无值班记录" : "本月批次尚未生成（系统每月 1 号自动生成，或保存值班设置后重算当月）"}</TableCell></TableRow>}</TableBody></Table></div>
       </CardContent></Card>
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">{canManage && ["draft", "rejected"].includes(batch.status || "") && <Button disabled={saving || !records.length} onClick={() => action("submit")}><Send className="size-4" />提交行政主管</Button>}{canApprove && batch.status === "pending_admin" && <><div className="flex-1"><Textarea value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} placeholder="退回时填写原因" /></div><Button variant="outline" disabled={saving || !rejectReason.trim()} onClick={() => action("reject", { reason: rejectReason })}>退回</Button><Button disabled={saving} onClick={() => action("approve")}><CheckCircle2 className="size-4" />终审通过</Button></>}</div>
     </div>}
