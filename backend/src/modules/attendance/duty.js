@@ -182,11 +182,18 @@ async function saveSettings(req, res) {
     }
     await insertSetting('monthly_on_call', null, monthlyIds)
     for (const holiday of holidays) await insertSetting('legal_holiday_on_call', holiday.name, holiday.employeeIds)
-    // 当月批次未送审（draft/rejected）时按新设置重算；已送审/已终审的不动
+    // 当月批次未送审（draft/rejected）时按新设置重算；批次不存在则直接生成（含迁移清理后/首次配置场景）
     const [batches] = await connection.execute('SELECT * FROM attendance_duty_monthly_batches WHERE duty_month = ? FOR UPDATE', [month])
     const batch = batches[0]
     let regenerated = 0
-    if (batch && ['draft', 'rejected'].includes(batch.status)) {
+    if (!batch) {
+      const records = await buildMonthRecords(month)
+      if (records.length) {
+        await connection.execute(`INSERT INTO attendance_duty_monthly_batches (duty_month, status) VALUES (?, 'draft')`, [month])
+        await insertMonthRecords(connection, month, records)
+        regenerated = records.length
+      }
+    } else if (['draft', 'rejected'].includes(batch.status)) {
       await connection.execute('DELETE FROM attendance_duty_records WHERE duty_month = ?', [month])
       const records = await buildMonthRecords(month)
       await insertMonthRecords(connection, month, records)
