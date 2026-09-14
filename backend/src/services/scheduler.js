@@ -1129,14 +1129,15 @@ function startScheduler() {
       }
     })
 
-    // 值班津贴自动提交：每月 1 号自动把当月值班批次提交给行政主管终审（与 08:20 月结错开 1 分钟）
+    // 值班津贴月度生成（spec 013）：每月 1 号按值班设置生成当月 draft 批次并入待办中心，
+    // 主管确认后人工提交行政终审（不再自动提交；与 08:20 月结错开 1 分钟）
   scheduleCron('21 8 1 * *', async () => {
     try {
-      const { autoSubmitMonthlyBatches } = require('../modules/attendance/duty')
-      const result = await autoSubmitMonthlyBatches()
-      console.log(`[scheduler] Duty monthly auto-submit: ${result.month} submitted=${result.submitted}${result.reason ? ` (${result.reason})` : ''}`)
+      const { generateMonthlyBatch } = require('../modules/attendance/duty')
+      const result = await generateMonthlyBatch()
+      console.log(`[scheduler] Duty monthly batch generate: ${result.month} generated=${result.generated}${result.reason ? ` (${result.reason})` : ''}${result.count ? ` count=${result.count}` : ''}`)
     } catch (error) {
-      console.error('[scheduler] Duty monthly auto-submit failed', error?.message)
+      console.error('[scheduler] Duty monthly batch generate failed', error?.message)
     }
   })
 

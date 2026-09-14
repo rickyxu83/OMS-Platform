@@ -1,9 +1,8 @@
-const DUTY_TYPES = Object.freeze(['weekend_on_call', 'legal_holiday_on_call'])
-const ASSIGNMENT_MODES = Object.freeze(['rotation', 'fixed'])
-
-function isoDate(year, monthIndex, day) {
-  return new Date(Date.UTC(year, monthIndex, day)).toISOString().slice(0, 10)
-}
+// spec 013：值班津贴改为「极简设置 + 每月 1 号生成当月批次」。
+// 旧版的周末 7×24 计算（weekendDates/assignDates）、轮值模式与重叠消解
+// （markOverlaps/holidayPriorityResolve）已随年度设置一并废弃删除。
+const DUTY_TYPES = Object.freeze(['monthly_on_call', 'legal_holiday_on_call'])
+const monthPattern = /^20\d{2}-(0[1-9]|1[0-2])$/
 
 // 把按天的假期日历聚合为假期段（一个假期一个段：名称 + 起止日期 + 天数）。
 // 入参为按日期升序的 { date, name } 行；同名称且日期连续者并段（防御性：同一名称出现两段则拆段）。
@@ -23,82 +22,41 @@ function holidaySpans(holidayRows) {
   return spans
 }
 
-// 展开一条记录覆盖的日期列表（单日记录只含自身，假期段记录展开为段内每一天）
-function expandRecordDates(record) {
-  const start = new Date(`${record.date}T00:00:00Z`)
-  const end = record.endDate ? new Date(`${record.endDate}T00:00:00Z`) : start
-  const dates = []
-  const cursor = new Date(start)
-  while (cursor <= end) {
-    dates.push(cursor.toISOString().slice(0, 10))
-    cursor.setUTCDate(cursor.getUTCDate() + 1)
-  }
-  return dates
+// 假期段与目标月份求交：返回裁剪到当月范围的 { start, end, days }，不相交返回 null
+function clampSpanToMonth(span, month) {
+  if (!monthPattern.test(month)) throw new Error('invalid month')
+  const [year, mon] = month.split('-').map(Number)
+  const lastDay = new Date(Date.UTC(year, mon, 0)).getUTCDate()
+  const monthStart = `${month}-01`
+  const monthEnd = `${month}-${String(lastDay).padStart(2, '0')}`
+  const start = span.start > monthStart ? span.start : monthStart
+  const end = span.end < monthEnd ? span.end : monthEnd
+  if (start > end) return null
+  const days = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1
+  return { start, end, days }
 }
 
-function weekendDates(year) {
-  const dates = []
-  for (let month = 0; month < 12; month += 1) {
-    const days = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
-    for (let day = 1; day <= days; day += 1) {
-      const date = new Date(Date.UTC(year, month, day))
-      if (date.getUTCDay() === 0 || date.getUTCDay() === 6) dates.push(isoDate(year, month, day))
+// 月度批次记录生成：
+// - 月度值班：固定名单每人每月 1 条（units=1）
+// - 法定节假日：假期段与当月求交，按名称取值班名单，每人 1 条（units=段内当月天数，跨月段按天拆到各月）
+// holidayAssignees: Map<假期名称, employeeId[]>
+function generateMonthlyRecords({ month, monthlyIds = [], holidayAssignees = new Map(), holidayRows = [] }) {
+  if (!monthPattern.test(month)) throw new Error('invalid month')
+  const records = []
+  for (const employeeId of monthlyIds) {
+    records.push({ date: `${month}-01`, endDate: null, employeeId, dutyType: 'monthly_on_call', reason: '月度值班', units: 1 })
+  }
+  for (const span of holidaySpans(holidayRows)) {
+    const clipped = clampSpanToMonth(span, month)
+    if (!clipped) continue
+    const ids = holidayAssignees.get(span.name) || []
+    for (const employeeId of ids) {
+      records.push({ date: clipped.start, endDate: clipped.end, employeeId, dutyType: 'legal_holiday_on_call', reason: span.name, units: clipped.days })
     }
   }
-  return dates
-}
-
-function assignDates(dates, employeeIds, mode) {
-  if (!ASSIGNMENT_MODES.includes(mode)) throw new Error('invalid assignment mode')
-  if (!employeeIds.length) return []
-  if (mode === 'fixed') {
-    return dates.flatMap((date) => employeeIds.map((employeeId) => ({ date, employeeId })))
-  }
-  const weekendIndex = new Map()
-  return dates.map((date) => {
-    const current = new Date(`${date}T00:00:00Z`)
-    const day = current.getUTCDay()
-    const daysFromMonday = day === 0 ? 6 : day - 1
-    current.setUTCDate(current.getUTCDate() - daysFromMonday)
-    const weekKey = current.toISOString().slice(0, 10)
-    if (!weekendIndex.has(weekKey)) weekendIndex.set(weekKey, weekendIndex.size)
-    return { date, employeeId: employeeIds[weekendIndex.get(weekKey) % employeeIds.length] }
-  })
-}
-
-function markOverlaps(records) {
-  const typesByKey = new Map()
-  records.forEach((record) => {
-    for (const date of expandRecordDates(record)) {
-      const key = `${date}:${record.employeeId}`
-      const types = typesByKey.get(key) || new Set()
-      types.add(record.dutyType)
-      typesByKey.set(key, types)
-    }
-  })
-  return records.map((record) => ({
-    ...record,
-    overlapState: expandRecordDates(record).some((date) => (typesByKey.get(`${date}:${record.employeeId}`)?.size || 0) > 1) ? 'unresolved' : 'none',
-  }))
-}
-
-function dedupeRecords(records) {
   const unique = new Map()
   records.forEach((record) => unique.set(`${record.date}:${record.employeeId}:${record.dutyType}`, record))
   return [...unique.values()]
-}
-
-// 节假日优先自动消解：节假日段覆盖的每一天（含周末）以法定节假日为准，
-// 删除同一工程师当天的 7×24 记录，避免生成重叠记录、无需人工处理。
-function holidayPriorityResolve(records) {
-  const covered = new Set()
-  for (const record of records) {
-    if (record.dutyType !== 'legal_holiday_on_call') continue
-    for (const date of expandRecordDates(record)) covered.add(`${date}:${record.employeeId}`)
-  }
-  return records.filter((record) => !(
-    record.dutyType === 'weekend_on_call' && covered.has(`${record.date}:${record.employeeId}`)
-  ))
 }
 
 function nextBatchStatus(current, action) {
@@ -110,4 +68,4 @@ function nextBatchStatus(current, action) {
   return transitions[action]?.[current] || null
 }
 
-module.exports = { DUTY_TYPES, ASSIGNMENT_MODES, holidaySpans, weekendDates, assignDates, dedupeRecords, holidayPriorityResolve, markOverlaps, nextBatchStatus }
+module.exports = { DUTY_TYPES, holidaySpans, clampSpanToMonth, generateMonthlyRecords, nextBatchStatus }

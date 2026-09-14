@@ -1110,7 +1110,7 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
     delegate_info: '你被指定为本次请假期间的工作代理人，请提前做好工作交接；此邮件不需要你在系统中确认。',
     rejected: '本次请假申请未通过审批，请查看驳回原因并按需重新提交。',
     completed: '本次请假申请已完成审批，以下为最终结果和结算后的余额信息。',
-    duty_pending_admin: '本月值班津贴（7×24 值班 + 法定节假日值班）已自动提交，请在假勤页「审批」中完成终审。',
+    duty_pending_admin: '本月值班津贴（月度值班 + 法定节假日值班）已由工程主管提交，请在假勤页「审批」或待办中心完成终审。',
     comp_expiry_reminder: '您有即将到期的调休余额，请在清零日期前安排调休。',
     annual_carryover_reminder: '年底将至，您的特休余额将于 12 月 31 日晚按规则折算结转次年，请合理安排休假。',
   }
