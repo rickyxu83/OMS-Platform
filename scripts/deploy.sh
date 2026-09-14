@@ -24,7 +24,7 @@ err()   { echo -e "${RED}  ✗ $1${NC}" >&2; }
 
 is_deploy_target() {
   case "${1:-}" in
-    all|backend|frontend|front|admin) return 0 ;;
+    all|backend|frontend|front|admin|unlock) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -39,6 +39,7 @@ usage() {
   echo "  frontend  仅部署前端：Git 推送 → 构建并上传 admin"
   echo "  front     frontend 的别名"
   echo "  admin     仅部署管理端"
+  echo "  unlock    释放目标服务器的部署锁（不部署任何东西）"
   echo ""
   echo "旧 engineer/eng 部署目标已废弃；工程师工单填写统一走管理端入口。"
   echo ""
@@ -55,6 +56,14 @@ usage() {
   echo "  DEPLOY_PROJECT_SLUG     临时归档名前缀（默认：oms-platform）"
   echo "  DEPLOY_BRANCH           Git 目标分支（默认：当前分支）"
   echo "  DEPLOY_REQUIRE_MAIN     设为 1 时要求当前分支为 main 且与 origin/main 一致（tencent profile 默认开启）"
+  echo "  DEPLOY_LOCK_TTL_SECONDS 部署锁自动过期秒数（默认：43200 = 12 小时）"
+  echo ""
+  echo "部署锁: 部署前会在服务器 $REMOTE_ROOT/.deploy-lock 写入占用信息（分支/操作者/时间）。"
+  echo "  服务器被其他分支占用且锁未过期时拒绝部署，防止并行线互相覆盖（实证过撞车）；"
+  echo "  同一分支部署自动续期，main 分支部署自然接管（合 PR 后的正常流程）。"
+  echo "  确认对方已废弃时用 --force 强占；bash scripts/deploy.sh <profile> unlock 手动释放。"
+  echo ""
+  echo "版本号: 管理端版本号由部署时注入（VITE_APP_VERSION=部署时刻），源码三处不再手改。"
   echo ""
 }
 
@@ -103,6 +112,13 @@ apply_vite_defaults() {
 
 parse_args() {
   DEPLOY_PROFILE=""
+  # --force：强占部署锁（其他分支占用服务器时），从参数中剥离后按原逻辑解析
+  DEPLOY_FORCE="${DEPLOY_FORCE:-0}"
+  local args=()
+  for a in "$@"; do
+    if [ "$a" = "--force" ]; then DEPLOY_FORCE=1; else args+=("$a"); fi
+  done
+  set -- "${args[@]}"
   if [ "$#" -gt 0 ] && ! is_deploy_target "$1"; then
     DEPLOY_PROFILE="$1"
     apply_profile "$DEPLOY_PROFILE"
@@ -174,6 +190,64 @@ enforce_main_for_production
 if [ -n "$DEPLOY_PROFILE" ]; then
   skip "使用部署 profile：$DEPLOY_PROFILE"
 fi
+
+# ============================================================
+# 部署锁：服务器同时只能跑一份构建物，并行线抢 rn 曾实证互踩（新前端+旧后端）。
+# 锁文件 $REMOTE_ROOT/.deploy-lock/info 记录「分支|操作者|时间戳|目标」，
+# 其他分支部署被拒绝直至锁过期（默认 12h）或 --force；同分支自动续期；main 自然接管。
+# ============================================================
+LOCK_TTL="${DEPLOY_LOCK_TTL_SECONDS:-43200}"
+
+deploy_lock_read() {
+  ssh -o ConnectTimeout=10 "$SSH_TARGET" "cat '$REMOTE_ROOT/.deploy-lock/info' 2>/dev/null || true"
+}
+
+deploy_lock_acquire() {
+  local branch
+  branch="$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+  local holder holder_branch holder_owner holder_ts holder_target age
+  holder="$(deploy_lock_read)"
+  if [ -n "$holder" ]; then
+    IFS='|' read -r holder_branch holder_owner holder_ts holder_target <<< "$holder"
+    age=$(( $(date +%s) - ${holder_ts:-0} ))
+    if [ "$holder_branch" = "$branch" ]; then
+      skip "部署锁：本分支（$branch）持有，自动续期（$((age/60)) 分钟前由 $holder_owner 锁定）"
+    elif [ "$branch" = "main" ]; then
+      skip "部署锁：main 分支自然接管（原持有：$holder_owner 分支 $holder_branch，$((age/60)) 分钟前）"
+    elif [ "$DEPLOY_FORCE" = "1" ]; then
+      err "部署锁：--force 强占（原持有：$holder_owner 分支 $holder_branch，$((age/60)) 分钟前）"
+    elif [ "$age" -gt "$LOCK_TTL" ]; then
+      skip "部署锁：原锁已过期（$holder_owner 分支 $holder_branch，$((age/3600)) 小时前 > TTL $((LOCK_TTL/3600)) 小时），自动接管"
+    else
+      err "服务器当前被分支「$holder_branch」占用（$holder_owner 于 $((age/60)) 分钟前部署 $holder_target）"
+      echo "  - 若该分支已验收：先合 PR，再用 main 部署（自然接管）" >&2
+      echo "  - 若确认已废弃：加 --force 强占（如 bash scripts/deploy.sh $DEPLOY_PROFILE $DEPLOY_TARGET --force）" >&2
+      echo "  - 若只是要看对方版本：等对方部署或联系持有者" >&2
+      exit 1
+    fi
+  fi
+  # mkdir 原子抢锁，防两个会话同时部署时双双成功
+  if ssh "$SSH_TARGET" "mkdir -p '$REMOTE_ROOT' && mkdir '$REMOTE_ROOT/.deploy-lock' 2>/dev/null"; then
+    printf '%s|%s|%s|%s\n' "$branch" "$(whoami)@$(hostname)" "$(date +%s)" "$DEPLOY_TARGET" \
+      | ssh "$SSH_TARGET" "cat > '$REMOTE_ROOT/.deploy-lock/info'"
+    ok "部署锁：已锁定（分支 $branch，TTL $((LOCK_TTL/3600)) 小时）"
+  else
+    err "部署锁被另一个并发部署抢先获取：$(deploy_lock_read)"
+    exit 1
+  fi
+}
+
+deploy_lock_release() {
+  info "释放部署锁"
+  local holder
+  holder="$(deploy_lock_read)"
+  if [ -z "$holder" ]; then
+    skip "当前没有部署锁"
+    return 0
+  fi
+  ssh "$SSH_TARGET" "rm -rf '$REMOTE_ROOT/.deploy-lock'"
+  ok "部署锁已释放（原持有：$holder）"
+}
 
 # ============================================================
 # 1. Git: 提交本地变更 + 推送到 GitHub
@@ -284,6 +358,10 @@ deploy_backend() {
 # 3. 前端：本地构建 + 上传 dist
 # ============================================================
 build_admin() {
+  # 版本号部署时注入（app.ts 的 VITE_APP_VERSION 口子）：不再手改 package.json/app.ts 三处，
+  # 消除并行线必撞的版本号冲突；登录页/左下角显示的就是部署时刻。
+  export VITE_APP_VERSION="${VITE_APP_VERSION:-$(date '+%y.%m%d.%H%M')}"
+  info "构建管理端（版本 $VITE_APP_VERSION）"
   (cd "$ROOT_DIR/frontend-admin" && npm run build)
 }
 
@@ -319,8 +397,13 @@ deploy_frontend() {
 # Main
 # ============================================================
 case "$DEPLOY_TARGET" in
+  unlock)
+    deploy_lock_release
+    ;;
+
   all)
     info "全量部署：GitHub → 后端 → 前端"
+    deploy_lock_acquire
     git_sync
     deploy_backend
     build_admin
@@ -329,12 +412,14 @@ case "$DEPLOY_TARGET" in
     ;;
 
   backend)
+    deploy_lock_acquire
     git_sync
     deploy_backend
     ok "后端部署完成"
     ;;
 
   admin)
+    deploy_lock_acquire
     git_sync
     build_admin
     deploy_frontend admin "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/admin"
@@ -342,6 +427,7 @@ case "$DEPLOY_TARGET" in
     ;;
 
   frontend|front)
+    deploy_lock_acquire
     git_sync
     build_admin
     deploy_frontend admin "$ROOT_DIR/frontend-admin/dist" "$REMOTE_ROOT/$SITE_RELATIVE/admin"
