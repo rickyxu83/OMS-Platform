@@ -82,6 +82,7 @@ bash scripts/deploy.sh tencent <target>
 - 每次工作结束推送分支到 origin（**推送即备份**）；短命分支合完即删，不留长期分支
 - 可见变更照旧升版本号（见提交规范）
 - 不要在 main 上直接 commit 再 push：分支保护会拒绝，deploy.sh 也会因 push 失败中止
+- 并行开发统一用 `herdr worktree create/open` 建 worktree（不要共用主工作区来回切分支，会互相干扰）；跨 worktree 同文件冲突由 herdr 插件 collide 实时监控（区分 overlap/真冲突），看到 badge 报警先协调再动手
 - `gh pr create` 报 GraphQL 错误多为 GitHub 服务短暂抽风，稍后重试；**务必确认 PR 已合并（`gh pr view <编号> --json state,mergedAt`）再继续部署**
 - 分支合并后本地记得删掉已合并的本地分支（`git branch -d <分支名>`，远端已被 --delete-branch 删除）
 - 部署前 `git status` 确认工作区干净（含 `.playwright-cli/` 等临时目录，需要先清理）
@@ -115,7 +116,7 @@ bash scripts/deploy.sh <profile> admin
 - 提交信息用**中文**，一行主题概括动作与对象（如 `修复巡检计划列表 500：…`、`安全加固：…`），需要时正文用 `-` 列出要点
 - 按逻辑单元拆分提交（安全修复 / 性能优化 / 死代码清理分开），不要混在一个大提交里
 - 部署即发布：推送到 `origin/main` 的内容会被部署脚本带上生产，不要推半成品
-- 每次可见功能、页面展示、交互或发布内容变更，都必须同步提升管理端版本号。至少更新 `frontend-admin/package.json`、`frontend-admin/package-lock.json` 顶层版本，以及 `frontend-admin/src/config/app.ts` 中 `APP_VERSION` 的 fallback，确保登录页和左下角"系统版本"会变化。仅文档、注释、部署脚本或后端内部不可见修复可不提升前端版本；如后端包本身发布语义变化，再同步更新 `backend/package.json` 与 `backend/package-lock.json`。
+- 每次可见功能、页面展示、交互或发布内容变更需要提升管理端版本号，但**版本号不再手改源码**：`deploy.sh` 构建时自动注入 `VITE_APP_VERSION=部署时刻`（如 26.0915.0930），登录页和左下角"系统版本"显示的就是部署时间。`frontend-admin/package.json`、`package-lock.json`、`app.ts` 三处 fallback 冻结不再随发布改动（并行开发时这三处是必撞文件，手改已废弃）。如后端包本身发布语义变化，再手动同步 `backend/package.json` 与 `backend/package-lock.json`。
 
 ## 部署前后检查（AI 执行部署时必做）
 
@@ -123,8 +124,8 @@ bash scripts/deploy.sh <profile> admin
 
 1. `git status` 干净、改动已按逻辑提交
 2. 后端改动跑 `npm run check`（语法检查）；前端改动跑对应端 `npm run build`，admin 端另跑 `npx tsc --noEmit`（当前保持 0 错误）
-3. 涉及管理端可见改动时，确认版本号已随提交更新：`frontend-admin/package.json`、`frontend-admin/package-lock.json`、`frontend-admin/src/config/app.ts` 三处一致
-4. 涉及 `backend/src/config/env.js` 启动门禁的改动：先确认服务器 compose 已设 `NODE_ENV=production` 和 `JWT_SECRET`，否则容器会启动失败（这是有意的安全门禁）
+3. 管理端版本号由 deploy.sh 注入，无需检查三处一致性；仅需确认部署环境配置正确（涉及 `backend/src/config/env.js` 启动门禁的改动：先确认服务器 compose 已设 `NODE_ENV=production` 和 `JWT_SECRET`，否则容器会启动失败——这是有意的安全门禁）
+4. 部署锁：`deploy.sh` 会在目标服务器写入 `.deploy-lock`（分支/操作者/时间），服务器被其他分支占用且锁未过期（默认 12h）时拒绝部署。同分支自动续期、main 自然接管；确认对方已废弃加 `--force`，或 `bash scripts/deploy.sh <profile> unlock` 手动释放
 
 **部署后（deploy.sh 自身没有健康检查）：**
 
