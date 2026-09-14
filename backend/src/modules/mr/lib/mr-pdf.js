@@ -18,12 +18,16 @@ function getLogoBuffer() {
   return logoBufferCache
 }
 
-const PAGE = { width: 841.89, height: 595.28, margin: 28 }
+// 页边距口径（2026-11 打印上纸反馈：原左右 28pt / 页眉墨迹顶 18.5pt，顶部贴边、左右受打印机硬件死区影响视觉偏移；
+// 加宽并四边均衡——左右 34pt≈12mm，页眉墨迹起于 32pt≈11.3mm，清晰易读优先）
+const PAGE = { width: 841.89, height: 595.28, margin: 34, top: 32 }
+// 页眉总占位 = 顶部留白 + 页眉内容（公司名 → 分隔线 → 呼吸空间）；header() 返回值与续页容量估算共用此数
+const HEADER_HEIGHT = PAGE.top + 43.5
 const PURPLE = '#6d5bd0'
 const MUTED = '#64748b'
 const BORDER = '#eef1f5'
-// 39：签名图归一化（笔迹+固定比例留白）且 PDF 签名区加宽按高度缩放，存量归档需重生成
-const PDF_FORMAT_VERSION = 57
+// 58：页边距加宽并四边均衡（顶部不再贴边、左右留足打印机死区冗余），存量归档需重生成
+const PDF_FORMAT_VERSION = 58
 
 function hasValue(input) {
   if (Array.isArray(input)) return input.length > 0
@@ -138,28 +142,29 @@ function sectionTitle(doc, fonts, y, label, suffix = '') {
 function header(doc, fonts, order, title = '客户订购申请单（境内单）') {
   const left = PAGE.margin
   const right = PAGE.width - PAGE.margin
+  const top = PAGE.top
   const logoImage = getLogoBuffer()
-  // LOGO 与右侧两行文字的墨迹等高对齐（实测文字墨迹 22.6→49.0pt，高 26.4pt，中心 35.8pt；2026-09-10 佬反馈）
-  const LOGO_H = 26.4
-  if (logoImage) doc.image(logoImage, left, 35.8 - LOGO_H / 2, { height: LOGO_H })
+  // LOGO 放大至略超两行文字墨迹高（26.4pt），与右侧中英文两排公司名视觉配平；垂直中心仍对齐文字墨迹中心 top+17.3
+  const LOGO_H = 30
+  if (logoImage) doc.image(logoImage, left, top + 17.3 - LOGO_H / 2, { height: LOGO_H })
   const textLeft = left + (logoImage ? 46 : 0)
   // 页眉公司名按签单主体输出（spec 011）：中文在上、英文在下（2026-09-10 佬反馈）；无英文名时中文名垂直居中替代两行布局
   const company = companyOf(order.company)
   if (company.enName) {
-    text(doc, fonts, company.label, textLeft, 18.5, { size: 13, bold: true, color: '#402080' })
+    text(doc, fonts, company.label, textLeft, top, { size: 13, bold: true, color: '#402080' })
     // 英文名最长不得超过标题区左缘（x=280）：敦沪英文名较长，超宽时等比缩小字号防顶到单据标题
     const enMaxWidth = 280 - textLeft - 8
     doc.font(fonts.regular).fontSize(7 * FONT_SCALE)
     const enWidth = doc.widthOfString(company.enName)
-    text(doc, fonts, company.enName, textLeft, 36, { size: enWidth > enMaxWidth ? 7 * enMaxWidth / enWidth : 7, color: MUTED })
+    text(doc, fonts, company.enName, textLeft, top + 17.5, { size: enWidth > enMaxWidth ? 7 * enMaxWidth / enWidth : 7, color: MUTED })
   } else {
-    text(doc, fonts, company.label, textLeft, 26.5, { size: 13, bold: true, color: '#402080' })
+    text(doc, fonts, company.label, textLeft, top + 8, { size: 13, bold: true, color: '#402080' })
   }
-  text(doc, fonts, title, 280, 24, { size: 17, bold: true, color: '#111827', width: 282, align: 'center' })
-  text(doc, fonts, `Ctrl.No: ${value(order.ctrlNo || order.ctrl_no)}`, right - 190, 34, { size: 9, width: 190, align: 'right' })
-  // 标题与分隔线之间留足呼吸空间（字号全局放大后原 50 位置视觉上贴字）
-  line(doc, left, 54, right, 54, '#111')
-  return 62
+  text(doc, fonts, title, 280, top + 5.5, { size: 17, bold: true, color: '#111827', width: 282, align: 'center' })
+  text(doc, fonts, `Ctrl.No: ${value(order.ctrlNo || order.ctrl_no)}`, right - 190, top + 15.5, { size: 9, width: 190, align: 'right' })
+  // 标题与分隔线之间留足呼吸空间（字号全局放大后原位置视觉上贴字）
+  line(doc, left, top + 35.5, right, top + 35.5, '#111')
+  return HEADER_HEIGHT
 }
 
 function summary(doc, fonts, order, y) {
@@ -578,7 +583,7 @@ function placeBlocks(doc, fonts, order, blocks, y, bottom, countSuffix) {
     if (block.contTitle) yy = sectionTitle(doc, fonts, yy, '02 订购与交付资料', `${countSuffix}（续）`)
     return yy
   }
-  const freshCapacity = bottom - 62 - 17 // 页眉 + 可能的续节标题
+  const freshCapacity = bottom - HEADER_HEIGHT - 17 // 页眉 + 可能的续节标题
   let i = 0
   while (i < blocks.length) {
     let end = i
@@ -761,7 +766,7 @@ function drawFooters(doc, fonts, order) {
   const fillDate = value(order && (order.fillDate || order.fill_date))
   for (let index = 0; index < range.count; index += 1) {
     doc.switchToPage(index)
-    const y = PAGE.height - 18
+    const y = PAGE.height - 24
     line(doc, PAGE.margin, y - 7, PAGE.width - PAGE.margin, y - 7, '#eceef2')
     text(doc, fonts, `MR 电子签核归档文件${fillDate ? ` · 填表日期 ${fillDate}` : ''}`, PAGE.margin, y, { size: 6.5, color: MUTED })
     text(doc, fonts, '本文件由系统自动生成，为电子签核归档件', PAGE.margin, y, { size: 6.5, color: MUTED, width: PAGE.width - PAGE.margin * 2, align: 'center' })
@@ -774,7 +779,8 @@ function buildMrPdf(order, approvalRows = [], { watermarkLabel = '' } = {}) {
   const fonts = registerFonts(doc)
   const items = Array.isArray(order.items) ? order.items : []
   const columns = itemColumns(items)
-  const bottom = PAGE.height - 45
+  // 正文下限：与上移后的页脚（height-24）保持 21pt 间隔
+  const bottom = PAGE.height - 52
   let y = summary(doc, fonts, order, header(doc, fonts, order))
   y = sectionTitle(doc, fonts, y, '01 采购与销售明细', `· ${items.length} 个品项`)
   // 01 标题+表头与首行粘连：当前页连表头带首行数行正文都放不下时整组移新页，不留空表头；
