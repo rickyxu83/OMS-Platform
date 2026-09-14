@@ -1681,7 +1681,7 @@ export function Attendance() {
         <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
             <DialogTitle>值班津贴明细{dutyDetail ? `：${dutyDetail.month}` : ""}</DialogTitle>
-            <DialogDescription>该月 7×24 值班与法定节假日值班记录，供终审核对值班人员与天数。</DialogDescription>
+            <DialogDescription>该月月度值班与法定节假日值班记录，供终审核对值班人员与天数。</DialogDescription>
           </DialogHeader>
           <div className="max-h-[50vh] space-y-2 overflow-y-auto">
             {dutyDetailLoading ? (
@@ -1689,11 +1689,11 @@ export function Attendance() {
             ) : dutyDetail && dutyDetail.records.length ? (
               (() => {
                 // 按工程师汇总：一人一行（对应纸质加班申请单「一人一张、按週填写」的习惯），
-                // 分列「7×24 值班（平日加班）」与「法定节假日（国定假日）」
-                const byEmployee = new Map<string, { name: string; weekendDates: string[]; holidays: Array<{ name: string; units: number; start: string; end: string }>; total: number }>();
+                // 分列「月度值班（平日加班）」与「法定节假日（国定假日）」
+                const byEmployee = new Map<string, { name: string; monthlyCount: number; holidays: Array<{ name: string; units: number; start: string; end: string }>; total: number }>();
                 for (const record of dutyDetail.records) {
                   const name = record.employee_name || "-";
-                  if (!byEmployee.has(name)) byEmployee.set(name, { name, weekendDates: [], holidays: [], total: 0 });
+                  if (!byEmployee.has(name)) byEmployee.set(name, { name, monthlyCount: 0, holidays: [], total: 0 });
                   const group = byEmployee.get(name)!;
                   group.total += Number(record.units);
                   if (record.duty_type === "legal_holiday_on_call") {
@@ -1704,7 +1704,8 @@ export function Attendance() {
                       end: record.duty_end_date ? String(record.duty_end_date).slice(5, 10) : "",
                     });
                   } else {
-                    group.weekendDates.push(String(record.duty_date).slice(5, 10));
+                    // spec 013：非节假日即月度值班（每人每月 1 次）；历史 weekend_on_call 记录同属此列
+                    group.monthlyCount += Number(record.units);
                   }
                 }
                 const groups = [...byEmployee.values()];
@@ -1713,7 +1714,7 @@ export function Attendance() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>工程师</TableHead>
-                        <TableHead>7×24 值班（平日加班）</TableHead>
+                        <TableHead>月度值班（平日加班）</TableHead>
                         <TableHead>法定节假日（国定假日）</TableHead>
                         <TableHead className="text-right">合计人次</TableHead>
                       </TableRow>
@@ -1723,11 +1724,8 @@ export function Attendance() {
                         <TableRow key={group.name}>
                           <TableCell className="font-medium">{group.name}</TableCell>
                           <TableCell>
-                            {group.weekendDates.length ? (
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <Badge variant="cyan">{group.weekendDates.length} 次</Badge>
-                                <span className="text-xs text-muted-foreground tabular-nums">{group.weekendDates.join("、")}</span>
-                              </div>
+                            {group.monthlyCount ? (
+                              <Badge variant="cyan">{group.monthlyCount} 次</Badge>
                             ) : <span className="text-xs text-muted-foreground">-</span>}
                           </TableCell>
                           <TableCell>

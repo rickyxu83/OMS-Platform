@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  CalendarClock, Ban, CheckCircle2, CircleCheck, CircleCheckBig, CircleDot, CircleMinus, CircleSlash, CircleX,
+  CalendarClock, CalendarDays, Ban, CheckCircle2, CircleCheck, CircleCheckBig, CircleDot, CircleMinus, CircleSlash, CircleX,
   Clock3, FileSignature, FileText, Forward, Hourglass, ListTodo, Loader2, Minus, Package, PackageCheck,
   PauseCircle, Pencil, RefreshCw, RotateCcw, Search, Send, BellRing, ArrowRight, type LucideIcon,
 } from 'lucide-react'
@@ -111,6 +111,7 @@ const BIZ_INDICATOR: Record<string, { icon: LucideIcon; color: string; label: st
   mr_contract_no: { icon: FileText, color: 'text-purple-600', label: 'MR·合同' },
   mr_void: { icon: Ban, color: 'text-rose-600', label: 'MR·作废' },
   attendance: { icon: CalendarClock, color: 'text-orange-600', label: '假勤' },
+  duty: { icon: CalendarDays, color: 'text-teal-600', label: '值班津贴' },
 }
 
 function businessIndicator(task: ApprovalTask) {
@@ -445,7 +446,8 @@ export function ApprovalTasks() {
   }
 
   function subtitleOf(task: ApprovalTask) {
-    return task.businessType === 'attendance' ? (task.timeLabel || '-') : `${task.customerName || '-'} · ${task.ctrlNo || '未填 Ctrl.NO'}`
+    // 考勤/值班津贴无客户与 Ctrl.NO，副标题用时间/人次信息
+    return task.businessType === 'attendance' || task.businessType === 'duty' ? (task.timeLabel || '-') : `${task.customerName || '-'} · ${task.ctrlNo || '未填 Ctrl.NO'}`
   }
 
   function renderTaskCard(task: ApprovalTask) {

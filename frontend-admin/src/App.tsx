@@ -28,8 +28,6 @@ const AuditLogs = lazy(() => import("@/pages/AuditLogs").then((module) => ({ def
 const SystemSettings = lazy(() => import("@/pages/SystemSettings").then((module) => ({ default: module.SystemSettings })))
 const ChangePassword = lazy(() => import("@/pages/ChangePassword").then((module) => ({ default: module.ChangePassword })))
 const NotFound = lazy(() => import("@/pages/NotFound").then((module) => ({ default: module.NotFound })))
-// 值班津贴新版交互 Demo：纯本地 mock，仅本地预览，不进菜单
-const AttendanceDutyDemo = lazy(() => import("@/pages/AttendanceDutyDemo").then((module) => ({ default: module.AttendanceDutyDemo })))
 
 const ROUTE_ACCESS_PERMISSIONS: Record<string, string[]> = {
   dashboard: ["order.view", "order.engineer.own"],
@@ -204,17 +202,6 @@ export default function App() {
       <RouteErrorBoundary>
         <Routes>
           <Route path="/login" element={<Login />} />
-          {/* 值班津贴新版 UI 纯预览：免登录、无后端依赖，仅用于界面决策，验收后删除 */}
-          <Route
-            path="/duty-demo-ui"
-            element={
-              <div className="min-h-screen bg-background">
-                <div className="mx-auto max-w-6xl px-6 py-8">
-                  <AttendanceDutyDemo />
-                </div>
-              </div>
-            }
-          />
           <Route
             path="/customer-signature/:token"
             element={
