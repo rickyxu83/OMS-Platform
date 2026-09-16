@@ -123,6 +123,24 @@ export async function download(path: string): Promise<Blob> {
   return response.blob()
 }
 
+/** POST + Blob 响应（智能报表导出等按定义生成文件的场景） */
+export async function downloadPost(path: string, body?: any): Promise<Blob> {
+  const headers = new Headers({ 'Content-Type': 'application/json' })
+  const API_BASE = resolveApiBase()
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}${path}`, { method: 'POST', headers, credentials: 'include', body: body ? JSON.stringify(body) : undefined })
+  } catch {
+    throw new Error('无法连接服务器')
+  }
+  if (response.status === 401) clearSession()
+  if (!response.ok) {
+    const message = await response.text().catch(() => response.statusText)
+    throw new Error(message || response.statusText)
+  }
+  return response.blob()
+}
+
 export interface SummaryProgressEvent {
   stage: string;
   progress: number;
@@ -205,4 +223,5 @@ export const api = {
   patch: (path: string, body?: any) => request(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
   delete: (path: string) => request(path, { method: 'DELETE' }),
   download,
+  downloadPost,
 }

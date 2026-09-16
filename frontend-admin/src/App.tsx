@@ -22,6 +22,7 @@ const Customers = lazy(() => import("@/pages/Customers").then((module) => ({ def
 const Devices = lazy(() => import("@/pages/Devices").then((module) => ({ default: module.Devices })))
 const MaintenanceParties = lazy(() => import("@/pages/MaintenanceParties").then((module) => ({ default: module.MaintenanceParties })))
 const Timesheets = lazy(() => import("@/pages/Timesheets").then((module) => ({ default: module.Timesheets })))
+const SmartReport = lazy(() => import("@/pages/SmartReport").then((module) => ({ default: module.SmartReport })))
 const Attendance = lazy(() => import("@/pages/Attendance").then((module) => ({ default: module.Attendance })))
 const Users = lazy(() => import("@/pages/Users").then((module) => ({ default: module.Users })))
 const AuditLogs = lazy(() => import("@/pages/AuditLogs").then((module) => ({ default: module.AuditLogs })))
@@ -39,6 +40,7 @@ const ROUTE_ACCESS_PERMISSIONS: Record<string, string[]> = {
   devices: ["device.view"],
   "maintenance-parties": ["maintenance-party.view"],
   timesheets: ["timesheet.view"],
+  "smart-report": ["report.use"],
   attendance: ["attendance.apply", "attendance.approve", "attendance.view", "attendance.admin.approve", "attendance.manage"],
   "attendance-duty": ["attendance.duty.manage", "attendance.duty.admin.approve"],
   users: ["user.view"],
@@ -317,6 +319,14 @@ export default function App() {
             element={
               <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["inspection-schedules"]}>
                 <InspectionSchedules />
+              </ProtectedAdminPage>
+            }
+          />
+          <Route
+            path="/smart-report"
+            element={
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["smart-report"]}>
+                <SmartReport />
               </ProtectedAdminPage>
             }
           />

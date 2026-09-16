@@ -21,6 +21,7 @@ import {
   Languages,
   ChevronUp,
   TriangleAlert,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -120,6 +121,7 @@ const STRINGS: Record<AppLang, {
       attendance: "假勤管理",
       "attendance-duty": "工程值班",
       timesheets: "月报导出",
+      "smart-report": "智能报表",
       users: "成员与角色",
       "audit-logs": "操作审计",
       settings: "系统设置",
@@ -176,6 +178,7 @@ const STRINGS: Record<AppLang, {
       attendance: "假勤管理",
       "attendance-duty": "工程值班",
       timesheets: "月報導出",
+      "smart-report": "智能報表",
       users: "成員與角色",
       "audit-logs": "操作審計",
       settings: "系統設定",
@@ -227,6 +230,7 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
     items: [
       { labelKey: "attendance", icon: CalendarClock, path: "attendance", requiredPermissions: ["attendance.apply", "attendance.approve", "attendance.view", "attendance.report.export", "attendance.admin.approve", "attendance.manage"] },
       { labelKey: "timesheets", icon: BarChart3, path: "timesheets", requiredPermissions: ["timesheet.view"] },
+      { labelKey: "smart-report", icon: Sparkles, path: "smart-report", requiredPermissions: ["report.use"] },
     ],
   },
   {
