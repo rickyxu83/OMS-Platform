@@ -74,6 +74,8 @@ const RAW_PERMISSION_ENTRIES = Object.freeze([
   ['announcement.manage', '管理公告', ['admin', 'operations_director', 'engineering_supervisor']],
   ['audit-log.view', '查看审计日志', ['admin', 'operations_director', 'engineering_supervisor']],
   ['settings.view', '查看系统设置', ['admin', 'operations_director', 'engineering_supervisor']],
+  // spec 014：智能报表（大白话生成报表），开放主管及以上（佬裁决 2026-09）
+  ['report.use', '使用智能报表', ['admin', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'assistant_supervisor']],
   ['settings.edit', '编辑系统设置', ['admin', 'operations_director', 'engineering_supervisor']],
   ['mr.view', '查看订购申请', ['admin', 'assistant', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales', 'purchaser']],
   ['mr.create', '创建订购申请', ['admin', 'assistant', 'sales', 'sales_supervisor']],

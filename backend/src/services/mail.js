@@ -797,6 +797,56 @@ async function sendMonthlyOperationsSummaryMail(report, recipients = [], detailB
   return { sent: true, to, month: report.month }
 }
 
+/**
+ * 智能报表订阅推送（spec 014）：定时把收藏的报表跑一遍，HTML 预览 + xlsx 附件发送。
+ * 配置与月度营运总结共用 effectiveSettings().mail；AI 摘要失败不阻塞发送。
+ */
+async function sendReportSubscriptionMail({ templateName, frequency, specText, summary, columns = [], rows = [], xlsxBuffer, fileName, recipients = [] }) {
+  const settings = await effectiveSettings()
+  const mail = settings.mail
+  if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
+
+  const missing = missingMailFields(mail)
+  if (missing.length) return { skipped: true, reason: 'smtp_config_incomplete', missing }
+
+  const to = recipientEmails(recipients.map((r) => ({ email: r.email || r })))
+  if (!to.length) return { skipped: true, reason: 'no_recipient_email' }
+
+  const transporter = mailTransporter(mail)
+  const freqLabel = frequency === 'weekly' ? '每周' : '每月'
+  const previewRows = rows.slice(0, 10)
+  const tableHtml = previewRows.length
+    ? `<table style="border-collapse:collapse;width:100%;font-size:13px;max-width:760px">
+        <tr style="background:#f8fafc">${columns.map((c) => `<th style="padding:6px 10px;border:1px solid #e2e8f0;text-align:left">${htmlEscape(c.label)}</th>`).join('')}</tr>
+        ${previewRows.map((row) => `<tr>${columns.map((c) => `<td style="padding:6px 10px;border:1px solid #e2e8f0">${htmlEscape(row[c.key])}</td>`).join('')}</tr>`).join('')}
+      </table>
+      ${rows.length > previewRows.length ? `<p style="color:#64748b;font-size:12px">（共 ${rows.length} 行，完整数据见附件 Excel）</p>` : ''}`
+    : '<p style="color:#64748b">本期无数据。</p>'
+
+  const subject = `智能报表${freqLabel}推送：${templateName}`
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
+      <h2 style="margin:0 0 12px">${htmlEscape(templateName)}</h2>
+      <p style="margin:0 0 10px;color:#64748b">统计口径：${htmlEscape(specText || '-')}</p>
+      ${summary ? `<div style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:12px">${htmlEscape(summary)}</div>` : ''}
+      ${tableHtml}
+      <div style="margin-top:10px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;color:#9a3412;font-size:13px;line-height:1.7">
+        AI 免责说明：本报表由 OMS 智能报表按订阅自动生成，摘要由 AI 辅助生成，仅供内部管理参考；请以 OMS 原始记录和人工判断为准。
+      </div>
+      ${mailFooter()}
+    </div>
+  `
+
+  await transporter.sendMail({
+    from: mail.from,
+    to,
+    subject,
+    html,
+    attachments: xlsxBuffer ? [{ filename: fileName || 'report.xlsx', content: xlsxBuffer }] : [],
+  })
+  return { sent: true, to }
+}
+
 async function sendSalesServiceOrderMail(order, recipients = [], detailUrl = '') {
   const settings = await effectiveSettings()
   const mail = settings.mail
@@ -1329,6 +1379,7 @@ module.exports = {
   sendInspectionReminderMail,
   sendInspectionOverdueMail,
   sendMonthlyOperationsSummaryMail,
+  sendReportSubscriptionMail,
   sendSalesServiceOrderMail,
   sendInstallSupervisorMail,
   sendCustomerSignatureRequestMail,
