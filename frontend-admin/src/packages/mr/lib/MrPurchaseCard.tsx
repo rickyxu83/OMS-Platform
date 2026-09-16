@@ -32,7 +32,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
   const items = order.items || []
   const status = String(order.purchaseStatus || '')
   const editable = Boolean(order.permissions?.canPurchase) && ['pending', 'done'].includes(status)
-  // 无供应商或供应商为敦阳（内部承担）的品项没有外部采购对象，视为无需采购，不参与填写与多选
+  // 无供应商或供应商为敦阳/敦沪（内部承担）的品项没有外部下单对象，不强制采购单号，但仍需填公司料号
   const hasVendor = (item: { vendor?: string | null }) => {
     const vendor = String(item.vendor || '').trim()
     return vendor !== '' && !isInternalVendor(vendor)
@@ -134,6 +134,17 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
 
   const submit = async () => {
     if (!order.id) return
+    // spec 013：公司料号全品项必填；有外部供应商的品项还需采购单号（后端同样校验，这里先给友好提示）
+    const missingPartNo = items.find((item) => !(draft[String(item.id)]?.companyPartNo || '').trim())
+    if (missingPartNo) {
+      toast.error(`第 ${items.indexOf(missingPartNo) + 1} 项还没填公司料号，所有品项都需填写`)
+      return
+    }
+    const missingPo = items.find((item) => hasVendor(item) && !(draft[String(item.id)]?.purchaseOrderNo || '').trim())
+    if (missingPo) {
+      toast.error(`第 ${items.indexOf(missingPo) + 1} 项有外部供应商，需填写采购单号`)
+      return
+    }
     setBusy(true)
     try {
       const next = await submitMrPurchase(order.id, {
@@ -164,7 +175,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
       id="purchase"
       title="采购单号"
       icon={ShoppingCart}
-      description="MR 签核通过后，由采购为每个品项填写向供应商下单的采购单号。"
+      description="MR 签核通过后，由采购为每个品项填写公司料号；有外部供应商的品项还需填写向供应商下单的采购单号。"
       actions={<span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${statusMeta.className}`}>{statusMeta.label}</span>}
     >
       <div className="space-y-3 text-sm">
@@ -189,9 +200,9 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
                 <TableRow>
                   <TableHead className="w-12">项目</TableHead>
                   <TableHead>品名 / 描述</TableHead>
-                  <TableHead className="w-36">公司料号</TableHead>
+                  <TableHead className="w-36">公司料号 *</TableHead>
                   <TableHead className="w-36">供应商</TableHead>
-                  <TableHead className="w-48">采购单号</TableHead>
+                  <TableHead className="w-48">采购单号（有厂商必填）</TableHead>
                   <TableHead className="w-48">出货单号</TableHead>
                 </TableRow>
               </TableHeader>

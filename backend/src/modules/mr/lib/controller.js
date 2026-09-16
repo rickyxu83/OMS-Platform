@@ -999,17 +999,9 @@ async function decide(req, res, action) {
     )
     if (!pending[0]) {
       becameApproved = true
-      // 全部品项均无外部供应商（未填或敦阳内部承担）时自动标记无需采购，不再派发采购待办
-      const [vendorRows] = await connection.execute(
-        'SELECT vendor FROM mr_items WHERE mr_id = :id',
-        { id: req.params.id },
-      )
-      const needsPurchase = vendorRows.some((row) => {
-        const vendor = String(row.vendor || '').trim()
-        return vendor !== '' && !isInternalVendor(vendor)
-      })
-      // 有合同但签核时合同流程未走完（暂无编号）：签核照常完成，采购挂起，待助理补填合同编号后流转
-      const waitingContract = needsPurchase && Number(order.hasContract) === 1 && !order.contractNo
+      // spec 013（2026-09-17 佬裁决）：签核通过一律流转采购——无厂商/内部承担品项也需采购补填公司料号，
+      // 不再按供应商自动标记无需采购；有合同但签核时合同流程未走完（暂无编号）：签核照常完成，采购挂起，待助理补填合同编号后流转
+      const waitingContract = Number(order.hasContract) === 1 && !order.contractNo
       await connection.execute(
         `UPDATE mr_orders SET status = 'approved', approved_at = NOW(), archive_status = 'pending',
                 archive_attempts = 0, archive_next_attempt_at = NOW(), archive_error = NULL,
@@ -1020,10 +1012,10 @@ async function decide(req, res, action) {
         {
           id: req.params.id,
           userId: req.user.id,
-          purchaseStatus: waitingContract ? 'waiting_contract' : needsPurchase ? 'pending' : 'skipped',
+          purchaseStatus: waitingContract ? 'waiting_contract' : 'pending',
           purchaseNote: waitingContract
             ? '有合同但合同编号未填写，待助理补填合同编号后流转采购'
-            : needsPurchase ? null : '全部品项均无外部供应商（未填或敦阳内部承担），系统自动标记无需采购',
+            : null,
         },
       )
       await connection.execute(
@@ -1038,7 +1030,7 @@ async function decide(req, res, action) {
           salesOwnerId: Number(order.salesOwnerId) || null,
           createdBy: Number(order.createdBy) || req.user.id,
         }, req.user.id)
-      } else if (needsPurchase) {
+      } else {
         await activatePurchaseTask(connection, {
           id: Number(req.params.id),
           customerName: order.customerName,
@@ -1479,13 +1471,12 @@ async function submitPurchase(req, res) {
       const value = byId.get(Number(item.id))
       if (value === undefined) throw badRequest('请完整提交所有品项的采购单号')
       const vendorText = String(item.vendor || '').trim()
-      // 无供应商或供应商为敦阳（内部承担）的品项没有外部采购对象，视为无需采购，不强制填写采购单号
-      const needPurchase = vendorText !== '' && !isInternalVendor(vendorText)
-      if (needPurchase && !value) throw badRequest('有外部供应商的品项都需填写采购单号；供应商为敦阳或未填的品项视为无需采购')
       const companyValue = byCompanyPartNo.get(Number(item.id)) || ''
       const shipmentValue = byShipmentNo.get(Number(item.id)) || ''
-      // 公司料号、出货单号为采购执行数据，选填不校验
-      if (!value && !companyValue && !shipmentValue) continue
+      // spec 013：公司料号所有品项必填（无厂商/0 成本/敦阳敦沪内部承担也要）；采购单号仅有外部供应商的品项必填
+      if (!companyValue) throw badRequest(`第 ${item.row_no} 项「${String(item.name || '').slice(0, 50)}」需填写公司料号`)
+      const needPurchase = vendorText !== '' && !isInternalVendor(vendorText)
+      if (needPurchase && !value) throw badRequest('有外部供应商的品项需填写采购单号；供应商为敦阳/敦沪（内部承担）或未填的品项不强制')
       const before = String(item.purchase_order_no || '')
       if (before !== value) auditChanges.push({ rowNo: item.row_no, name: item.name, field: 'purchaseOrderNo', before: before || null, after: value })
       const beforeCompany = String(item.company_part_no || '')
