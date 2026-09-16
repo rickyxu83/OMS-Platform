@@ -1245,6 +1245,7 @@ function startScheduler() {
   ]
   if (!env.featureModulesDisabled.has('attendance')) startedTasks.push('attendance notifications (every minute)', 'attendance stale reminders (hourly :17)', 'holiday auto-sync (09:15, Nov-Dec)', 'duty monthly auto-submit (08:21 on day 1)', 'annual leave carryover & comp-time expiry (23:50 daily check)')
   if (!env.featureModulesDisabled.has('mr')) startedTasks.push('MR approval notifications (1m)', 'MR stale reminders (hourly :23)', 'MR PDF archive retry (2m)')
+  if (!env.featureModulesDisabled.has('report')) startedTasks.push('report subscriptions (09:07)')
   console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): ${startedTasks.join(', ')}`)}
 
 module.exports = { startScheduler }
