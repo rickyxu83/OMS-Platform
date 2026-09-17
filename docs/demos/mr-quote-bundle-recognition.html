@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MR 整机品项 components 方案 · 完整流程 Demo</title>
+<style>
+  :root {
+    --bg: #f0f1f3; --card: #ffffff; --border: #e4e4e7; --text: #18181b; --muted: #71717a;
+    --primary: #18181b; --accent: #f4f4f5;
+    --red: #dc2626; --red-bg: #fef2f2;
+    --green: #15803d; --green-bg: #f0fdf4;
+    --amber: #92400e; --amber-bg: #fffbeb; --amber-border: #fcd34d;
+    --blue: #1d4ed8; --blue-bg: #eff6ff;
+    --mono: "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+  button { font-family: inherit; }
+
+  .topbar { background: var(--card); border-bottom: 1px solid var(--border); padding: 10px 24px; position: sticky; top: 0; z-index: 30; }
+  .topbar .row1 { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .crumb { font-size: 13px; color: var(--muted); }
+  .crumb b { color: var(--text); font-weight: 600; }
+  .ctx { font-size: 12px; color: var(--muted); background: var(--accent); border-radius: 6px; padding: 3px 10px; }
+  .ctx b { color: var(--text); }
+  .tabs { display: flex; gap: 4px; margin-top: 10px; }
+  .tabs button { border: 0; background: transparent; padding: 7px 16px; font-size: 13px; border-radius: 8px 8px 0 0; cursor: pointer; color: var(--muted); font-weight: 500; border-bottom: 2px solid transparent; }
+  .tabs button.active { color: var(--text); font-weight: 600; border-bottom-color: var(--primary); background: var(--accent); }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 20px 24px 60px; }
+  .section { background: var(--card); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; }
+  .section > .shead { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .section .stitle { font-size: 15px; font-weight: 600; }
+  .section .sdesc { font-size: 12px; color: var(--muted); }
+  .section .sactions { margin-left: auto; display: flex; gap: 8px; }
+  .section .sbody { padding: 18px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; font-size: 12px; padding: 5px 10px; border: 1px solid var(--border); background: var(--card); }
+  .btn.dark { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; padding: 3px; gap: 2px; }
+  .seg span { padding: 4px 12px; font-size: 12px; border-radius: 6px; color: var(--muted); }
+  .seg span.on { background: var(--primary); color: #fff; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 12px; color: var(--muted); }
+  .input { border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 13px; min-height: 34px; display: flex; align-items: center; }
+  .input.disabled { background: var(--accent); color: var(--muted); }
+  .grid { display: grid; gap: 14px; }
+  .g3 { grid-template-columns: repeat(3, 1fr); }
+
+  table.items { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.items th { text-align: left; font-size: 12px; font-weight: 500; color: var(--muted); background: #fafafa; padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.items td { padding: 10px 12px; border-bottom: 1px solid #f4f4f5; vertical-align: top; }
+  table.items th.num, table.items td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.items .iname { font-weight: 500; }
+  table.items .isub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .tw { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+
+  .tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; font-weight: 600; }
+  .tag.blue { background: var(--blue-bg); color: var(--blue); }
+  .tag.green { background: var(--green-bg); color: var(--green); }
+
+  details.bom { margin-top: 6px; font-size: 12px; }
+  details.bom summary { cursor: pointer; color: var(--blue); user-select: none; }
+  details.bom table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 11.5px; }
+  details.bom td { padding: 3px 8px; border-bottom: 1px dashed #f0f0f2; color: #52525b; }
+  details.bom td.pn { font-family: var(--mono); white-space: nowrap; }
+  details.bom td.n { text-align: right; white-space: nowrap; }
+  details.bom tr.hl td { background: var(--amber-bg); color: var(--amber); }
+  details.bom tr.fio td { color: #b6bcc8; }
+
+  .totals { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-top: 16px; }
+  .totals .tcell { background: var(--card); padding: 12px 14px; }
+  .totals .tlabel { font-size: 11px; color: var(--muted); }
+  .totals .tvalue { margin-top: 3px; font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .totals .tvalue.good { color: var(--green); }
+
+  .hint { font-size: 12px; color: var(--muted); }
+  .note { border-radius: 8px; border: 1px solid var(--amber-border); background: var(--amber-bg); color: var(--amber); font-size: 12.5px; line-height: 1.9; padding: 12px 14px; margin-top: 16px; }
+  .note b { color: var(--text); }
+  .fadein { animation: fade .3s ease; }
+  @keyframes fade { from { opacity: .3; transform: translateY(3px); } to { opacity: 1; } }
+
+  /* ===== 校对预览弹窗 ===== */
+  .dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: 0 8px 30px rgba(0,0,0,.08); overflow: hidden; }
+  .dialog .dhead { padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .dialog .dtitle { font-size: 15px; font-weight: 600; }
+  .dialog .ddesc { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.6; }
+  .dialog .dbody { padding: 16px 18px; background: #fafafb; }
+  .srcrow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .srccard { border: 1px dashed var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; background: var(--card); }
+  .srccard .slabel { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .filechip { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 12px; background: var(--accent); }
+  .filechip .fn { font-family: var(--mono); font-size: 11px; }
+  .preview-item { border: 1px solid var(--border); border-radius: 8px; background: var(--card); padding: 12px 14px; margin-bottom: 10px; }
+  .preview-item .phead { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .pmeta { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .pmeta b { color: var(--text); }
+
+  /* ===== PDF 纸张 ===== */
+  .sheet { background: #fff; border: 1px solid #d8d8dc; box-shadow: 0 2px 12px rgba(0,0,0,.08); width: 100%; max-width: 940px; margin: 0 auto 28px; padding: 34px 38px; font-size: 12px; }
+  .sheet .a-header { display: flex; align-items: flex-start; gap: 14px; border-bottom: 2px solid var(--text); padding-bottom: 12px; }
+  .a-brand { display: flex; gap: 10px; align-items: center; }
+  .a-brand .logo { width: 34px; height: 34px; border-radius: 6px; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; }
+  .a-brand small { display: block; font-size: 9px; color: var(--muted); letter-spacing: .4px; }
+  .a-brand strong { font-size: 13px; }
+  .a-title { flex: 1; text-align: center; }
+  .a-title h1 { font-size: 18px; letter-spacing: 2px; }
+  .a-ref { text-align: right; font-size: 11px; color: var(--muted); }
+  .a-ref b { display: block; color: var(--text); font-size: 12px; font-family: var(--mono); }
+  .a-facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 16px; margin: 14px 0; }
+  .a-fact small { color: var(--muted); font-size: 10px; display: block; }
+  .a-fact div { font-size: 12px; margin-top: 1px; }
+  .a-section-title { display: flex; gap: 8px; align-items: baseline; border-bottom: 1px solid var(--border); margin: 16px 0 8px; padding-bottom: 4px; }
+  .a-section-title span { color: var(--muted); font-size: 11px; }
+  .a-section-title h2 { font-size: 13px; }
+  table.a-items { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  table.a-items th { border-bottom: 1px solid var(--text); text-align: left; padding: 5px 6px; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+  table.a-items td { border-bottom: 1px solid #ececf0; padding: 6px; vertical-align: top; }
+  table.a-items .num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.a-items .aname { font-weight: 600; }
+  table.a-items .aref { font-size: 10px; color: var(--muted); }
+  .a-total { display: flex; justify-content: flex-end; gap: 26px; margin-top: 10px; font-size: 12px; }
+  .a-total b { font-variant-numeric: tabular-nums; }
+  .a-sign { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 26px; }
+  .a-sign .box { border-top: 1px solid var(--border); padding-top: 6px; font-size: 11px; color: var(--muted); }
+  .appendix-tag { display: inline-block; background: var(--text); color: #fff; font-size: 11px; padding: 2px 10px; border-radius: 4px; letter-spacing: 1px; margin-bottom: 10px; }
+  table.a-bom { width: 100%; border-collapse: collapse; font-size: 11px; }
+  table.a-bom th { text-align: left; border-bottom: 1px solid var(--text); padding: 4px 6px; font-size: 10.5px; color: var(--muted); }
+  table.a-bom td { border-bottom: 1px solid #ececf0; padding: 4px 6px; color: #3f3f46; }
+  table.a-bom td.pn { font-family: var(--mono); white-space: nowrap; }
+  table.a-bom td.n { text-align: right; }
+  table.a-bom tr.hl td { background: var(--amber-bg); }
+  table.a-bom tr.fio td { color: #b6bcc8; }
+  .pagebreak-label { text-align: center; font-size: 11px; color: var(--muted); margin: -14px auto 28px; max-width: 940px; }
+
+  /* 采购卡 */
+  table.pitems { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.pitems th { text-align: left; font-size: 12px; font-weight: 500; color: var(--muted); background: #fafafa; padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.pitems td { padding: 10px 12px; border-bottom: 1px solid #f4f4f5; vertical-align: top; }
+  .pinput { border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 12.5px; width: 100%; font-family: var(--mono); background: #fff; }
+  .pinput::placeholder { font-family: -apple-system, "PingFang SC", sans-serif; color: #a1a1aa; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="row1">
+    <span class="crumb">MR 单 · <b>整机品项 components 方案 · 全流程 Demo</b></span>
+    <span class="ctx" style="background:var(--amber-bg);color:var(--amber)">⚠ 演示数据已脱敏 · 价格均为虚构</span>
+    <span class="ctx">计价模式 <b>多项系统集成</b> · 发票类型 <b>13% 专票</b> · 未税总计 <b>¥450,000</b> · 报价按 <b>含税 13%</b> 入采购成本</span>
+  </div>
+  <div class="tabs">
+    <button id="t-compare" onclick="setTab('compare')">⓪ 三方实测对比</button>
+    <button id="t-form" onclick="setTab('form')">① MR 品项明细</button>
+    <button id="t-preview" onclick="setTab('preview')">② 导入校对预览</button>
+    <button id="t-pdf" onclick="setTab('pdf')">③ 打印 / 归档 PDF</button>
+    <button id="t-purchase" onclick="setTab('purchase')">④ 采购卡片</button>
+  </div>
+</div>
+
+<div class="wrap" id="page"></div>
+
+<script>
+/* ================= 数据（多项系统集成 mode 1，13%） ================= */
+const BOM = [
+  ["P52534-B21", "HPE DL380 Gen11 8SFF NC CTO Svr", 1, 0],
+  ["P52534-B21#AKM", "China - English localization", 1, 1],
+  ["P67093-B21", "INT Xeon-S 4516Y+ CPU for HPE", 2, 0],
+  ["P67093-B21#0D1", "Factory integrated", 2, 1],
+  ["P64706-B21", "HPE 32GB 2Rx8 PC5-5600B-R Smart Kit", 4, 0],
+  ["P64706-B21#0D1", "Factory integrated", 4, 1],
+  ["P48813-B21", "HPE DL380 Gen11 2U 8SFF x1 TM Kit", 1, 0],
+  ["P48813-B21#0D1", "Factory integrated", 1, 1],
+  ["P28586-B21", "HPE 1.2TB SAS 10K SFF BC HDD", "HDD", 2],
+  ["P28586-B21#0D1", "Factory integrated", "HDD", 1],
+  ["P26253-B21", "BCM 57416 10GbE 2p BASE-T Adptr", 2, 0],
+  ["P26253-B21#0D1", "Factory integrated", 2, 1],
+  ["P58335-B21", "HPE MR408i-o Gen11 x8 4GB Cache OCP SPDM Storage Controller", 1, 0],
+  ["P01366-B21", "HPE 96W Smart Storage Battery 145mm Cbl", 1, 0],
+  ["P01366-B21#0D1", "Factory integrated", 1, 1],
+  ["P48918-B21", "HPE DL360 Gen11 Stg Cntrl Enable Cbl Kit", 1, 0],
+  ["P48918-B21#0D1", "Factory integrated", 1, 1],
+  ["P51181-B21", "BCM 5719 1Gb 4p BASE-T OCP Adptr", 1, 0],
+  ["P51181-B21#0D1", "Factory integrated", 1, 1],
+  ["P38995-B21", "HPE 800W FS Plat Ht Plg LH PS Kit", 2, 0],
+  ["P38995-B21#0D1", "Factory integrated", 2, 1],
+  ["512485-B21", "HPE iLO Adv incl 1yr TSU 1-Svr Lic", 1, 0],
+  ["512485-B21#0D1", "Factory integrated", 1, 1],
+  ["P51911-B21", "HPE DL360 Gen11 CPU1/OCP2 x8 Enable Kit", 1, 0],
+  ["P51911-B21#0D1", "Factory integrated", 1, 1],
+  ["P49146-B21", "HPE DL380 Gen11 Std Fan Kit", 1, 0],
+  ["P49146-B21#0D1", "Factory integrated", 1, 1],
+  ["P35876-B21", "HPE CE Mark Removal FIO Enable Kit", 1, 0],
+  ["P48818-B21", "HPE DL380/DL560 G11 2U High Perf HS Kit", 2, 0],
+  ["P48818-B21#0D1", "Factory integrated", 2, 1],
+  ["P52341-B21", "HPE DL3XX Gen11 Easy Install Rail Kit", 1, 0],
+  ["P52341-B21#0D1", "Factory integrated", 1, 1],
+];
+const money = n => n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/* 采购成本（含税13%）→ 不含税；未税总计 450,000 按成本占比分摊 */
+const ITEMS = [
+  { name: "HPE DL380 Gen11 8SFF CTO 服务器（配置一：6 × 1.2TB SAS）", hdd: 6, qty: 2,
+    costIncl: 200000, costEx: 176991.15, sub: 236842.11, unit: 118421.05, margin: 25.27, appendix: "A" },
+  { name: "HPE DL380 Gen11 8SFF CTO 服务器（配置二：2 × 1.2TB SAS）", hdd: 2, qty: 2,
+    costIncl: 180000, costEx: 159292.04, sub: 213157.89, unit: 106578.95, margin: 25.27, appendix: "B" },
+];
+const TOTAL = { ex: 450000, vat: 58500, inc: 758500, costEx: 336283.19, margin: 25.27 };
+
+function bomRows(hddQty, tableCls) {
+  return BOM.map(([pn, desc, q, flag]) => {
+    const qty = q === "HDD" ? hddQty : q;
+    const cls = flag === 2 ? "hl" : flag === 1 ? "fio" : "";
+    return `<tr class="${cls}"><td class="pn">${pn}</td><td>${desc}</td><td class="n">×${qty}</td></tr>`;
+  }).join("");
+}
+function bomDetails(it) {
+  return `<details class="bom"><summary>展开单套 BOM（${BOM.length} 个料号）</summary><table><tbody>${bomRows(it.hdd)}</tbody></table></details>`;
+}
+
+/* ================= ① MR 品项明细 ================= */
+function pageForm() {
+  const rows = ITEMS.map((it, i) => `
+    <tr>
+      <td style="color:var(--muted)">${i + 1}</td>
+      <td>
+        <div class="iname">${it.name}</div>
+        <div class="isub"><span style="font-family:var(--mono);font-size:11px">主料号 P52534-B21</span> <span class="tag blue">单套 BOM ${BOM.length} 个料号</span></div>
+        ${bomDetails(it)}
+      </td>
+      <td class="num">${it.qty}</td>
+      <td class="num">${money(it.unit)}</td>
+      <td class="num">¥ ${money(it.sub)}</td>
+      <td class="num" style="color:var(--green)">${it.margin.toFixed(2)}%</td>
+      <td></td>
+    </tr>`).join("");
+  return `<div class="fadein">
+    <div class="section">
+      <div class="shead"><span>💰</span><span class="stitle">交易信息</span></div>
+      <div class="sbody"><div class="grid g3">
+        <div class="field"><label>计价模式</label>
+          <div class="seg"><span class="on">多项系统集成</span><span>单项系统集成</span><span>开明细</span></div>
+          <div class="hint">未税总计 ¥450,000 已按各品项采购成本（不含税）占比分摊：51.29% / 48.71%</div>
+        </div>
+        <div class="field"><label>发票类型</label><div class="input disabled">13% 增值税专用发票</div></div>
+        <div class="field"><label>未税总计</label><div class="input">¥ 450,000.00</div></div>
+      </div></div>
+    </div>
+    <div class="section">
+      <div class="shead"><span>📦</span><span class="stitle">品项明细</span><span class="sdesc">共 2 个品项</span>
+        <div class="sactions"><button class="btn">＋ 添加品项</button><button class="btn">📊 报价导入</button></div>
+      </div>
+      <div class="sbody">
+        <div class="hint" style="margin-bottom:10px">点击品项行可编辑完整资料；未税单价为系统按成本占比自动分摊，不可手改。</div>
+        <div class="tw"><table class="items">
+          <thead><tr><th style="width:48px">序号</th><th>品名及描述</th><th class="num" style="width:60px">数量</th><th class="num" style="width:120px">未税单价</th><th class="num" style="width:130px">未税小计</th><th class="num" style="width:80px">毛利率</th><th style="width:40px"></th></tr></thead>
+          <tbody>${rows}</tbody></table></div>
+        <div class="totals">
+          <div class="tcell"><div class="tlabel">未税总计</div><div class="tvalue">¥ ${money(TOTAL.ex)}</div></div>
+          <div class="tcell"><div class="tlabel">销售税额（13%）</div><div class="tvalue">¥ ${money(TOTAL.vat)}</div></div>
+          <div class="tcell"><div class="tlabel">含税总计</div><div class="tvalue">¥ ${money(TOTAL.inc)}</div></div>
+          <div class="tcell"><div class="tlabel">采购成本（不含税）</div><div class="tvalue">¥ ${money(TOTAL.costEx)}</div></div>
+          <div class="tcell"><div class="tlabel">整单毛利率</div><div class="tvalue good">${TOTAL.margin.toFixed(2)}%</div></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ================= ② 导入校对预览 ================= */
+function pagePreview() {
+  const items = ITEMS.map((it, i) => `
+    <div class="preview-item">
+      <div class="phead"><div class="iname">${i + 1}. ${it.name}</div><span class="tag green">已匹配供应商报价</span></div>
+      <div class="isub" style="font-size:12px;color:var(--muted);margin-top:2px">主料号 <span style="font-family:var(--mono);font-size:11px">P52534-B21</span></div>
+      ${bomDetails(it)}
+      <div class="pmeta">
+        <span>数量 <b>${it.qty}</b></span>
+        <span>采购成本（含税）<b>¥ ${money(it.costIncl)}</b></span>
+        <span>采购税率 <b>13%</b></span>
+        <span>采购成本（不含税）<b>¥ ${money(it.costEx)}</b></span>
+        <span>售价 <b>按成本占比分摊（未税小计 ¥${money(it.sub)}）</b></span>
+      </div>
+    </div>`).join("");
+  return `<div class="fadein">
+    <div class="dialog">
+      <div class="dhead">
+        <div class="dtitle">报价导入</div>
+        <div class="ddesc">左侧销售报价 / 客户订单，右侧供应商报价。本单未提供销售报价：销售金额由"未税总计 ¥450,000"按采购成本占比分摊；组件 BOM 以结构化 components 随品项导入。</div>
+      </div>
+      <div class="dbody">
+        <div class="srcrow">
+          <div class="srccard"><div class="slabel">销售报价 / 客户订单（0）</div><span class="hint">未提供 —— 品项将导入为待分摊售价</span></div>
+          <div class="srccard"><div class="slabel">供应商报价（1）</div>
+            <div class="filechip">📄 <span class="fn">dunyang 26-8-7 380 4516y.xlsx</span> <span class="tag blue">purchase_quote · ai_text</span></div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <b style="font-size:13px">识别出的报价品项（2 个）</b>
+          <button class="btn">✏️ 校对品项</button>
+        </div>
+        ${items}
+        <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn dark">📊 确认导入 2 个品项</button></div>
+      </div>
+    </div>
+    <div class="note"><b>预览与品项表同一渲染组件：</b>查看态品名 + BOM 折叠条；点"校对品项"后 description 仍为拍平全文可编辑（入库数据不变），components 只读展示。</div>
+  </div>`;
+}
+
+/* ================= ③ PDF / 打印 ================= */
+function aBomTable(it) {
+  return `<table class="a-bom">
+    <thead><tr><th style="width:170px">料号</th><th>描述</th><th style="width:70px;text-align:right">单套数量</th></tr></thead>
+    <tbody>${bomRows(it.hdd)}</tbody></table>`;
+}
+function pagePdf() {
+  const rows = ITEMS.map((it, i) => `
+    <tr>
+      <td style="text-align:center;color:var(--muted)">${i + 1}</td>
+      <td><div class="aname">${it.name}</div><div class="aref">配置清单详见附页 ${it.appendix}（${BOM.length} 个料号）</div></td>
+      <td class="num">${it.qty}</td>
+      <td class="num">${money(it.unit)}</td>
+      <td class="num">¥ ${money(it.sub)}<br><span style="font-size:10px;color:var(--muted)">${it.margin.toFixed(2)}%</span></td>
+      <td class="num">¥ ${money(it.costEx)}</td>
+    </tr>`).join("");
+  return `<div class="fadein">
+    <div class="sheet">
+      <div class="a-header">
+        <div class="a-brand"><div class="logo">敦</div><div><small>STARK (NINGBO) TECHNOLOGY INC.</small><strong>敦阳（宁波）科技有限公司</strong></div></div>
+        <div class="a-title"><h1>客户订购申请单（境内单）</h1></div>
+        <div class="a-ref"><span>单据编号</span><b>MR-2026-0815</b></div>
+      </div>
+      <div class="a-facts">
+        <div class="a-fact"><small>客户名称</small><div>示例客户股份有限公司</div></div>
+        <div class="a-fact"><small>客户 P/O</small><div>PO-CUST-2607-118</div></div>
+        <div class="a-fact"><small>计价模式 / 发票</small><div>多项系统集成 · 13% 专票</div></div>
+        <div class="a-fact"><small>填单日期</small><div>2026-08-07</div></div>
+      </div>
+      <div class="a-section-title"><span>03</span><h2>品项明细</h2></div>
+      <table class="a-items">
+        <thead><tr><th style="text-align:center">序号</th><th>品名及描述</th><th class="num">数量</th><th class="num">未税单价</th><th class="num">未税小计 / 毛利率</th><th class="num">采购成本（不含税）</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="a-total">
+        <span>未税总计 <b>¥ ${money(TOTAL.ex)}</b></span>
+        <span>税额 13% <b>¥ ${money(TOTAL.vat)}</b></span>
+        <span>含税总计 <b>¥ ${money(TOTAL.inc)}</b></span>
+      </div>
+      <div class="a-sign">
+        <div class="box">销售填单</div><div class="box">部门主管签核</div><div class="box">运营负责人签核</div><div class="box">采购签收</div>
+      </div>
+    </div>
+    <div class="pagebreak-label">— 分页 —</div>
+    ${ITEMS.map((it) => `
+    <div class="sheet">
+      <div class="appendix-tag">附页 ${it.appendix}</div>
+      <div class="a-section-title" style="margin-top:0"><span>MR-2026-0815 · 第 ${ITEMS.indexOf(it) + 1} 项</span><h2>${it.name} · 单套配置清单（×${it.qty} 套）</h2></div>
+      ${aBomTable(it)}
+      <div class="hint" style="margin-top:10px">差异行（硬盘数量）已高亮；Factory integrated 为出厂集成工艺行，非独立物料。</div>
+    </div>`).join("")}
+    <div class="note"><b>PDF 规则：</b>主表"品名及描述"只打品名 + 附页指引；components 渲染为续页配置清单。没有 components 的历史品项照旧打 description 全文，版式零变化。</div>
+  </div>`;
+}
+
+/* ================= ④ 采购卡片 ================= */
+function pagePurchase() {
+  const rows = ITEMS.map((it, i) => `
+    <tr>
+      <td style="text-align:center;color:var(--muted)">${i + 1}</td>
+      <td>
+        <div class="iname">${it.name}</div>
+        <div class="isub" style="font-size:12px;color:var(--muted)">采购成本（含税）¥ ${money(it.costIncl)} · 13%</div>
+        ${bomDetails(it)}
+      </td>
+      <td style="width:190px"><input class="pinput" value="DY-DL380G11-CFG${i + 1}" placeholder="公司料号"></td>
+      <td style="width:150px">HPE 总代（示例）</td>
+      <td style="width:190px"><input class="pinput" value="PO-HPE-2608-0${41 + i}" placeholder="采购订单号"></td>
+      <td style="width:190px"><input class="pinput" value="" placeholder="出货单号"></td>
+    </tr>`).join("");
+  return `<div class="fadein">
+    <div class="section">
+      <div class="shead"><span>🛒</span><span class="stitle">采购订单号</span>
+        <span class="sdesc">MR 签核通过后，由采购为每个品项填写向供应商下单的采购订单号。</span>
+        <div class="sactions"><span class="tag blue">待采购 · 负责人：张采购</span></div>
+      </div>
+      <div class="sbody">
+        <div class="tw"><table class="pitems">
+          <thead><tr><th style="width:48px;text-align:center">项目</th><th>品名 / 描述</th><th>公司料号</th><th>供应商</th><th>采购订单号</th><th>出货单号</th></tr></thead>
+          <tbody>${rows}</tbody></table></div>
+        <div class="note">
+          <b>采购料号口径：</b>整机品项 = 1 个公司料号（内部 SKU，如 <b>DY-DL380G11-CFG1</b>），向总代下 1 个 PO；供应商侧 ${BOM.length} 个 HPE 料号已在组件清单里，采购<b>点开"展开单套 BOM"对着下单、收货点料</b>，不需要也不应该把整机炸成 32 行采购明细（会破坏销售/毛利的整机口径）。
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ================= ⓪ 三方实测对比 ================= */
+const AI_REAL_ROWS = [
+  ["1", "P52534-B21", "HPE DL380 Gen11 8SFF NC CTO Svr", 1],
+  ["2", "P52534-B21#AKM", "China - English localization", 1],
+  ["3", "P67093-B21", "INT Xeon-S 4516Y+ CPU for HPE", 2],
+  ["4", "P67093-B21#0D1", "Factory integrated", 2],
+  ["5", "P64706-B21", "HPE 32GB 2Rx8 PC5-5600B-R Smart Kit", 4],
+  ["…", "…", "…（共 32 行，全部为配置组一的 BOM）", "…"],
+  ["32", "P52341-B21#0D1", "Factory integrated", 1],
+];
+function pageCompare() {
+  const aiRows = AI_REAL_ROWS.map(([no, pn, name, qty]) => `
+    <tr><td style="color:var(--muted)">${no}</td><td><div class="iname" style="font-weight:400">${name}</div><div class="isub" style="font-family:var(--mono);font-size:11px">${pn}</div></td>
+    <td class="num">${qty}</td><td class="num" style="color:var(--red)">0.00</td><td class="num" style="color:var(--red)">¥ 0.00</td><td></td></tr>`).join("");
+  return `<div class="fadein">
+    <div class="section">
+      <div class="shead"><span>⚖️</span><span class="stitle">三方实测：同一份 dunyang 26-8-7 380 4516y.xlsx</span><span class="sdesc">均为 2026-08-31 在 RN 测试服真实运行的结果</span></div>
+      <div class="sbody">
+        <div style="display:grid;grid-template-columns:1fr 1.4fr 1.2fr;gap:14px;align-items:start">
+          <div>
+            <div style="font-weight:600;margin-bottom:8px">A · 规则解析器 <span class="tag" style="background:var(--red-bg);color:var(--red)">不用 AI</span></div>
+            <div style="border:1px dashed var(--border);border-radius:8px;padding:26px 12px;text-align:center;color:var(--muted)">
+              <div style="font-size:28px;font-weight:700;color:var(--red)">0</div>
+              <div style="font-size:12px;margin-top:4px">个品项 · 金额无</div>
+              <div style="font-size:11px;margin-top:8px;line-height:1.7">34 行 BOM 无单价被跳过<br>小计/总计行被汇总正则拦掉</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-weight:600;margin-bottom:8px">B · 系统 AI（RN 实测 deepseek-v4-flash） <span class="tag" style="background:var(--red-bg);color:var(--red)">14.2s · ai_text</span></div>
+            <div class="tw" style="max-height:330px;overflow:auto"><table class="items">
+              <thead><tr><th style="width:36px">#</th><th>品名</th><th class="num" style="width:44px">数量</th><th class="num" style="width:70px">单价</th><th class="num" style="width:80px">小计</th><th style="width:24px"></th></tr></thead>
+              <tbody>${aiRows}</tbody></table></div>
+            <div style="font-size:11.5px;color:var(--red);margin-top:6px;line-height:1.7">32 行全是配置组一的 BOM，单价/小计全 0；<b>配置组二整组丢失（少算 ¥180,000 成本）</b>；总计/税率/供应商均未识别</div>
+          </div>
+          <div>
+            <div style="font-weight:600;margin-bottom:8px">C · 目标效果（本 demo 方案） <span class="tag green">2 品项</span></div>
+            <div class="tw"><table class="items">
+              <thead><tr><th>品名</th><th class="num" style="width:44px">数量</th><th class="num" style="width:96px">小计</th></tr></thead>
+              <tbody>
+                <tr><td><div class="iname">配置一：6 × 1.2TB SAS</div><div class="isub" style="font-size:11px">BOM 折叠为 components</div></td><td class="num">2</td><td class="num">¥ 200,000</td></tr>
+                <tr><td><div class="iname">配置二：2 × 1.2TB SAS</div><div class="isub" style="font-size:11px">BOM 折叠为 components</div></td><td class="num">2</td><td class="num">¥ 180,000</td></tr>
+              </tbody></table></div>
+            <div style="font-size:11.5px;color:var(--green);margin-top:6px;line-height:1.7">金额完整 ¥380,000；税率/供应商如实留空待补</div>
+          </div>
+        </div>
+        <div class="note"><b>结论：</b>对 HPE 整机捆绑报价，当前真实环境两条路都不通——规则 0 项、系统 AI 丢一组配置且全零价。需要在 AI prompt 增加"配置组小计+总计 → 按组收敛为整机品项"指引（并可加规则解析同型路径兜底），才能达到 C 的效果。</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+const PAGES = { compare: pageCompare, form: pageForm, preview: pagePreview, pdf: pagePdf, purchase: pagePurchase };
+function setTab(t) {
+  for (const k of Object.keys(PAGES)) document.getElementById("t-" + k).classList.toggle("active", k === t);
+  document.getElementById("page").innerHTML = PAGES[t]();
+}
+setTab("compare");
+</script>
+</body>
+</html>
