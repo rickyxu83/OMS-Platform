@@ -1504,6 +1504,19 @@ async function submitPurchase(req, res) {
          VALUES (:mrId, :recipientId, 'purchase_done')`,
         { mrId: order.id, recipientId: order.salesOwnerId },
       )
+      // 采购完成通知同时发业务负责人的助理（2026-09-16 佬要求）；助理未配置/停用不阻塞提交，仅跳过抄送
+      try {
+        const assistant = await resolveStepAssignee(connection, order, 'assistant')
+        if (assistant && assistant.id !== Number(order.salesOwnerId)) {
+          await connection.execute(
+            `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+             VALUES (:mrId, :recipientId, 'purchase_done')`,
+            { mrId: order.id, recipientId: assistant.id },
+          )
+        }
+      } catch (error) {
+        console.warn('[mr] 采购完成通知抄送助理失败，已跳过', error?.message || error)
+      }
     }
     // 审计留痕：首次提交记 purchase_submit，完成后再次修改记 purchase_update（含旧值→新值）
     await connection.execute(
