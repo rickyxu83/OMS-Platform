@@ -242,6 +242,7 @@ const I18N = {
       help: "工单状态流转：草稿 → 已派发 → 进行中 → 待确认 → 待客户签署 → 已结案；审批通过后为已审核，归档后为已归档。工程师提交或修改工单后，系统按设置的延迟分钟数邮件通知客户关联销售（系统设置中可开关）。",
       loading: "正在加载…",
       empty: "暂无工单",
+      listEnd: "已加载全部工单",
       colCaseCustomer: "客户 / Case ID",
       colServiceItems: "服务事项",
       colMainContent: "主要内容",
@@ -502,6 +503,7 @@ const I18N = {
       help: "工單狀態流轉：草稿 → 已派發 → 進行中 → 待確認 → 待客戶簽署 → 已結案；審批通過後為已審核，歸檔後為已歸檔。工程師提交或修改工單後，系統按設定的延遲分鐘數郵件通知客戶關聯銷售（系統設定中可開關）。",
       loading: "正在載入…",
       empty: "暫無工單",
+      listEnd: "已載入全部工單",
       colCaseCustomer: "客戶 / Case ID",
       colServiceItems: "服務事項",
       colMainContent: "主要內容",
@@ -1060,6 +1062,8 @@ function splitSearchTerms(value: string) {
     .slice(0, 8);
 }
 
+const LIST_PAGE_SIZE = 50;
+
 function engineerText(order: ServiceOrder, fallback: string) {
   const names = (order.engineers || [])
     .map((engineer) => engineer.realName || engineer.name || engineer.username || "")
@@ -1099,6 +1103,14 @@ export function ServiceOrders() {
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [total, setTotal] = useState(0);
+  // 分页加载：无限下拉（page 从 1 开始，hasMore 由最近一次响应推算）
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  // 顶部统计卡片：后端按「除状态外的筛选」返回各状态总数，不随加载页数变化
+  const [statusCounts, setStatusCounts] = useState<{ all: number; pending: number; processing: number; completed: number } | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreRef = useRef<() => void>(() => {});
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [devices, setDevices] = useState<DeviceOption[]>([]);
   const [engineers, setEngineers] = useState<EngineerOption[]>([]);
@@ -1162,27 +1174,36 @@ export function ServiceOrders() {
     ]).catch(() => undefined);
   }, []);
 
+  function buildListQuery(pageNum: number) {
+    const range = normalizedDateRange(startDate, endDate);
+    const params = new URLSearchParams({
+      page: String(pageNum),
+      pageSize: String(LIST_PAGE_SIZE),
+      sortBy: "createdAt",
+      sortDir: "desc",
+    });
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (customerFilter !== "all") params.set("customerId", customerFilter);
+    if (range.startDate) params.set("startDate", range.startDate);
+    if (range.endDate) params.set("endDate", range.endDate);
+    if (debouncedSearch.trim()) params.set("keyword", debouncedSearch.trim());
+    return params;
+  }
+
   async function load() {
     const seq = ++loadSeqRef.current;
     setLoading(true);
     setError("");
     try {
-      const range = normalizedDateRange(startDate, endDate);
-      const params = new URLSearchParams({
-        pageSize: "50",
-        sortBy: "createdAt",
-        sortDir: "desc",
-      });
-      if (statusFilter !== "all") params.set("status", statusFilter);
-      if (customerFilter !== "all") params.set("customerId", customerFilter);
-      if (range.startDate) params.set("startDate", range.startDate);
-      if (range.endDate) params.set("endDate", range.endDate);
-      if (debouncedSearch.trim()) params.set("keyword", debouncedSearch.trim());
-      const data = await api.get(`/service-orders?${params.toString()}`);
+      const data = await api.get(`/service-orders?${buildListQuery(1).toString()}`);
       if (seq !== loadSeqRef.current) return; // 已有更新的请求,丢弃过期响应
       const items = (data?.items || []) as ServiceOrder[];
+      const totalCount = Number(data?.total ?? items.length);
       setOrders(items);
-      setTotal(Number(data?.total ?? items.length));
+      setTotal(totalCount);
+      setPage(1);
+      setHasMore(items.length < totalCount && items.length === LIST_PAGE_SIZE);
+      setStatusCounts(data?.statusCounts ?? null);
       setSelectedIds((ids) => ids.filter((id) => items.some((item) => String(item.id) === String(id))));
     } catch (e) {
       if (seq !== loadSeqRef.current) return;
@@ -1192,6 +1213,49 @@ export function ServiceOrders() {
       if (seq === loadSeqRef.current) setLoading(false);
     }
   }
+
+  // 无限下拉：追加下一页；单飞守卫（loadingMore）+ 序号守卫（重置加载后丢弃过期追加）
+  async function loadMore() {
+    if (loading || loadingMore || !hasMore) return;
+    const seq = loadSeqRef.current;
+    const nextPage = page + 1;
+    setLoadingMore(true);
+    try {
+      const data = await api.get(`/service-orders?${buildListQuery(nextPage).toString()}`);
+      if (seq !== loadSeqRef.current) return;
+      const items = (data?.items || []) as ServiceOrder[];
+      const totalCount = Number(data?.total ?? 0);
+      // 按 id 去重后追加（加载期间新开工单会导致页间行位移）
+      setOrders((prev) => {
+        const seen = new Set(prev.map((order) => String(order.id)));
+        return [...prev, ...items.filter((order) => !seen.has(String(order.id)))];
+      });
+      setTotal(totalCount);
+      setPage(nextPage);
+      setHasMore(items.length === LIST_PAGE_SIZE);
+      setStatusCounts(data?.statusCounts ?? null);
+    } catch (e) {
+      if (seq !== loadSeqRef.current) return;
+      setError(e instanceof Error ? e.message : t.errors.loadFailed);
+    } finally {
+      if (seq === loadSeqRef.current) setLoadingMore(false);
+    }
+  }
+
+  useEffect(() => {
+    loadMoreRef.current = () => { void loadMore(); };
+  });
+
+  // 底部哨兵进入视口即加载下一页
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) loadMoreRef.current();
+    }, { rootMargin: "240px" });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, orders.length]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(searchQuery), 300);
@@ -1291,17 +1355,14 @@ export function ServiceOrders() {
   }, [customerFilter, customers]);
 
   const stats = useMemo(() => {
-    const all = orders.length;
-    const pending = orders.filter((o) => getWorkflowStatus(o) === "pending_confirmation").length;
-    const processing = orders.filter((o) => getWorkflowStatus(o) === "in_progress").length;
-    const submitted = orders.filter((o) => ["submitted", "approved", "archived", "completed"].includes(getWorkflowStatus(o))).length;
+    const counts = statusCounts || { all: total, pending: 0, processing: 0, completed: 0 };
     return [
-      { label: t.stats.all, value: all },
-      { label: t.stats.pending, value: pending },
-      { label: t.stats.processing, value: processing },
-      { label: t.stats.completed, value: submitted },
+      { label: t.stats.all, value: counts.all },
+      { label: t.stats.pending, value: counts.pending },
+      { label: t.stats.processing, value: counts.processing },
+      { label: t.stats.completed, value: counts.completed },
     ];
-  }, [orders, t.stats]);
+  }, [statusCounts, total, t.stats]);
 
   function openCreateOrder() {
     setCreateForm({
@@ -2267,6 +2328,15 @@ export function ServiceOrders() {
             </table>
               </ResponsiveList>
             )}
+            {!initialLoading && orders.length > 0 ? (
+              <div ref={sentinelRef} className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+                {loadingMore ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" />{t.list.loading}</>
+                ) : hasMore ? null : (
+                  <span>{t.list.listEnd}</span>
+                )}
+              </div>
+            ) : null}
           </div>
       </div>
 

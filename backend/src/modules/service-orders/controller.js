@@ -1657,7 +1657,7 @@ async function assertCanViewOrder(order, user, options = {}) {
   }
 }
 
-function buildListQueryParts(req) {
+function buildListQueryParts(req, { includeStatus = true } = {}) {
   const {
     status = null,
     customerId = null,
@@ -1677,11 +1677,11 @@ function buildListQueryParts(req) {
   const salesScope = buildSalesCustomerScope(req.user, 'c')
   const businessVisibilityScope = buildBusinessOrderVisibilityScope(req.user, 'so', 'c')
   let statusWhereSql = '1 = 1'
-  if (status === 'draft') {
+  if (includeStatus && status === 'draft') {
     statusWhereSql = "so.status IN ('draft', 'assigned', 'rejected')"
-  } else if (status === 'submitted') {
+  } else if (includeStatus && status === 'submitted') {
     statusWhereSql = "so.status IN ('submitted', 'approved', 'archived')"
-  } else if (status) {
+  } else if (includeStatus && status) {
     statusWhereSql = 'so.status = :status'
   }
   const serviceTimeSql = `COALESCE(
@@ -1748,7 +1748,7 @@ function buildListQueryParts(req) {
       AND (${keywordWhereSql})
   `
   const params = {
-    status: status || null,
+    status: includeStatus ? status || null : null,
     customerId: customerId || null,
     engineerId: effectiveEngineerId,
     keyword,
@@ -1770,23 +1770,38 @@ async function list(req, res) {
   const normalizedPageSize = Math.min(100, Math.max(1, Number(pageSize) || 20))
   const offset = (normalizedPage - 1) * normalizedPageSize
   const { params, fromAndWhere, sortColumn, sortDirection } = buildListQueryParts(req)
+  const statsParts = buildListQueryParts(req, { includeStatus: false })
 
-  const countRows = await query(`SELECT COUNT(*) AS total ${fromAndWhere}`, params)
-  const rows = await query(
-    `SELECT ${orderColumns}
-     ${fromAndWhere}
-     ORDER BY ${sortColumn} ${sortDirection}, so.id DESC
-     LIMIT ${normalizedPageSize} OFFSET ${offset}`,
-    {
-      ...params,
-    },
-  )
+  const [countRows, rows, statusRows] = await Promise.all([
+    query(`SELECT COUNT(*) AS total ${fromAndWhere}`, params),
+    query(
+      `SELECT ${orderColumns}
+       ${fromAndWhere}
+       ORDER BY ${sortColumn} ${sortDirection}, so.id DESC
+       LIMIT ${normalizedPageSize} OFFSET ${offset}`,
+      {
+        ...params,
+      },
+    ),
+    // 顶部统计卡片：按除状态外的全部筛选统计各状态数量（状态筛选不应让其他卡片归零）
+    query(`SELECT so.status AS status, COUNT(*) AS count ${statsParts.fromAndWhere} GROUP BY so.status`, statsParts.params),
+  ])
+
+  const statusCounts = { all: 0, pending: 0, processing: 0, completed: 0 }
+  for (const row of statusRows) {
+    const n = Number(row.count) || 0
+    statusCounts.all += n
+    if (row.status === 'pending_confirmation') statusCounts.pending += n
+    else if (row.status === 'in_progress') statusCounts.processing += n
+    else if (['submitted', 'approved', 'archived', 'completed'].includes(row.status)) statusCounts.completed += n
+  }
 
   res.json({
     items: (await attachReports(await attachEngineers(rows))).map((row) => orderPayload(row, req.user)),
     total: Number(countRows[0].total),
     page: normalizedPage,
     pageSize: normalizedPageSize,
+    statusCounts,
   })
 }
 
