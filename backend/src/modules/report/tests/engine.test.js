@@ -148,4 +148,68 @@ const { validateSpec, resolveRelativeRange, buildQuery, describeSpec } = require
   assert.ok(text.includes('状态=已结案'))
 }
 
+// ---- 新增数据集（批次 1：备件/值班/假期余额/采购任务） ----
+
+{
+  // 备件使用：默认指标为数量合计，枚举筛选白名单生效
+  const { errors, spec } = validateSpec({
+    dataset: 'service_parts',
+    timeRange: { type: 'relative', value: 'this_year' },
+    groupBy: ['part_name'],
+    filters: { action_type: ['replacement', 'bogus'] },
+  })
+  assert.deepEqual(errors, [])
+  assert.deepEqual(spec.metrics, ['quantity'])
+  assert.deepEqual(spec.filters.action_type, ['replacement'])
+  const { sql, params } = buildQuery(spec)
+  assert.ok(sql.includes('FROM service_parts sp'))
+  assert.ok(sql.includes('SUM(sp.quantity)'))
+  assert.equal(params.f_action_type_0, 'replacement')
+}
+
+{
+  // 值班：按员工分组统计值班次数，批次状态枚举
+  const { errors, spec } = validateSpec({
+    dataset: 'duty_records',
+    groupBy: ['employee', 'duty_type'],
+    metrics: ['units'],
+    filters: { batch_status: ['approved'] },
+  })
+  assert.deepEqual(errors, [])
+  const { sql } = buildQuery(spec)
+  assert.ok(sql.includes('FROM attendance_duty_records r'))
+  assert.ok(sql.includes('SUM(r.units)'))
+  assert.ok(sql.includes('r.batch_status IN (:f_batch_status_0)'))
+}
+
+{
+  // 假期余额：全部时间按员工合计即当前余额
+  const { spec } = validateSpec({
+    dataset: 'leave_balance',
+    timeRange: { type: 'relative', value: 'all' },
+    groupBy: ['employee', 'balance_type'],
+    metrics: ['sum_hours'],
+  })
+  const { sql, params } = buildQuery(spec)
+  assert.ok(sql.includes('FROM attendance_balance_ledger bl'))
+  assert.ok(sql.includes('SUM(bl.delta_hours)'))
+  assert.ok(!('timeFrom' in params))
+}
+
+{
+  // 采购任务：待处理数指标 + 完成时间口径
+  const { errors, spec } = validateSpec({
+    dataset: 'mr_purchase_tasks',
+    timeField: 'completed_at',
+    groupBy: ['assignee'],
+    metrics: ['count', 'pending_count'],
+    filters: { task_type: ['purchase'] },
+  })
+  assert.deepEqual(errors, [])
+  const { sql } = buildQuery(spec)
+  assert.ok(sql.includes('FROM mr_purchase_tasks pt'))
+  assert.ok(sql.includes('DATE(pt.completed_at)'))
+  assert.ok(sql.includes("SUM(CASE WHEN pt.status = 'pending' THEN 1 ELSE 0 END)"))
+}
+
 console.log('report engine tests passed')
