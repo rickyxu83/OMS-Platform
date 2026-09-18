@@ -226,6 +226,10 @@ deploy_lock_acquire() {
       exit 1
     fi
   fi
+  # 接管/续期/强占场景：先清掉旧锁目录，否则下方 mkdir（无 -p）必失败
+  if [ -n "$holder" ]; then
+    ssh "$SSH_TARGET" "rm -rf '$REMOTE_ROOT/.deploy-lock'"
+  fi
   # mkdir 原子抢锁，防两个会话同时部署时双双成功
   if ssh "$SSH_TARGET" "mkdir -p '$REMOTE_ROOT' && mkdir '$REMOTE_ROOT/.deploy-lock' 2>/dev/null"; then
     printf '%s|%s|%s|%s\n' "$branch" "$(whoami)@$(hostname)" "$(date +%s)" "$DEPLOY_TARGET" \
