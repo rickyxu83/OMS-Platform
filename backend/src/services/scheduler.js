@@ -1152,6 +1152,17 @@ function startScheduler() {
     }
   })
 
+  // 智能报表订阅推送（spec 014）：每天 09:07 检查到期订阅（周刊周一、月刊每月 1 日），生成 Excel 邮件推送
+  scheduleCron('7 9 * * *', async () => {
+    try {
+      const { processReportSubscriptions } = require('../modules/report/subscriptions')
+      const result = await processReportSubscriptions()
+      if (result.results.length) console.log('[scheduler] report subscriptions:', JSON.stringify(result))
+    } catch (error) {
+      console.error('[scheduler] report subscriptions failed', { message: error?.message || error })
+    }
+  })
+
   // 法定节假日自动同步：每年 11~12 月每天 09:15 检查来年数据，缺失则双源拉取写入并邮件通知管理员。
     // 失败通知节流：每周一提醒一次；12 月 15 日起（国务院通常已公布）仍未成功则每天提醒。
     scheduleCron('15 9 * * *', async () => {
@@ -1234,6 +1245,7 @@ function startScheduler() {
   ]
   if (!env.featureModulesDisabled.has('attendance')) startedTasks.push('attendance notifications (every minute)', 'attendance stale reminders (hourly :17)', 'holiday auto-sync (09:15, Nov-Dec)', 'duty monthly auto-submit (08:21 on day 1)', 'annual leave carryover & comp-time expiry (23:50 daily check)')
   if (!env.featureModulesDisabled.has('mr')) startedTasks.push('MR approval notifications (1m)', 'MR stale reminders (hourly :23)', 'MR PDF archive retry (2m)')
+  if (!env.featureModulesDisabled.has('report')) startedTasks.push('report subscriptions (09:07)')
   console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): ${startedTasks.join(', ')}`)}
 
 module.exports = { startScheduler }

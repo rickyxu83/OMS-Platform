@@ -1,0 +1,318 @@
+/**
+ * 智能报表执行引擎（spec 014）：校验报表定义（白名单）→ 拼接参数化 SQL → 执行。
+ * 纯函数部分（validateSpec / resolveTimeRange / buildQuery / describeSpec）不依赖数据库，可单测。
+ */
+const { query } = require('../../config/db')
+const { DATASETS } = require('./datasets')
+
+const MAX_GROUP_BY = 3
+const MAX_METRICS = 4
+const CHART_TYPES = new Set(['table', 'bar', 'line', 'pie'])
+
+const RELATIVE_RANGES = new Set([
+  'this_week', 'last_week', 'this_month', 'last_month',
+  'this_quarter', 'last_quarter', 'this_year', 'last_year',
+  'last_7d', 'last_30d', 'last_90d', 'all',
+])
+
+const RELATIVE_RANGE_LABELS = {
+  this_week: '本周', last_week: '上周', this_month: '本月', last_month: '上月',
+  this_quarter: '本季度', last_quarter: '上季度', this_year: '今年', last_year: '去年',
+  last_7d: '近7天', last_30d: '近30天', last_90d: '近90天', all: '全部时间',
+}
+
+/** 上海时区的"今天"（服务器按 UTC 部署，与 scheduler.js 同款 +8h 换算） */
+function shanghaiToday(now = Date.now()) {
+  return new Date(now + 8 * 3600e3).toISOString().slice(0, 10)
+}
+
+function dayKey(date) {
+  return date.toISOString().slice(0, 10)
+}
+
+/**
+ * 相对时间范围 → 起止日期（含首尾，基于上海时区）。
+ * 返回 { from, to, label }；'all' 返回 { from: null, to: null, label: '全部时间' }。
+ */
+function resolveRelativeRange(value, now = Date.now()) {
+  const today = shanghaiToday(now)
+  const base = new Date(`${today}T00:00:00Z`)
+  const y = base.getUTCFullYear()
+  const m = base.getUTCMonth() // 0-based
+
+  switch (value) {
+    case 'this_week': {
+      const dow = (base.getUTCDay() + 6) % 7 // 周一=0
+      const from = new Date(base.getTime() - dow * 86400e3)
+      const to = new Date(from.getTime() + 6 * 86400e3)
+      return { from: dayKey(from), to: dayKey(to) }
+    }
+    case 'last_week': {
+      const dow = (base.getUTCDay() + 6) % 7
+      const to = new Date(base.getTime() - (dow + 1) * 86400e3)
+      const from = new Date(to.getTime() - 6 * 86400e3)
+      return { from: dayKey(from), to: dayKey(to) }
+    }
+    case 'this_month':
+      return { from: dayKey(new Date(Date.UTC(y, m, 1))), to: dayKey(new Date(Date.UTC(y, m + 1, 0))) }
+    case 'last_month':
+      return { from: dayKey(new Date(Date.UTC(y, m - 1, 1))), to: dayKey(new Date(Date.UTC(y, m, 0))) }
+    case 'this_quarter': {
+      const qm = Math.floor(m / 3) * 3
+      return { from: dayKey(new Date(Date.UTC(y, qm, 1))), to: dayKey(new Date(Date.UTC(y, qm + 3, 0))) }
+    }
+    case 'last_quarter': {
+      const qm = Math.floor(m / 3) * 3
+      return { from: dayKey(new Date(Date.UTC(y, qm - 3, 1))), to: dayKey(new Date(Date.UTC(y, qm, 0))) }
+    }
+    case 'this_year':
+      return { from: `${y}-01-01`, to: `${y}-12-31` }
+    case 'last_year':
+      return { from: `${y - 1}-01-01`, to: `${y - 1}-12-31` }
+    case 'last_7d':
+      return { from: dayKey(new Date(base.getTime() - 6 * 86400e3)), to: today }
+    case 'last_30d':
+      return { from: dayKey(new Date(base.getTime() - 29 * 86400e3)), to: today }
+    case 'last_90d':
+      return { from: dayKey(new Date(base.getTime() - 89 * 86400e3)), to: today }
+    case 'all':
+      return { from: null, to: null }
+    default:
+      return null
+  }
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * 校验并归一化报表定义。返回 { errors: string[], spec: 归一化后的 spec | null }。
+ * 任何不在白名单内的取值都会进入 errors；spec 仅在 errors 为空时非空。
+ */
+function validateSpec(raw) {
+  const errors = []
+  if (!raw || typeof raw !== 'object') return { errors: ['报表定义缺失'], spec: null }
+
+  const dataset = DATASETS[raw.dataset]
+  if (!dataset) {
+    return { errors: [`未知数据集：${String(raw.dataset || '').slice(0, 40)}（可选：${Object.keys(DATASETS).join('/')}）`], spec: null }
+  }
+
+  // 时间字段
+  let timeField = dataset.defaultTimeField
+  if (raw.timeField !== undefined && raw.timeField !== null && raw.timeField !== '') {
+    if (!dataset.timeFields[raw.timeField]) {
+      errors.push(`数据集「${dataset.label}」不支持时间字段 ${String(raw.timeField).slice(0, 40)}（可选：${Object.keys(dataset.timeFields).join('/')}）`)
+    } else {
+      timeField = raw.timeField
+    }
+  }
+
+  // 时间范围
+  const rangeRaw = raw.timeRange && typeof raw.timeRange === 'object' ? raw.timeRange : {}
+  let timeRange
+  if (rangeRaw.type === 'absolute') {
+    const from = String(rangeRaw.from || '').slice(0, 10)
+    const to = String(rangeRaw.to || '').slice(0, 10)
+    if (!DATE_RE.test(from) || !DATE_RE.test(to)) {
+      errors.push('绝对时间范围需要 from/to（YYYY-MM-DD）')
+    } else if (from > to) {
+      errors.push('时间范围起止颠倒')
+    } else {
+      timeRange = { type: 'absolute', from, to }
+    }
+  } else {
+    const value = String(rangeRaw.value || 'this_month')
+    if (!RELATIVE_RANGES.has(value)) {
+      errors.push(`未知相对时间范围：${value.slice(0, 30)}（可选：${[...RELATIVE_RANGES].join('/')}）`)
+    } else {
+      timeRange = { type: 'relative', value }
+    }
+  }
+
+  // 分组维度
+  const groupBy = Array.isArray(raw.groupBy) ? raw.groupBy.slice(0, MAX_GROUP_BY + 1) : []
+  const dims = []
+  for (const key of groupBy) {
+    if (!dataset.dimensions[key]) {
+      errors.push(`数据集「${dataset.label}」不支持分组维度 ${String(key).slice(0, 40)}（可选：${Object.keys(dataset.dimensions).join('/')}）`)
+    } else if (!dims.includes(key)) {
+      dims.push(key)
+    }
+  }
+  if (groupBy.length > MAX_GROUP_BY) errors.push(`分组维度最多 ${MAX_GROUP_BY} 个`)
+
+  // 指标
+  const metricsRaw = Array.isArray(raw.metrics) ? raw.metrics : []
+  const metrics = []
+  for (const key of metricsRaw) {
+    if (!dataset.metrics[key]) {
+      errors.push(`数据集「${dataset.label}」不支持指标 ${String(key).slice(0, 40)}（可选：${Object.keys(dataset.metrics).join('/')}）`)
+    } else if (!metrics.includes(key)) {
+      metrics.push(key)
+    }
+  }
+  if (!metrics.length) metrics.push(Object.keys(dataset.metrics)[0])
+  if (metrics.length > MAX_METRICS) errors.push(`统计指标最多 ${MAX_METRICS} 个`)
+
+  // 筛选
+  const filters = {}
+  const filtersRaw = raw.filters && typeof raw.filters === 'object' ? raw.filters : {}
+  for (const [key, value] of Object.entries(filtersRaw)) {
+    const def = dataset.filters[key]
+    if (!def) {
+      errors.push(`数据集「${dataset.label}」不支持筛选 ${String(key).slice(0, 40)}（可选：${Object.keys(dataset.filters).join('/')}）`)
+      continue
+    }
+    if (def.type === 'enum') {
+      const values = (Array.isArray(value) ? value : [value]).map((v) => String(v)).filter((v) => v in def.options)
+      if (values.length) filters[key] = values
+    } else {
+      const text = String(Array.isArray(value) ? value[0] : value || '').trim().slice(0, 60)
+      if (text) filters[key] = text
+    }
+  }
+
+  // 图表类型
+  const chartType = CHART_TYPES.has(raw.chartType) ? raw.chartType : null
+
+  if (errors.length) return { errors, spec: null }
+  return { errors, spec: { dataset: dataset.key, timeField, timeRange, filters, groupBy: dims, metrics, chartType } }
+}
+
+/** 维度 SQL（时间维度把 __TIME__ 占位替换为 timeField 列） */
+function dimensionSql(dataset, timeColumn, key) {
+  const def = dataset.dimensions[key]
+  if (def.timeFormat) return `DATE_FORMAT(${timeColumn}, '${def.timeFormat}')`
+  return def.sql
+}
+
+/**
+ * 由归一化 spec 生成参数化 SQL。返回 { sql, params, columns }。
+ * columns: [{ key, label, kind: 'dimension'|'metric' }]
+ */
+function buildQuery(spec, { limit = 500 } = {}) {
+  const dataset = DATASETS[spec.dataset]
+  const timeColumn = dataset.timeFields[spec.timeField].column
+  const params = {}
+  const where = dataset.baseWhere ? [dataset.baseWhere] : []
+
+  // 时间范围条件
+  let range = null
+  if (spec.timeRange.type === 'relative') {
+    const resolved = resolveRelativeRange(spec.timeRange.value)
+    range = { ...resolved, label: RELATIVE_RANGE_LABELS[spec.timeRange.value] }
+  } else {
+    range = { from: spec.timeRange.from, to: spec.timeRange.to, label: `${spec.timeRange.from} ~ ${spec.timeRange.to}` }
+  }
+  if (range.from && range.to) {
+    where.push(`DATE(${timeColumn}) >= :timeFrom AND DATE(${timeColumn}) <= :timeTo`)
+    params.timeFrom = range.from
+    params.timeTo = range.to
+  }
+
+  // 筛选条件
+  for (const [key, value] of Object.entries(spec.filters)) {
+    const def = dataset.filters[key]
+    if (def.type === 'enum') {
+      const names = value.map((_, i) => `:f_${key}_${i}`)
+      where.push(`${def.column} IN (${names.join(', ')})`)
+      value.forEach((v, i) => { params[`f_${key}_${i}`] = v })
+    } else {
+      where.push(`${def.column} LIKE :f_${key}`)
+      params[`f_${key}`] = `%${value}%`
+    }
+  }
+
+  const columns = []
+  const selectParts = []
+  const groupParts = []
+  for (const key of spec.groupBy) {
+    const sql = dimensionSql(dataset, timeColumn, key)
+    selectParts.push(`${sql} AS \`${key}\``)
+    groupParts.push(sql)
+    columns.push({ key, label: dataset.dimensions[key].label, kind: 'dimension' })
+  }
+  for (const key of spec.metrics) {
+    selectParts.push(`${dataset.metrics[key].sql} AS \`${key}\``)
+    columns.push({ key, label: dataset.metrics[key].label, kind: 'metric' })
+  }
+
+  const safeLimit = Math.min(Math.max(1, Math.floor(Number(limit) || 500)), 2000)
+  const orderBy = `ORDER BY \`${spec.metrics[0]}\` DESC`
+  const sql = [
+    `SELECT ${selectParts.join(', ')}`,
+    dataset.baseSql,
+    where.length ? `WHERE ${where.join(' AND ')}` : '',
+    groupParts.length ? `GROUP BY ${groupParts.join(', ')}` : '',
+    groupParts.length ? orderBy : '',
+    `LIMIT ${safeLimit}`,
+  ].filter(Boolean).join('\n')
+
+  return { sql, params, columns, range }
+}
+
+/** 报表定义的人类可读描述（展示与导出文件头用） */
+function describeSpec(spec, range) {
+  const dataset = DATASETS[spec.dataset]
+  const parts = [dataset.label]
+  const timeLabel = range?.from && range?.to
+    ? `${range.from} ~ ${range.to}（${dataset.timeFields[spec.timeField].label}）`
+    : '全部时间'
+  parts.push(timeLabel)
+  if (spec.groupBy.length) parts.push(`按 ${spec.groupBy.map((k) => dataset.dimensions[k].label).join('、')} 分组`)
+  parts.push(`指标：${spec.metrics.map((k) => dataset.metrics[k].label).join('、')}`)
+  const filterTexts = Object.entries(spec.filters).map(([key, value]) => {
+    const def = dataset.filters[key]
+    const shown = def.type === 'enum' ? value.map((v) => def.options[v] || v).join('/') : value
+    return `${def.label}=${shown}`
+  })
+  if (filterTexts.length) parts.push(`筛选：${filterTexts.join('，')}`)
+  return parts.join(' · ')
+}
+
+/** 枚举维度值 → 中文标签（未知值原样透出） */
+function translateRow(dataset, columns, row) {
+  const out = {}
+  for (const col of columns) {
+    const value = row[col.key]
+    if (col.kind === 'dimension') {
+      const labels = dataset.dimensions[col.key].labels
+      const raw = value === null || value === undefined ? '' : String(value)
+      out[col.key] = labels && raw in labels ? labels[raw] : raw || '-'
+    } else {
+      const num = Number(value)
+      const def = dataset.metrics[col.key]
+      out[col.key] = Number.isFinite(num) ? (def.round !== undefined ? Number(num.toFixed(def.round)) : num) : 0
+    }
+  }
+  return out
+}
+
+/**
+ * 校验 + 执行。返回 { spec, columns, rows, total, truncated, specText, range }；校验失败抛 422 业务错。
+ */
+async function runSpec(rawSpec, { limit = 500 } = {}) {
+  const { errors, spec } = validateSpec(rawSpec)
+  if (!spec) {
+    const err = new Error(`报表定义无效：${errors.join('；')}`)
+    err.status = 422
+    err.details = errors
+    throw err
+  }
+  const dataset = DATASETS[spec.dataset]
+  const { sql, params, columns, range } = buildQuery(spec, { limit: limit + 1 })
+  const rawRows = await query(sql, params)
+  const truncated = rawRows.length > limit
+  const rows = rawRows.slice(0, limit).map((row) => translateRow(dataset, columns, row))
+  return {
+    spec,
+    columns,
+    rows,
+    total: rows.length,
+    truncated,
+    specText: describeSpec(spec, range),
+    range: { ...range },
+  }
+}
+
+module.exports = { validateSpec, resolveRelativeRange, buildQuery, describeSpec, runSpec, RELATIVE_RANGE_LABELS, CHART_TYPES }
