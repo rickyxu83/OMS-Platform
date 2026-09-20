@@ -100,9 +100,10 @@ function validateSpec(raw) {
     return { errors: [`未知数据集：${String(raw.dataset || '').slice(0, 40)}（可选：${Object.keys(DATASETS).join('/')}）`], spec: null }
   }
 
-  // 时间字段
-  let timeField = dataset.defaultTimeField
-  if (raw.timeField !== undefined && raw.timeField !== null && raw.timeField !== '') {
+  // 时间字段（数据集可不声明 timeFields：统计区间仅作用于指标折算，不筛选记录）
+  const hasTimeFields = dataset.timeFields && Object.keys(dataset.timeFields).length > 0
+  let timeField = hasTimeFields ? dataset.defaultTimeField : null
+  if (hasTimeFields && raw.timeField !== undefined && raw.timeField !== null && raw.timeField !== '') {
     if (!dataset.timeFields[raw.timeField]) {
       errors.push(`数据集「${dataset.label}」不支持时间字段 ${String(raw.timeField).slice(0, 40)}（可选：${Object.keys(dataset.timeFields).join('/')}）`)
     } else {
@@ -252,7 +253,7 @@ function dimensionSql(dataset, timeColumn, key) {
  */
 function buildQuery(spec, { limit = 500 } = {}) {
   const dataset = DATASETS[spec.dataset]
-  const timeColumn = dataset.timeFields[spec.timeField].column
+  const timeColumn = spec.timeField ? dataset.timeFields[spec.timeField].column : null
   const params = {}
   const where = dataset.baseWhere ? [dataset.baseWhere] : []
 
@@ -264,11 +265,13 @@ function buildQuery(spec, { limit = 500 } = {}) {
   } else {
     range = { from: spec.timeRange.from, to: spec.timeRange.to, label: `${spec.timeRange.from} ~ ${spec.timeRange.to}` }
   }
-  if (range.from && range.to) {
+  // 时间范围条件：数据集声明了时间字段才进 WHERE；params 恒含 timeFrom/timeTo（无界为 NULL），
+  // 供无时间字段数据集的折算指标 SQL 引用（如巡检完成率的周期折算）
+  if (timeColumn && range.from && range.to) {
     where.push(`DATE(${timeColumn}) >= :timeFrom AND DATE(${timeColumn}) <= :timeTo`)
-    params.timeFrom = range.from
-    params.timeTo = range.to
   }
+  params.timeFrom = range.from || null
+  params.timeTo = range.to || null
 
   // 筛选条件
   for (const [key, value] of Object.entries(spec.filters)) {
@@ -316,7 +319,7 @@ function describeSpec(spec, range) {
   const dataset = DATASETS[spec.dataset]
   const parts = [dataset.label]
   const timeLabel = range?.from && range?.to
-    ? `${range.from} ~ ${range.to}（${dataset.timeFields[spec.timeField].label}）`
+    ? `${range.from} ~ ${range.to}（${spec.timeField ? dataset.timeFields[spec.timeField].label : '统计区间'}）`
     : '全部时间'
   parts.push(timeLabel)
   if (spec.groupBy.length) parts.push(`按 ${spec.groupBy.map((k) => dataset.dimensions[k].label).join('、')} 分组`)

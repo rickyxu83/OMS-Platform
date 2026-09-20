@@ -26,7 +26,7 @@ import { Switch } from '@/components/ui/switch'
 interface ReportColumn { key: string; label: string; kind: 'dimension' | 'metric' }
 interface ReportSpec {
   dataset: string
-  timeField: string
+  timeField: string | null
   timeRange: { type: string; value?: string; from?: string; to?: string }
   filters: Record<string, unknown>
   groupBy: string[]

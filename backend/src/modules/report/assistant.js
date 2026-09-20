@@ -13,7 +13,11 @@ const { RELATIVE_RANGE_LABELS } = require('./engine')
 function catalogPrompt() {
   const blocks = Object.values(DATASETS).map((ds) => {
     const lines = [`【${ds.key}】${ds.label}：${ds.description}`]
-    lines.push(`  时间字段 timeField（默认 ${ds.defaultTimeField}）：${Object.entries(ds.timeFields).map(([k, v]) => `${k}=${v.label}`).join('，')}`)
+    if (ds.timeFields && Object.keys(ds.timeFields).length) {
+      lines.push(`  时间字段 timeField（默认 ${ds.defaultTimeField}）：${Object.entries(ds.timeFields).map(([k, v]) => `${k}=${v.label}`).join('，')}`)
+    } else {
+      lines.push('  时间字段：无（timeRange 只决定统计区间，不筛选记录；仍须输出 timeRange）')
+    }
     lines.push(`  分组维度 groupBy：${Object.entries(ds.dimensions).map(([k, v]) => `${k}=${v.label}`).join('，')}`)
     lines.push(`  统计指标 metrics：${Object.entries(ds.metrics).map(([k, v]) => `${k}=${v.label}`).join('，')}`)
     const filters = Object.entries(ds.filters).map(([k, v]) => {
@@ -67,9 +71,9 @@ const SUMMARY_CACHE_TTL = 60 * 60 * 1000
 const SUMMARY_CACHE_MAX = 500
 const summaryCache = new Map() // key → { text, expiresAt }
 
-/** 缓存键：口径 + 列 + 全部数据行内容的哈希（纯函数，可单测） */
+/** 缓存键：prompt 版本 + 口径 + 列 + 全部数据行内容的哈希（纯函数，可单测） */
 function summaryCacheKey(specText, columns, rows) {
-  const payload = JSON.stringify({ specText, columns: columns.map((c) => c.label), rows })
+  const payload = JSON.stringify({ v: SUMMARY_PROMPT_VERSION, specText, columns: columns.map((c) => c.label), rows })
   return createHash('sha1').update(payload).digest('hex')
 }
 
@@ -91,9 +95,12 @@ function summaryCacheSet(key, text) {
   summaryCache.set(key, { text, expiresAt: Date.now() + SUMMARY_CACHE_TTL })
 }
 
+const SUMMARY_PROMPT_VERSION = 2 // prompt 变更时递增，旧缓存摘要自然失效
+
 const SUMMARY_PROMPT = [
-  '你是报表解读助手。根据报表定义和统计结果，用中文写 2~4 句简明结论：总量、最突出的一两项、值得注意的异常（如某人为 0、集中度高等）。',
-  '数据中带 __compare / __delta / __pct 后缀的列分别是对比期数值、差值、变化百分比（pct 为 null 表示对比期为 0 无法计算）；有对比数据时摘要必须提及总体涨跌幅。',
+  '你是报表解读助手。根据报表定义和统计结果，用中文写 2~4 句简明结论：总量、整体分布、值得注意的客观异常（如某类别为 0、集中度高等）。',
+  '不要对工程师、销售等个人之间进行对比或排名：不说谁比谁多/少、谁第一谁垫底，只总结总体结果。',
+  '数据中带 __compare / __delta / __pct 后缀的列分别是对比期数值、差值、变化百分比（pct 为 null 表示对比期为 0 无法计算）；有对比数据时摘要可提及总体涨跌幅。',
   '不要复述每一行数据，不要编造结果中没有的数字。直接输出结论文本，不要任何前缀。',
 ].join('\n')
 

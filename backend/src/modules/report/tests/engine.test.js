@@ -116,10 +116,11 @@ const { validateSpec, resolveRelativeRange, resolveCompareRange, compareCell, bu
 }
 
 {
-  // 全部时间：无时间条件
+  // 全部时间：无时间条件，但 params 恒含 timeFrom/timeTo（NULL，供折算类指标引用）
   const { spec } = validateSpec({ dataset: 'mr_orders', timeRange: { type: 'relative', value: 'all' }, groupBy: ['sales'], metrics: ['amount'] })
   const { sql, params } = buildQuery(spec)
-  assert.ok(!('timeFrom' in params))
+  assert.equal(params.timeFrom, null)
+  assert.equal(params.timeTo, null)
   assert.ok(!sql.includes(':timeFrom'))
 }
 
@@ -193,7 +194,7 @@ const { validateSpec, resolveRelativeRange, resolveCompareRange, compareCell, bu
   const { sql, params } = buildQuery(spec)
   assert.ok(sql.includes('FROM attendance_balance_ledger bl'))
   assert.ok(sql.includes('SUM(bl.delta_hours)'))
-  assert.ok(!('timeFrom' in params))
+  assert.equal(params.timeFrom, null)
 }
 
 {
@@ -261,6 +262,37 @@ const { validateSpec, resolveRelativeRange, resolveCompareRange, compareCell, bu
   assert.deepEqual(compareCell(10, 8), { delta: 2, pct: 25 })
   assert.deepEqual(compareCell(5, 0), { delta: 5, pct: null })
   assert.deepEqual(compareCell(0, 4), { delta: -4, pct: -100 })
+}
+
+// ---- 巡检完成率（spec 018：无时间字段数据集） ----
+
+{
+  // 无时间字段：timeField 归一化为 null，timeRange 仍保留（决定折算区间）
+  const { errors, spec } = validateSpec({
+    dataset: 'inspection_completion',
+    timeRange: { type: 'relative', value: 'last_month' },
+    groupBy: ['customer'],
+    metrics: ['plans', 'expected', 'generated', 'closed'],
+    filters: { active: ['1'] },
+  })
+  assert.deepEqual(errors, [])
+  assert.equal(spec.timeField, null)
+  const { sql, params } = buildQuery(spec)
+  assert.ok(sql.includes('FROM inspection_schedules isp'))
+  assert.ok(sql.includes('TIMESTAMPDIFF'))
+  // 计划侧无时间 WHERE（统计区间只作用于折算与工单匹配）
+  assert.ok(!/DATE\(isp\.\w+\) >= :timeFrom/.test(sql))
+  assert.ok(params.timeFrom && params.timeTo) // 相对范围已解析进 params
+  assert.equal(params.f_active_0, '1')
+}
+
+{
+  // 全部时间：params 恒含 NULL，折算指标 SQL 走 NULL 安全分支
+  const { spec } = validateSpec({ dataset: 'inspection_completion', timeRange: { type: 'relative', value: 'all' } })
+  const { sql, params } = buildQuery(spec)
+  assert.equal(params.timeFrom, null)
+  assert.equal(params.timeTo, null)
+  assert.ok(sql.includes(':timeFrom IS NULL'))
 }
 
 console.log('report engine tests passed')
