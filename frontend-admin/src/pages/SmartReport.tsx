@@ -23,7 +23,7 @@ import { Switch } from '@/components/ui/switch'
  * AI 不写 SQL，只能用语义层预置的数据集/维度/指标。
  */
 
-interface ReportColumn { key: string; label: string; kind: 'dimension' | 'metric' }
+interface ReportColumn { key: string; label: string; kind: 'dimension' | 'metric'; unit?: string | null }
 interface ReportSpec {
   dataset: string
   timeField: string | null
@@ -76,6 +76,13 @@ function formatThousands(value: unknown): string {
   const negative = intPart.startsWith('-')
   const grouped = (negative ? intPart.slice(1) : intPart).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
   return (negative ? '-' : '') + grouped + (decPart !== undefined ? `.${decPart}` : '')
+}
+
+/** 金额展示：负号在前 + ¥ + 千分位绝对值（如 -¥1,234.5） */
+function formatCny(value: unknown): string {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return String(value ?? '-')
+  return (num < 0 ? '-' : '') + '¥' + formatThousands(Math.abs(num))
 }
 
 /** 时间维度值 → 精确日期范围（month: 2026-08 / week: 2026-W38 ISO 周 / day: 2026-09-19） */
@@ -569,12 +576,17 @@ export function SmartReport() {
                           const raw = row[col.key]
                           const isPct = col.key.endsWith('__pct')
                           const isDelta = col.key.endsWith('__delta')
-                          let content: React.ReactNode = col.kind === 'metric' ? formatThousands(raw) : (raw ?? '-')
+                          const isCny = col.unit === 'cny'
+                          let content: React.ReactNode = col.kind === 'metric' ? (isCny ? formatCny(raw) : formatThousands(raw)) : (raw ?? '-')
                           let trendClass = ''
                           if (isPct || isDelta) {
                             const num = Number(raw)
                             if (Number.isFinite(num)) {
-                              content = isPct ? `${num > 0 ? '+' : ''}${num}%` : (num > 0 ? `+${formatThousands(num)}` : formatThousands(num))
+                              content = isPct
+                                ? `${num > 0 ? '+' : ''}${num}%`
+                                : isCny
+                                  ? (num > 0 ? `+${formatCny(num)}` : formatCny(num))
+                                  : (num > 0 ? `+${formatThousands(num)}` : formatThousands(num))
                               trendClass = num > 0 ? 'text-green-700 dark:text-green-400' : num < 0 ? 'text-red-700 dark:text-red-400' : ''
                             } else {
                               content = '-'

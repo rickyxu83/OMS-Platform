@@ -274,7 +274,7 @@ const DATASETS = {
     },
     metrics: {
       count: { label: '单数', sql: 'COUNT(*)' },
-      amount: { label: '未税金额合计', sql: 'SUM(COALESCE(mo.total_excluding_tax, 0))', round: 2 },
+      amount: { label: '未税金额合计', sql: 'SUM(COALESCE(mo.total_excluding_tax, 0))', round: 2, unit: 'cny' },
     },
     filters: {
       status: { label: '状态', type: 'enum', column: 'mo.status', options: MR_STATUS_LABELS },
