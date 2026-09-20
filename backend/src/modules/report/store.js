@@ -26,7 +26,7 @@ async function ensureTables() {
     `CREATE TABLE IF NOT EXISTS report_subscriptions (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       template_id BIGINT UNSIGNED NOT NULL,
-      frequency ENUM('weekly', 'monthly') NOT NULL,
+      frequency ENUM('weekly', 'monthly', 'daily') NOT NULL,
       recipients VARCHAR(500) NULL,
       enabled TINYINT(1) NOT NULL DEFAULT 1,
       last_sent_at DATETIME NULL,
@@ -39,6 +39,21 @@ async function ensureTables() {
       CONSTRAINT fk_report_subscriptions_created_by FOREIGN KEY (created_by) REFERENCES users (id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   )
+  // 惰性迁移：frequency 枚举补 daily；推送结果追踪字段（spec 016）
+  const cols = await query(
+    `SELECT COLUMN_NAME AS name, COLUMN_TYPE AS type FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'report_subscriptions'`,
+  )
+  const byName = new Map(cols.map((c) => [String(c.name), String(c.type)]))
+  if (byName.has('frequency') && !byName.get('frequency').includes('daily')) {
+    await query(`ALTER TABLE report_subscriptions MODIFY COLUMN frequency ENUM('weekly', 'monthly', 'daily') NOT NULL`)
+  }
+  if (!byName.has('last_error')) {
+    await query('ALTER TABLE report_subscriptions ADD COLUMN last_error TEXT NULL')
+  }
+  if (!byName.has('last_attempt_at')) {
+    await query('ALTER TABLE report_subscriptions ADD COLUMN last_attempt_at DATETIME NULL')
+  }
   tablesReady = true
 }
 
@@ -62,6 +77,8 @@ function templateView(row) {
           recipients: row.recipients || '',
           enabled: Boolean(row.enabled),
           lastSentAt: row.last_sent_at,
+          lastError: row.last_error || null,
+          lastAttemptAt: row.last_attempt_at,
         }
       : null,
   }
@@ -71,7 +88,7 @@ async function listTemplates(userId) {
   await ensureTables()
   const rows = await query(
     `SELECT t.id, t.name, t.spec, t.chart_type, t.created_at, t.updated_at,
-            s.id AS subscription_id, s.frequency, s.recipients, s.enabled, s.last_sent_at
+            s.id AS subscription_id, s.frequency, s.recipients, s.enabled, s.last_sent_at, s.last_error, s.last_attempt_at
      FROM report_templates t
      LEFT JOIN report_subscriptions s ON s.template_id = t.id
      WHERE t.created_by = :userId
@@ -86,7 +103,7 @@ async function getTemplate(id, userId) {
   await ensureTables()
   const rows = await query(
     `SELECT t.id, t.name, t.spec, t.chart_type, t.created_at, t.updated_at,
-            s.id AS subscription_id, s.frequency, s.recipients, s.enabled, s.last_sent_at
+            s.id AS subscription_id, s.frequency, s.recipients, s.enabled, s.last_sent_at, s.last_error, s.last_attempt_at
      FROM report_templates t
      LEFT JOIN report_subscriptions s ON s.template_id = t.id
      WHERE t.id = :id AND t.created_by = :userId
@@ -148,7 +165,12 @@ async function listEnabledSubscriptions() {
 }
 
 async function markSubscriptionSent(id) {
-  await query('UPDATE report_subscriptions SET last_sent_at = NOW() WHERE id = :id', { id })
+  await query('UPDATE report_subscriptions SET last_sent_at = NOW(), last_attempt_at = NOW(), last_error = NULL WHERE id = :id', { id })
+}
+
+/** 推送失败：记录错误与时间，模板列表展示警示（spec 016） */
+async function markSubscriptionError(id, message) {
+  await query('UPDATE report_subscriptions SET last_attempt_at = NOW(), last_error = :message WHERE id = :id', { id, message: String(message || '未知错误').slice(0, 500) })
 }
 
 module.exports = {
@@ -161,4 +183,5 @@ module.exports = {
   removeSubscription,
   listEnabledSubscriptions,
   markSubscriptionSent,
+  markSubscriptionError,
 }
