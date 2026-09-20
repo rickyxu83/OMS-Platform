@@ -201,7 +201,7 @@ const DATASETS = {
   inspection_schedules: {
     key: 'inspection_schedules',
     label: '巡检计划',
-    description: '巡检计划（周期性巡检安排），可统计计划数量与分布',
+    description: '巡检计划（周期性巡检安排）本身的数量与分布；不含执行完成情况——问巡检完成/执行/漏检/应巡请用 inspection_completion',
     baseSql: 'FROM inspection_schedules isp JOIN customers c ON c.id = isp.customer_id LEFT JOIN users eng ON eng.id = isp.target_engineer_id',
     timeFields: {
       created_at: { label: '创建时间', column: 'isp.created_at' },
