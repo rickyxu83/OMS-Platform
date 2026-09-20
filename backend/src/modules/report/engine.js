@@ -3,6 +3,7 @@
  * 纯函数部分（validateSpec / resolveTimeRange / buildQuery / describeSpec）不依赖数据库，可单测。
  */
 const { query } = require('../../config/db')
+const { unprocessableEntity } = require('../../utils/http-error')
 const { DATASETS } = require('./datasets')
 
 const MAX_GROUP_BY = 3
@@ -359,10 +360,7 @@ function translateRow(dataset, columns, row) {
 async function runSpec(rawSpec, { limit = 500 } = {}) {
   const { errors, spec } = validateSpec(rawSpec)
   if (!spec) {
-    const err = new Error(`报表定义无效：${errors.join('；')}`)
-    err.status = 422
-    err.details = errors
-    throw err
+    throw unprocessableEntity(`报表定义无效：${errors.join('；')}`, errors)
   }
   const dataset = DATASETS[spec.dataset]
   const { sql, params, columns, range } = buildQuery(spec, { limit: limit + 1 })
