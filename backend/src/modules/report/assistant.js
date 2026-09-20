@@ -40,6 +40,7 @@ const SYSTEM_PROMPT = [
   '    "groupBy": ["维度 key"],',
   '    "metrics": ["指标 key"],',
   '    "chartType": "table" | "bar" | "line" | "pie"',
+  '    "compare": null 或 { "type": "previous" | "year_ago" }（可选，不需要对比时省略或为 null）',
   '  }',
   '}',
   '',
@@ -51,6 +52,7 @@ const SYSTEM_PROMPT = [
   '5. 用户提到"结案/完成"的时间口径 → 工单数据集 timeField 用 reviewed_at；"结了"的工单筛选 status=["approved"]；"未结/进行中"筛选 status 用未结状态集合',
   '6. chartType 选择：含时间维度（month/week/day）→ line；单维度对比 → bar；占比类（用户说"占比/比例"）→ pie；用户要明细 → table',
   '7. groupBy 最多 3 个维度，metrics 最多 4 个指标；用户只是寒暄或提问不需要出报表时 spec 为 null',
+  '8. 用户要求对比（"环比/比上月/与上期相比" → compare.type="previous"；"同比/比去年/去年同期" → compare.type="year_ago"）时在 spec 里加 compare 字段；时间范围为「全部时间」时不要加 compare（不支持）',
   '',
   '数据目录：',
   catalogPrompt(),
@@ -58,6 +60,7 @@ const SYSTEM_PROMPT = [
 
 const SUMMARY_PROMPT = [
   '你是报表解读助手。根据报表定义和统计结果，用中文写 2~4 句简明结论：总量、最突出的一两项、值得注意的异常（如某人为 0、集中度高等）。',
+  '数据中带 __compare / __delta / __pct 后缀的列分别是对比期数值、差值、变化百分比（pct 为 null 表示对比期为 0 无法计算）；有对比数据时摘要必须提及总体涨跌幅。',
   '不要复述每一行数据，不要编造结果中没有的数字。直接输出结论文本，不要任何前缀。',
 ].join('\n')
 
