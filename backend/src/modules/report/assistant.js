@@ -5,6 +5,7 @@
  * 由 engine.js 校验并执行，AI 不直接写 SQL、不直接接触数据库。
  */
 const { resolveAiConnection, callAi, extractJson } = require('../mr/lib/quotation-ai-parser')
+const { createHash } = require('node:crypto')
 const { DATASETS } = require('./datasets')
 const { RELATIVE_RANGE_LABELS } = require('./engine')
 
@@ -58,6 +59,38 @@ const SYSTEM_PROMPT = [
   catalogPrompt(),
 ].join('\n')
 
+/**
+ * 摘要缓存（spec 017）：同一报表口径 + 数据结果 → 同一摘要，避免模板反复重跑时重复调 AI。
+ * 进程内 Map，TTL 60 分钟，上限 500 条（满时淘汰最旧）。进程重启清空，无正确性影响。
+ */
+const SUMMARY_CACHE_TTL = 60 * 60 * 1000
+const SUMMARY_CACHE_MAX = 500
+const summaryCache = new Map() // key → { text, expiresAt }
+
+/** 缓存键：口径 + 列 + 全部数据行内容的哈希（纯函数，可单测） */
+function summaryCacheKey(specText, columns, rows) {
+  const payload = JSON.stringify({ specText, columns: columns.map((c) => c.label), rows })
+  return createHash('sha1').update(payload).digest('hex')
+}
+
+function summaryCacheGet(key) {
+  const hit = summaryCache.get(key)
+  if (!hit) return null
+  if (hit.expiresAt < Date.now()) {
+    summaryCache.delete(key)
+    return null
+  }
+  return hit.text
+}
+
+function summaryCacheSet(key, text) {
+  if (summaryCache.size >= SUMMARY_CACHE_MAX) {
+    // Map 迭代按插入序，淘汰最旧条目
+    summaryCache.delete(summaryCache.keys().next().value)
+  }
+  summaryCache.set(key, { text, expiresAt: Date.now() + SUMMARY_CACHE_TTL })
+}
+
 const SUMMARY_PROMPT = [
   '你是报表解读助手。根据报表定义和统计结果，用中文写 2~4 句简明结论：总量、最突出的一两项、值得注意的异常（如某人为 0、集中度高等）。',
   '数据中带 __compare / __delta / __pct 后缀的列分别是对比期数值、差值、变化百分比（pct 为 null 表示对比期为 0 无法计算）；有对比数据时摘要必须提及总体涨跌幅。',
@@ -102,6 +135,9 @@ async function chat(messages) {
 async function summarize(specText, columns, rows) {
   const sample = rows.slice(0, 60)
   if (!sample.length) return ''
+  const cacheKey = summaryCacheKey(specText, columns, sample)
+  const cached = summaryCacheGet(cacheKey)
+  if (cached !== null) return cached
   try {
     const conn = await resolveAiConnection()
     const payload = {
@@ -119,11 +155,13 @@ async function summarize(specText, columns, rows) {
       fetch,
       conn,
     )
-    return String(content || '').trim().replace(/^【?摘要】?[:：]?\s*/, '').slice(0, 800)
+    const text = String(content || '').trim().replace(/^【?摘要】?[:：]?\s*/, '').slice(0, 800)
+    if (text) summaryCacheSet(cacheKey, text)
+    return text
   } catch (error) {
     console.error('[report] summary failed:', error?.message || error)
     return ''
   }
 }
 
-module.exports = { chat, summarize, catalogPrompt }
+module.exports = { chat, summarize, catalogPrompt, summaryCacheKey }

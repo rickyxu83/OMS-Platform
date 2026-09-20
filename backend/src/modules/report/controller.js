@@ -54,6 +54,7 @@ async function chat(req, res) {
 
   const preview = await runSpec(spec, { limit: 200 })
   const summary = preview.rows.length ? await assistant.summarize(preview.specText, preview.columns, preview.rows) : ''
+  void store.logUsage({ userId: req.user.id, action: 'chat', spec: preview.spec, rowsCount: preview.rows.length })
   res.json({
     reply: result.reply,
     spec: preview.spec,
@@ -72,6 +73,7 @@ async function chat(req, res) {
 async function preview(req, res) {
   const result = await runSpec(req.body?.spec, { limit: 200 })
   const summary = result.rows.length ? await assistant.summarize(result.specText, result.columns, result.rows) : ''
+  void store.logUsage({ userId: req.user.id, action: 'preview', spec: result.spec, rowsCount: result.rows.length })
   res.json({
     spec: result.spec,
     specText: result.specText,
@@ -92,6 +94,7 @@ async function exportReport(req, res) {
   const limit = format === 'pdf' ? 300 : 1000
   const result = await runSpec(req.body?.spec, { limit })
   const datasetLabel = DATASETS[result.spec.dataset].label
+  void store.logUsage({ userId: req.user.id, action: 'export', spec: result.spec, rowsCount: result.rows.length })
   const title = String(req.body?.title || '').trim().slice(0, 100) || `${datasetLabel}报表`
   const summary = String(req.body?.summary || '').trim().slice(0, 800)
   // 前端图表截图（PNG dataURL），可选；限制大小防滥用

@@ -54,6 +54,22 @@ async function ensureTables() {
   if (!byName.has('last_attempt_at')) {
     await query('ALTER TABLE report_subscriptions ADD COLUMN last_attempt_at DATETIME NULL')
   }
+  await query(
+    `CREATE TABLE IF NOT EXISTS report_usage_log (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      user_id BIGINT UNSIGNED NOT NULL,
+      action VARCHAR(16) NOT NULL,
+      dataset VARCHAR(40) NOT NULL,
+      spec JSON NULL,
+      rows_count INT NOT NULL DEFAULT 0,
+      has_compare TINYINT(1) NOT NULL DEFAULT 0,
+      chart_type VARCHAR(16) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_report_usage_dataset (dataset, created_at),
+      KEY idx_report_usage_user (user_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+  )
   tablesReady = true
 }
 
@@ -173,6 +189,31 @@ async function markSubscriptionError(id, message) {
   await query('UPDATE report_subscriptions SET last_attempt_at = NOW(), last_error = :message WHERE id = :id', { id, message: String(message || '未知错误').slice(0, 500) })
 }
 
+/**
+ * 使用日志（spec 017）：记录报表使用行为（chat/preview/export），供分析数据集热度。
+ * fire-and-forget：调用方不 await，失败只打日志不影响主流程。
+ */
+async function logUsage({ userId, action, spec, rowsCount = 0, chartType = null }) {
+  try {
+    await ensureTables()
+    await query(
+      `INSERT INTO report_usage_log (user_id, action, dataset, spec, rows_count, has_compare, chart_type)
+       VALUES (:userId, :action, :dataset, :spec, :rowsCount, :hasCompare, :chartType)`,
+      {
+        userId,
+        action: String(action || '').slice(0, 16),
+        dataset: String(spec?.dataset || 'unknown').slice(0, 40),
+        spec: spec ? JSON.stringify(spec) : null,
+        rowsCount: Math.max(0, Number(rowsCount) || 0),
+        hasCompare: spec?.compare ? 1 : 0,
+        chartType: chartType || spec?.chartType || null,
+      },
+    )
+  } catch (error) {
+    console.error('[report] usage log failed:', error?.message || error)
+  }
+}
+
 module.exports = {
   ensureTables,
   listTemplates,
@@ -184,4 +225,5 @@ module.exports = {
   listEnabledSubscriptions,
   markSubscriptionSent,
   markSubscriptionError,
+  logUsage,
 }
