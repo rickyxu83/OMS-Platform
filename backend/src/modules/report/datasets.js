@@ -67,6 +67,13 @@ const MAINTENANCE_TYPE_LABELS = {
   our_maintenance: '我方维保',
 }
 
+const PART_ACTION_LABELS = { general: '一般记录', replacement: '更换备件', installation: '安装备件' }
+const DUTY_TYPE_LABELS = { weekend_on_call: '7×24 值班', legal_holiday_on_call: '法定节假日值班' }
+const DUTY_BATCH_STATUS_LABELS = { draft: '草稿', pending_admin: '待行政审批', approved: '已批准', rejected: '已退回' }
+const BALANCE_TYPE_LABELS = { annual_leave: '年假', comp_time: '调休' }
+const PURCHASE_TASK_STATUS_LABELS = { pending: '待处理', done: '已完成', cancelled: '已取消' }
+const PURCHASE_TASK_TYPE_LABELS = { purchase: '采购填写', contract_no: '合同编号补填' }
+
 /** 时间维度（作用于数据集的 timeField 列） */
 function timeDimensions(columnRef) {
   return {
@@ -271,6 +278,115 @@ const DATASETS = {
     filters: {
       status: { label: '状态', type: 'enum', column: 'mo.status', options: MR_STATUS_LABELS },
       sales: { label: '业务', type: 'text', column: 's.real_name' },
+      customer: { label: '客户', type: 'text', column: 'mo.customer_name' },
+    },
+  },
+
+  service_parts: {
+    key: 'service_parts',
+    label: '备件使用',
+    description: '工单维修/安装过程中登记的备件使用记录，可统计备件用量按客户、工程师、备件名的分布',
+    baseSql: 'FROM service_parts sp LEFT JOIN service_orders so ON so.id = sp.service_order_id LEFT JOIN customers c ON c.id = so.customer_id LEFT JOIN users eng ON eng.id = so.assigned_engineer_id',
+    timeFields: {
+      created_at: { label: '登记时间', column: 'sp.created_at' },
+      order_created_at: { label: '工单创建时间', column: 'so.created_at' },
+      order_reviewed_at: { label: '工单结案时间', column: 'so.reviewed_at' },
+    },
+    defaultTimeField: 'created_at',
+    dimensions: {
+      part_name: { label: '备件名称', sql: 'sp.part_name' },
+      customer: { label: '客户', sql: "COALESCE(c.name, '未关联工单')" },
+      engineer: { label: '工程师', sql: "COALESCE(eng.real_name, '未关联工单')" },
+      action_type: { label: '操作类型', sql: 'sp.action_type', labels: PART_ACTION_LABELS },
+      ...timeDimensions('__TIME__'),
+    },
+    metrics: {
+      quantity: { label: '数量合计', sql: 'SUM(sp.quantity)', round: 2 },
+      count: { label: '记录数', sql: 'COUNT(*)' },
+    },
+    filters: {
+      part_name: { label: '备件名称', type: 'text', column: 'sp.part_name' },
+      customer: { label: '客户', type: 'text', column: 'c.name' },
+      engineer: { label: '工程师', type: 'text', column: 'eng.real_name' },
+      action_type: { label: '操作类型', type: 'enum', column: 'sp.action_type', options: PART_ACTION_LABELS },
+    },
+  },
+
+  duty_records: {
+    key: 'duty_records',
+    label: '值班',
+    description: '工程师值班记录（7×24 值班与法定节假日值班），可统计每人值班次数与分布',
+    baseSql: 'FROM attendance_duty_records r JOIN attendance_employee_profiles p ON p.id = r.employee_id',
+    timeFields: {
+      duty_date: { label: '值班日期', column: 'r.duty_date' },
+    },
+    defaultTimeField: 'duty_date',
+    dimensions: {
+      employee: { label: '员工', sql: 'p.employee_name' },
+      duty_type: { label: '值班类型', sql: 'r.duty_type', labels: DUTY_TYPE_LABELS },
+      batch_status: { label: '批次状态', sql: 'r.batch_status', labels: DUTY_BATCH_STATUS_LABELS },
+      ...timeDimensions('__TIME__'),
+    },
+    metrics: {
+      units: { label: '值班次数合计', sql: 'SUM(r.units)', round: 1 },
+      count: { label: '记录数', sql: 'COUNT(*)' },
+    },
+    filters: {
+      employee: { label: '员工', type: 'text', column: 'p.employee_name' },
+      duty_type: { label: '值班类型', type: 'enum', column: 'r.duty_type', options: DUTY_TYPE_LABELS },
+      batch_status: { label: '批次状态', type: 'enum', column: 'r.batch_status', options: DUTY_BATCH_STATUS_LABELS },
+    },
+  },
+
+  leave_balance: {
+    key: 'leave_balance',
+    label: '假期余额',
+    description: '年假/调休余额台账变动记录。查当前剩余余额：时间范围选「全部时间」，按员工分组看变动小时数合计（正数为增加、负数为扣减，合计即当前余额）',
+    baseSql: 'FROM attendance_balance_ledger bl JOIN attendance_employee_profiles p ON p.id = bl.employee_id',
+    timeFields: {
+      created_at: { label: '变动时间', column: 'bl.created_at' },
+    },
+    defaultTimeField: 'created_at',
+    dimensions: {
+      employee: { label: '员工', sql: 'p.employee_name' },
+      balance_type: { label: '假期类型', sql: 'bl.balance_type', labels: BALANCE_TYPE_LABELS },
+      ...timeDimensions('__TIME__'),
+    },
+    metrics: {
+      sum_hours: { label: '变动小时数合计', sql: 'SUM(bl.delta_hours)', round: 1 },
+      count: { label: '变动笔数', sql: 'COUNT(*)' },
+    },
+    filters: {
+      employee: { label: '员工', type: 'text', column: 'p.employee_name' },
+      balance_type: { label: '假期类型', type: 'enum', column: 'bl.balance_type', options: BALANCE_TYPE_LABELS },
+    },
+  },
+
+  mr_purchase_tasks: {
+    key: 'mr_purchase_tasks',
+    label: '采购任务',
+    description: 'MR 采购填写/合同编号补填任务，可统计待处理与完成情况、按采购负责人分布',
+    baseSql: 'FROM mr_purchase_tasks pt JOIN mr_orders mo ON mo.id = pt.mr_id JOIN users a ON a.id = pt.assignee_user_id',
+    timeFields: {
+      created_at: { label: '创建时间', column: 'pt.created_at' },
+      completed_at: { label: '完成时间', column: 'pt.completed_at' },
+    },
+    defaultTimeField: 'created_at',
+    dimensions: {
+      assignee: { label: '采购负责人', sql: 'a.real_name' },
+      status: { label: '状态', sql: 'pt.status', labels: PURCHASE_TASK_STATUS_LABELS },
+      task_type: { label: '任务类型', sql: 'pt.task_type', labels: PURCHASE_TASK_TYPE_LABELS },
+      customer: { label: '客户', sql: "COALESCE(NULLIF(mo.customer_name, ''), '未填写')" },
+      ...timeDimensions('__TIME__'),
+    },
+    metrics: {
+      count: { label: '任务数', sql: 'COUNT(*)' },
+      pending_count: { label: '待处理数', sql: "SUM(CASE WHEN pt.status = 'pending' THEN 1 ELSE 0 END)" },
+    },
+    filters: {
+      assignee: { label: '采购负责人', type: 'text', column: 'a.real_name' },
+      status: { label: '状态', type: 'enum', column: 'pt.status', options: PURCHASE_TASK_STATUS_LABELS },
+      task_type: { label: '任务类型', type: 'enum', column: 'pt.task_type', options: PURCHASE_TASK_TYPE_LABELS },
       customer: { label: '客户', type: 'text', column: 'mo.customer_name' },
     },
   },
