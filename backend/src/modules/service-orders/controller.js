@@ -4250,6 +4250,8 @@ async function transition(req, res) {
   // 状态机:限制合法的流转路径,阻断如 cancelled→approved、draft→archived 之类的越级跳转
   const TRANSITIONS = {
     draft: ['assigned', 'cancelled'],
+    // 巡检计划生成的待确认工单只允许作废(确认派发走 /confirm-inspection,会补 confirmed_by 等字段)
+    pending_confirmation: ['cancelled'],
     assigned: ['draft', 'in_progress', 'awaiting_customer_signature', 'submitted', 'cancelled'],
     in_progress: ['assigned', 'awaiting_customer_signature', 'submitted', 'cancelled'],
     awaiting_customer_signature: ['in_progress', 'submitted', 'cancelled'],
