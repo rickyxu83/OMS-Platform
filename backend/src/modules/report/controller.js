@@ -63,6 +63,7 @@ async function chat(req, res) {
     total: preview.total,
     truncated: preview.truncated,
     summary,
+    compare: preview.compare,
   })
 }
 
@@ -78,6 +79,7 @@ async function preview(req, res) {
     total: result.total,
     truncated: result.truncated,
     summary,
+    compare: result.compare,
   })
 }
 
@@ -90,8 +92,11 @@ async function exportReport(req, res) {
   const datasetLabel = DATASETS[result.spec.dataset].label
   const title = String(req.body?.title || '').trim().slice(0, 100) || `${datasetLabel}报表`
   const summary = String(req.body?.summary || '').trim().slice(0, 800)
+  // 前端图表截图（PNG dataURL），可选；限制大小防滥用
+  const chartImageRaw = String(req.body?.chartImage || '')
+  const chartImage = chartImageRaw.startsWith('data:image/png;base64,') && chartImageRaw.length <= 4_000_000 ? chartImageRaw : null
 
-  const payload = { title, specText: result.specText, summary, columns: result.columns, rows: result.rows, truncated: result.truncated }
+  const payload = { title, specText: result.specText, summary, columns: result.columns, rows: result.rows, truncated: result.truncated, compare: result.compare, chartImage }
   if (format === 'pdf') {
     const buffer = await buildPdf(payload)
     const filename = exportFileName(datasetLabel, 'pdf')

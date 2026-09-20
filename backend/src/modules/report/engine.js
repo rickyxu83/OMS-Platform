@@ -9,6 +9,9 @@ const MAX_GROUP_BY = 3
 const MAX_METRICS = 4
 const CHART_TYPES = new Set(['table', 'bar', 'line', 'pie'])
 
+const COMPARE_TYPES = new Set(['previous', 'year_ago'])
+const COMPARE_TYPE_LABELS = { previous: '环比', year_ago: '同比' }
+
 const RELATIVE_RANGES = new Set([
   'this_week', 'last_week', 'this_month', 'last_month',
   'this_quarter', 'last_quarter', 'this_year', 'last_year',
@@ -175,8 +178,65 @@ function validateSpec(raw) {
   // 图表类型
   const chartType = CHART_TYPES.has(raw.chartType) ? raw.chartType : null
 
+  // 同比/环比对比（可选）
+  let compare = null
+  if (raw.compare !== undefined && raw.compare !== null) {
+    const type = String((raw.compare && raw.compare.type) || '')
+    if (!COMPARE_TYPES.has(type)) {
+      errors.push(`未知对比类型：${type.slice(0, 30)}（可选：previous/year_ago）`)
+    } else if (timeRange && timeRange.type === 'relative' && timeRange.value === 'all') {
+      errors.push('全部时间不支持对比')
+    } else {
+      compare = { type }
+    }
+  }
+
   if (errors.length) return { errors, spec: null }
-  return { errors, spec: { dataset: dataset.key, timeField, timeRange, filters, groupBy: dims, metrics, chartType } }
+  return { errors, spec: { dataset: dataset.key, timeField, timeRange, filters, groupBy: dims, metrics, chartType, compare } }
+}
+
+/** YYYY-MM-DD 偏移指定天数（UTC 安全） */
+function shiftDay(key, days) {
+  const d = new Date(`${key}T00:00:00Z`)
+  return new Date(d.getTime() + days * 86400e3).toISOString().slice(0, 10)
+}
+
+/** YYYY-MM-DD 平移一年（2-29 到非闰年收敛为 2-28） */
+function shiftYear(key, years) {
+  const d = new Date(`${key}T00:00:00Z`)
+  const y = d.getUTCFullYear() + years
+  const m = d.getUTCMonth()
+  const day = Math.min(d.getUTCDate(), new Date(Date.UTC(y, m + 1, 0)).getUTCDate())
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/**
+ * 对比周期解析：环比=当前范围的前一个等长周期；同比=平移一年。
+ * range 需为已解析的 { from, to }（YYYY-MM-DD）；无边界返回 null。
+ */
+function resolveCompareRange(range, type) {
+  if (!range || !range.from || !range.to) return null
+  if (type === 'year_ago') {
+    return { from: shiftYear(range.from, -1), to: shiftYear(range.to, -1) }
+  }
+  const lenDays = Math.round((new Date(`${range.to}T00:00:00Z`) - new Date(`${range.from}T00:00:00Z`)) / 86400e3) + 1
+  const to = shiftDay(range.from, -1)
+  const from = shiftDay(to, -(lenDays - 1))
+  return { from, to }
+}
+
+/** 两期指标合并单元：返回 { delta, pct }；对比期为 0 时 pct 为 null（避免除零） */
+function compareCell(current, base) {
+  const cur = Number(current) || 0
+  const cmp = Number(base) || 0
+  const delta = Number((cur - cmp).toFixed(4))
+  const pct = cmp === 0 ? null : Number((((cur - cmp) / cmp) * 100).toFixed(1))
+  return { delta, pct }
+}
+
+/** 行分组键：维度值拼接（维度为空时全表一组） */
+function groupKeyOf(row, groupBy) {
+  return groupBy.map((k) => String(row[k] ?? '')).join('\u0001')
 }
 
 /** 维度 SQL（时间维度把 __TIME__ 占位替换为 timeField 列） */
@@ -289,7 +349,9 @@ function translateRow(dataset, columns, row) {
 }
 
 /**
- * 校验 + 执行。返回 { spec, columns, rows, total, truncated, specText, range }；校验失败抛 422 业务错。
+ * 校验 + 执行。返回 { spec, columns, rows, total, truncated, specText, range, compare }；校验失败抛 422 业务错。
+ * spec.compare 存在时：同口径换对比时间范围再跑一遍，两期结果按分组键取并集合并，
+ * 列扩展为 指标 / 指标(对比期) / 指标(差值) / 指标(变化%)。
  */
 async function runSpec(rawSpec, { limit = 500 } = {}) {
   const { errors, spec } = validateSpec(rawSpec)
@@ -301,18 +363,85 @@ async function runSpec(rawSpec, { limit = 500 } = {}) {
   }
   const dataset = DATASETS[spec.dataset]
   const { sql, params, columns, range } = buildQuery(spec, { limit: limit + 1 })
-  const rawRows = await query(sql, params)
+
+  const compareRange = spec.compare ? resolveCompareRange(range, spec.compare.type) : null
+  const compareQuery = compareRange
+    ? buildQuery({ ...spec, timeRange: { type: 'absolute', from: compareRange.from, to: compareRange.to } }, { limit: 2000 })
+    : null
+
+  const [rawRows, compareRawRows] = await Promise.all([
+    query(sql, params),
+    compareQuery ? query(compareQuery.sql, compareQuery.params) : Promise.resolve([]),
+  ])
   const truncated = rawRows.length > limit
   const rows = rawRows.slice(0, limit).map((row) => translateRow(dataset, columns, row))
+
+  if (!compareRange) {
+    return {
+      spec,
+      columns,
+      rows,
+      total: rows.length,
+      truncated,
+      specText: describeSpec(spec, range),
+      range: { ...range },
+      compare: null,
+    }
+  }
+
+  const mergedColumns = [...columns.filter((c) => c.kind === 'dimension')]
+  for (const key of spec.metrics) {
+    const label = dataset.metrics[key].label
+    mergedColumns.push(
+      { key, label, kind: 'metric' },
+      { key: `${key}__compare`, label: `${label}(对比期)`, kind: 'metric' },
+      { key: `${key}__delta`, label: `${label}(差值)`, kind: 'metric' },
+      { key: `${key}__pct`, label: `${label}(变化%)`, kind: 'metric' },
+    )
+  }
+
+  const compareTranslated = compareRawRows.map((row) => translateRow(dataset, columns, row))
+  const compareMap = new Map(compareTranslated.map((row) => [groupKeyOf(row, spec.groupBy), row]))
+
+  const buildMerged = (curRow, cmpRow) => {
+    const out = {}
+    for (const k of spec.groupBy) out[k] = (curRow || cmpRow)[k]
+    for (const key of spec.metrics) {
+      const cur = curRow ? Number(curRow[key]) || 0 : 0
+      const cmp = cmpRow ? Number(cmpRow[key]) || 0 : 0
+      const { delta, pct } = compareCell(cur, cmp)
+      out[key] = cur
+      out[`${key}__compare`] = cmp
+      out[`${key}__delta`] = delta
+      out[`${key}__pct`] = pct
+    }
+    return out
+  }
+
+  const seen = new Set()
+  const mergedRows = []
+  for (const row of rows) {
+    const gk = groupKeyOf(row, spec.groupBy)
+    seen.add(gk)
+    mergedRows.push(buildMerged(row, compareMap.get(gk) || null))
+  }
+  // 仅对比期存在的分组（本期为 0），按对比期第一个指标降序追加
+  const compareOnly = compareTranslated
+    .filter((row) => !seen.has(groupKeyOf(row, spec.groupBy)))
+    .sort((a, b) => (Number(b[spec.metrics[0]]) || 0) - (Number(a[spec.metrics[0]]) || 0))
+  for (const row of compareOnly) mergedRows.push(buildMerged(null, row))
+
+  const compareLabel = `${COMPARE_TYPE_LABELS[spec.compare.type]}（${compareRange.from} ~ ${compareRange.to}）`
   return {
     spec,
-    columns,
-    rows,
-    total: rows.length,
+    columns: mergedColumns,
+    rows: mergedRows,
+    total: mergedRows.length,
     truncated,
-    specText: describeSpec(spec, range),
+    specText: `${describeSpec(spec, range)} · 对比：${compareLabel}`,
     range: { ...range },
+    compare: { type: spec.compare.type, label: compareLabel, from: compareRange.from, to: compareRange.to },
   }
 }
 
-module.exports = { validateSpec, resolveRelativeRange, buildQuery, describeSpec, runSpec, RELATIVE_RANGE_LABELS, CHART_TYPES }
+module.exports = { validateSpec, resolveRelativeRange, resolveCompareRange, compareCell, buildQuery, describeSpec, runSpec, RELATIVE_RANGE_LABELS, CHART_TYPES, COMPARE_TYPE_LABELS }

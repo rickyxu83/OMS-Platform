@@ -1,6 +1,6 @@
 /** 智能报表引擎单测（spec 014）：白名单校验 / 时间范围解析 / SQL 拼接。不依赖数据库。 */
 const assert = require('node:assert/strict')
-const { validateSpec, resolveRelativeRange, buildQuery, describeSpec } = require('../engine')
+const { validateSpec, resolveRelativeRange, resolveCompareRange, compareCell, buildQuery, describeSpec } = require('../engine')
 
 // ---- validateSpec：白名单拦截 ----
 
@@ -210,6 +210,57 @@ const { validateSpec, resolveRelativeRange, buildQuery, describeSpec } = require
   assert.ok(sql.includes('FROM mr_purchase_tasks pt'))
   assert.ok(sql.includes('DATE(pt.completed_at)'))
   assert.ok(sql.includes("SUM(CASE WHEN pt.status = 'pending' THEN 1 ELSE 0 END)"))
+}
+
+// ---- 同比/环比（spec 015） ----
+
+{
+  // compare 字段合法通过并归一化
+  const { errors, spec } = validateSpec({
+    dataset: 'service_orders',
+    timeRange: { type: 'relative', value: 'this_month' },
+    metrics: ['count'],
+    compare: { type: 'previous' },
+  })
+  assert.deepEqual(errors, [])
+  assert.deepEqual(spec.compare, { type: 'previous' })
+}
+
+{
+  // 非法对比类型被拦截
+  const { errors, spec } = validateSpec({ dataset: 'service_orders', metrics: ['count'], compare: { type: 'decade' } })
+  assert.equal(spec, null)
+  assert.ok(errors.some((e) => e.includes('对比类型')))
+}
+
+{
+  // 全部时间不支持对比
+  const { errors, spec } = validateSpec({
+    dataset: 'service_orders',
+    timeRange: { type: 'relative', value: 'all' },
+    metrics: ['count'],
+    compare: { type: 'year_ago' },
+  })
+  assert.equal(spec, null)
+  assert.ok(errors.some((e) => e.includes('全部时间')))
+}
+
+{
+  // 环比：前一个等长周期（8月31天 → 7月整月；本周 → 上周）
+  assert.deepEqual(resolveCompareRange({ from: '2026-08-01', to: '2026-08-31' }, 'previous'), { from: '2026-07-01', to: '2026-07-31' })
+  assert.deepEqual(resolveCompareRange({ from: '2026-09-14', to: '2026-09-20' }, 'previous'), { from: '2026-09-07', to: '2026-09-13' })
+  // 同比：平移一年，闰日收敛
+  assert.deepEqual(resolveCompareRange({ from: '2026-08-01', to: '2026-08-31' }, 'year_ago'), { from: '2025-08-01', to: '2025-08-31' })
+  assert.deepEqual(resolveCompareRange({ from: '2024-02-01', to: '2024-02-29' }, 'year_ago'), { from: '2023-02-01', to: '2023-02-28' })
+  // 无边界不支持
+  assert.equal(resolveCompareRange({ from: null, to: null }, 'previous'), null)
+}
+
+{
+  // 涨跌计算：正常 / 对比期为 0（pct null 防除零）/ 跌到 0
+  assert.deepEqual(compareCell(10, 8), { delta: 2, pct: 25 })
+  assert.deepEqual(compareCell(5, 0), { delta: 5, pct: null })
+  assert.deepEqual(compareCell(0, 4), { delta: -4, pct: -100 })
 }
 
 console.log('report engine tests passed')

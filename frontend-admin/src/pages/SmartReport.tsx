@@ -32,7 +32,9 @@ interface ReportSpec {
   groupBy: string[]
   metrics: string[]
   chartType?: string | null
+  compare?: { type: 'previous' | 'year_ago' } | null
 }
+interface CompareInfo { type: string; label: string; from: string; to: string }
 interface PreviewState {
   spec: ReportSpec
   specText: string
@@ -41,6 +43,7 @@ interface PreviewState {
   total: number
   truncated: boolean
   summary: string
+  compare?: CompareInfo | null
 }
 interface ChatMessage { role: 'user' | 'assistant'; content: string }
 interface ReportTemplate {
@@ -62,6 +65,16 @@ const EXAMPLE_PROMPTS = [
 
 const CHART_LABELS: Record<ChartKind, string> = { table: '表格', bar: '柱状图', line: '折线图', pie: '饼图' }
 const CHART_COLORS = ['#7c3aed', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6', '#f97316', '#84cc16', '#ec4899']
+
+/** 指标数值千分位分组（大金额可读性）；非数值原样返回 */
+function formatThousands(value: unknown): string {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return String(value ?? '-')
+  const [intPart, decPart] = String(num).split('.')
+  const negative = intPart.startsWith('-')
+  const grouped = (negative ? intPart.slice(1) : intPart).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return (negative ? '-' : '') + grouped + (decPart !== undefined ? `.${decPart}` : '')
+}
 
 /** 图表数据：维度值拼接为 name，第一个指标为 value */
 function toChartData(preview: PreviewState) {
@@ -147,6 +160,7 @@ export function SmartReport() {
   const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null)
   const [runningTemplateId, setRunningTemplateId] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const chartBoxRef = useRef<HTMLDivElement>(null)
 
   const loadTemplates = useCallback(async () => {
     try {
@@ -276,14 +290,51 @@ export function SmartReport() {
     }
   }
 
+  /** 把当前图表（recharts SVG）截为 PNG dataURL，随导出嵌入 Excel/PDF */
+  const captureChartPng = async (): Promise<string | null> => {
+    const box = chartBoxRef.current
+    const svg = box?.querySelector('svg')
+    if (!box || !svg) return null
+    try {
+      const rect = box.getBoundingClientRect()
+      if (rect.width < 10 || rect.height < 10) return null
+      const scale = 2 // 2 倍采样，导出文件里更清晰
+      const xml = new XMLSerializer().serializeToString(svg)
+      const url = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml;charset=utf-8' }))
+      try {
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const image = new Image()
+          image.onload = () => resolve(image)
+          image.onerror = () => reject(new Error('chart image load failed'))
+          image.src = url
+        })
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(rect.width * scale)
+        canvas.height = Math.round(rect.height * scale)
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return null
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        return canvas.toDataURL('image/png')
+      } finally {
+        URL.revokeObjectURL(url)
+      }
+    } catch {
+      return null // 截图失败不阻塞导出
+    }
+  }
+
   const doExport = async (format: 'xlsx' | 'pdf') => {
     if (!preview || exporting) return
     setExporting(format)
     try {
+      const chartImage = chartKind !== 'table' ? await captureChartPng() : null
       const blob = await api.downloadPost('/report/export', {
         spec: preview.spec,
         format,
         summary: preview.summary,
+        chartImage,
       })
       const ext = format === 'pdf' ? 'pdf' : 'xlsx'
       saveAs(blob, `智能报表-${new Date().toISOString().slice(0, 10)}.${ext}`)
@@ -435,7 +486,7 @@ export function SmartReport() {
               )}
 
               {chartKind !== 'table' && (
-                <div className="mb-4 rounded-lg border border-border p-2">
+                <div ref={chartBoxRef} className="mb-4 rounded-lg border border-border p-2">
                   <ChartView preview={preview} kind={chartKind} />
                 </div>
               )}
@@ -456,11 +507,27 @@ export function SmartReport() {
                       <tr><td colSpan={preview.columns.length} className="px-3 py-8 text-center text-muted-foreground">本期没有数据</td></tr>
                     ) : preview.rows.map((row, i) => (
                       <tr key={i} className="border-b border-border/60 last:border-0 hover:bg-accent/40">
-                        {preview.columns.map((col) => (
-                          <td key={col.key} className={`whitespace-nowrap px-3 py-2 ${col.kind === 'metric' ? 'text-right tabular-nums' : ''}`}>
-                            {row[col.key] ?? '-'}
-                          </td>
-                        ))}
+                        {preview.columns.map((col) => {
+                          const raw = row[col.key]
+                          const isPct = col.key.endsWith('__pct')
+                          const isDelta = col.key.endsWith('__delta')
+                          let content: React.ReactNode = col.kind === 'metric' ? formatThousands(raw) : (raw ?? '-')
+                          let trendClass = ''
+                          if (isPct || isDelta) {
+                            const num = Number(raw)
+                            if (Number.isFinite(num)) {
+                              content = isPct ? `${num > 0 ? '+' : ''}${num}%` : (num > 0 ? `+${formatThousands(num)}` : formatThousands(num))
+                              trendClass = num > 0 ? 'text-green-700 dark:text-green-400' : num < 0 ? 'text-red-700 dark:text-red-400' : ''
+                            } else {
+                              content = '-'
+                            }
+                          }
+                          return (
+                            <td key={col.key} className={`whitespace-nowrap px-3 py-2 ${col.kind === 'metric' ? 'text-right tabular-nums' : ''} ${trendClass}`}>
+                              {content}
+                            </td>
+                          )
+                        })}
                       </tr>
                     ))}
                   </tbody>
