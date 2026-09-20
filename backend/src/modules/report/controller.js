@@ -56,8 +56,12 @@ async function chat(req, res) {
   const preview = await runSpec(spec, { limit: 200 })
   const summary = ''
   void store.logUsage({ userId: req.user.id, action: 'chat', spec: preview.spec, rowsCount: preview.rows.length })
+  // 查询成功但 0 条数据时追加明确提示（不改 AI 原 reply 文本），帮用户区分"失败"与"没数据"
+  const emptyHint = preview.rows.length === 0
+    ? '\n\n（该时间范围和筛选条件下没有匹配的数据，可以试试扩大时间范围或减少筛选条件）'
+    : ''
   res.json({
-    reply: result.reply,
+    reply: `${result.reply}${emptyHint}`,
     spec: preview.spec,
     specText: preview.specText,
     columns: preview.columns,
