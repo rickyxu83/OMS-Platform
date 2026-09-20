@@ -64,6 +64,7 @@ async function chat(req, res) {
     truncated: preview.truncated,
     summary,
     compare: preview.compare,
+    range: preview.range,
   })
 }
 
@@ -80,6 +81,7 @@ async function preview(req, res) {
     truncated: result.truncated,
     summary,
     compare: result.compare,
+    range: result.range,
   })
 }
 
@@ -139,7 +141,7 @@ async function upsertSubscription(req, res) {
   const template = await store.getTemplate(templateId, req.user.id)
   if (!template) throw notFound('模板不存在')
   const frequency = String(req.body?.frequency || '')
-  if (!['weekly', 'monthly'].includes(frequency)) throw badRequest('frequency 仅支持 weekly / monthly')
+  if (!['daily', 'weekly', 'monthly'].includes(frequency)) throw badRequest('frequency 仅支持 daily / weekly / monthly')
   const recipients = String(req.body?.recipients || '').trim().slice(0, 500)
   const enabled = req.body?.enabled !== false
   const updated = await store.upsertSubscription({ templateId, frequency, recipients, enabled, userId: req.user.id })

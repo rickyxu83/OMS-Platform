@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  BarChart3, Bookmark, FileSpreadsheet, FileText, LineChart, Loader2,
+  AlertTriangle, BarChart3, Bookmark, FileSpreadsheet, FileText, LineChart, Loader2,
   Mail, PieChart, Send, Sparkles, Table2, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -35,6 +35,7 @@ interface ReportSpec {
   compare?: { type: 'previous' | 'year_ago' } | null
 }
 interface CompareInfo { type: string; label: string; from: string; to: string }
+interface RangeInfo { from: string | null; to: string | null }
 interface PreviewState {
   spec: ReportSpec
   specText: string
@@ -44,6 +45,7 @@ interface PreviewState {
   truncated: boolean
   summary: string
   compare?: CompareInfo | null
+  range?: RangeInfo | null
 }
 interface ChatMessage { role: 'user' | 'assistant'; content: string }
 interface ReportTemplate {
@@ -51,7 +53,7 @@ interface ReportTemplate {
   name: string
   spec: ReportSpec
   chartType: string | null
-  subscription: { id: number; frequency: 'weekly' | 'monthly'; recipients: string; enabled: boolean; lastSentAt: string | null } | null
+  subscription: { id: number; frequency: 'daily' | 'weekly' | 'monthly'; recipients: string; enabled: boolean; lastSentAt: string | null; lastError?: string | null; lastAttemptAt?: string | null } | null
 }
 
 type ChartKind = 'table' | 'bar' | 'line' | 'pie'
@@ -74,6 +76,52 @@ function formatThousands(value: unknown): string {
   const negative = intPart.startsWith('-')
   const grouped = (negative ? intPart.slice(1) : intPart).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
   return (negative ? '-' : '') + grouped + (decPart !== undefined ? `.${decPart}` : '')
+}
+
+/** 时间维度值 → 精确日期范围（month: 2026-08 / week: 2026-W38 ISO 周 / day: 2026-09-19） */
+function timeDimRange(key: string, value: string): { startDate: string; endDate: string } | null {
+  if (key === 'day' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return { startDate: value, endDate: value }
+  if (key === 'month' && /^\d{4}-\d{2}$/.test(value)) {
+    const [y, m] = value.split('-').map(Number)
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
+    return { startDate: `${value}-01`, endDate: `${value}-${String(last).padStart(2, '0')}` }
+  }
+  const weekMatch = /^(\d{4})-W(\d{2})$/.exec(value)
+  if (key === 'week' && weekMatch) {
+    const year = Number(weekMatch[1])
+    const week = Number(weekMatch[2])
+    const jan4 = new Date(Date.UTC(year, 0, 4)) // ISO 周：1 月 4 日必在第 1 周
+    const monday = new Date(jan4.getTime() + ((week - 1) * 7 - ((jan4.getUTCDay() + 6) % 7)) * 86400e3)
+    const sunday = new Date(monday.getTime() + 6 * 86400e3)
+    const fmt = (d: Date) => d.toISOString().slice(0, 10)
+    return { startDate: fmt(monday), endDate: fmt(sunday) }
+  }
+  return null
+}
+
+/** 报表行 → 工单列表钻取链接（新标签页）。仅工单数据集支持；编码枚举维度（状态等）无法作搜索词，只用文本维度收窄 */
+function buildDrillHref(preview: PreviewState, row: Record<string, string | number>): string | null {
+  if (preview.spec.dataset !== 'service_orders') return null
+  const TEXT_DIMS = new Set(['customer', 'engineer'])
+  const keywords: string[] = []
+  let startDate = preview.range?.from || ''
+  let endDate = preview.range?.to || ''
+  for (const key of preview.spec.groupBy) {
+    const value = String(row[key] ?? '')
+    if (!value || value === '-') continue
+    if (key === 'month' || key === 'week' || key === 'day') {
+      const narrowed = timeDimRange(key, value)
+      if (narrowed) { startDate = narrowed.startDate; endDate = narrowed.endDate }
+      continue
+    }
+    if (TEXT_DIMS.has(key)) keywords.push(value)
+  }
+  const params = new URLSearchParams()
+  if (startDate) params.set('startDate', startDate)
+  if (endDate) params.set('endDate', endDate)
+  if (keywords.length) params.set('keyword', keywords.join(' '))
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/')
+  return `${base}service-orders?${params.toString()}`
 }
 
 /** 图表数据：维度值拼接为 name，第一个指标为 value */
@@ -153,7 +201,7 @@ export function SmartReport() {
   const [templateName, setTemplateName] = useState('')
   const [savingTemplate, setSavingTemplate] = useState(false)
   const [subTarget, setSubTarget] = useState<ReportTemplate | null>(null)
-  const [subFrequency, setSubFrequency] = useState<'weekly' | 'monthly'>('weekly')
+  const [subFrequency, setSubFrequency] = useState<'daily' | 'weekly' | 'monthly'>('weekly')
   const [subRecipients, setSubRecipients] = useState('')
   const [subEnabled, setSubEnabled] = useState(true)
   const [savingSub, setSavingSub] = useState(false)
@@ -185,6 +233,8 @@ export function SmartReport() {
         total: Number(result.total || 0),
         truncated: Boolean(result.truncated),
         summary: result.summary || '',
+        compare: result.compare || null,
+        range: result.range || null,
       })
       setChartKind(defaultChartKind(result.spec))
     }
@@ -367,6 +417,14 @@ export function SmartReport() {
                       ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
                       : <BarChart3 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                     <span className="truncate">{t.name}</span>
+                    {t.subscription?.enabled && t.subscription.lastError && (
+                      <span
+                        className="inline-flex"
+                        title={`上次推送失败：${t.subscription.lastError}${t.subscription.lastAttemptAt ? `（${String(t.subscription.lastAttemptAt).slice(0, 16)}）` : ''}`}
+                      >
+                        <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" aria-label="上次推送失败" />
+                      </span>
+                    )}
                     {t.subscription?.enabled && <Mail className="h-3 w-3 shrink-0 text-primary" aria-label="已订阅" />}
                   </button>
                   <button type="button" className="rounded p-1 text-muted-foreground opacity-0 transition hover:text-primary group-hover:opacity-100" title="订阅推送" onClick={() => openSubscribe(t)}>
@@ -505,8 +563,15 @@ export function SmartReport() {
                   <tbody>
                     {preview.rows.length === 0 ? (
                       <tr><td colSpan={preview.columns.length} className="px-3 py-8 text-center text-muted-foreground">本期没有数据</td></tr>
-                    ) : preview.rows.map((row, i) => (
-                      <tr key={i} className="border-b border-border/60 last:border-0 hover:bg-accent/40">
+                    ) : preview.rows.map((row, i) => {
+                      const drillHref = buildDrillHref(preview, row)
+                      return (
+                      <tr
+                        key={i}
+                        className={`border-b border-border/60 last:border-0 hover:bg-accent/40 ${drillHref ? 'cursor-pointer' : ''}`}
+                        onClick={drillHref ? () => window.open(drillHref, '_blank', 'noopener') : undefined}
+                        title={drillHref ? '点击跳转工单明细（新标签打开）' : undefined}
+                      >
                         {preview.columns.map((col) => {
                           const raw = row[col.key]
                           const isPct = col.key.endsWith('__pct')
@@ -529,7 +594,8 @@ export function SmartReport() {
                           )
                         })}
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -570,14 +636,15 @@ export function SmartReport() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>订阅推送{subTarget ? `：${subTarget.name}` : ''}</DialogTitle>
-            <DialogDescription>到点自动跑最新数据，邮件发送 Excel 报表（周刊每周一、月刊每月 1 日上午推送）。</DialogDescription>
+            <DialogDescription>到点自动跑最新数据，邮件发送 Excel 报表（每天 / 每周一 / 每月 1 日上午推送）。</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>推送频率</Label>
-              <Select value={subFrequency} onValueChange={(v) => setSubFrequency(v as 'weekly' | 'monthly')}>
+              <Select value={subFrequency} onValueChange={(v) => setSubFrequency(v as 'daily' | 'weekly' | 'monthly')}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="daily">每天（上午）</SelectItem>
                   <SelectItem value="weekly">每周（周一上午）</SelectItem>
                   <SelectItem value="monthly">每月（1 日上午）</SelectItem>
                 </SelectContent>
