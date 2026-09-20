@@ -295,4 +295,21 @@ const { validateSpec, resolveRelativeRange, resolveCompareRange, compareCell, bu
   assert.ok(sql.includes(':timeFrom IS NULL'))
 }
 
+// ---- 货币单位透传（feat/report-currency：amount 带 cny，计数/时长不带） ----
+
+{
+  // mr_orders：amount 指标 unit==='cny'，count 指标 unit 为 null
+  const { errors, spec } = validateSpec({
+    dataset: 'mr_orders',
+    timeRange: { type: 'relative', value: 'last_month' },
+    groupBy: ['sales'],
+    metrics: ['count', 'amount'],
+  })
+  assert.deepEqual(errors, [])
+  const { columns } = buildQuery(spec)
+  assert.equal(columns.find((c) => c.key === 'amount').unit, 'cny')
+  assert.equal(columns.find((c) => c.key === 'count').unit, null)
+  assert.equal(columns.find((c) => c.key === 'sales').unit, undefined) // 维度列不带 unit
+}
+
 console.log('report engine tests passed')

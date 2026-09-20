@@ -297,7 +297,7 @@ function buildQuery(spec, { limit = 500 } = {}) {
   }
   for (const key of spec.metrics) {
     selectParts.push(`${dataset.metrics[key].sql} AS \`${key}\``)
-    columns.push({ key, label: dataset.metrics[key].label, kind: 'metric' })
+    columns.push({ key, label: dataset.metrics[key].label, kind: 'metric', unit: dataset.metrics[key].unit || null })
   }
 
   const safeLimit = Math.min(Math.max(1, Math.floor(Number(limit) || 500)), 2000)
@@ -395,11 +395,12 @@ async function runSpec(rawSpec, { limit = 500 } = {}) {
   const mergedColumns = [...columns.filter((c) => c.kind === 'dimension')]
   for (const key of spec.metrics) {
     const label = dataset.metrics[key].label
+    const unit = dataset.metrics[key].unit || null
     mergedColumns.push(
-      { key, label, kind: 'metric' },
-      { key: `${key}__compare`, label: `${label}(对比期)`, kind: 'metric' },
-      { key: `${key}__delta`, label: `${label}(差值)`, kind: 'metric' },
-      { key: `${key}__pct`, label: `${label}(变化%)`, kind: 'metric' },
+      { key, label, kind: 'metric', unit },
+      { key: `${key}__compare`, label: `${label}(对比期)`, kind: 'metric', unit },
+      { key: `${key}__delta`, label: `${label}(差值)`, kind: 'metric', unit },
+      { key: `${key}__pct`, label: `${label}(变化%)`, kind: 'metric', unit: null },
     )
   }
 
