@@ -82,6 +82,7 @@ bash scripts/deploy.sh tencent <target>
 - 每次工作结束推送分支到 origin（**推送即备份**）；短命分支合完即删，不留长期分支
 - 可见变更照旧升版本号（见提交规范）
 - 不要在 main 上直接 commit 再 push：分支保护会拒绝，deploy.sh 也会因 push 失败中止
+- **主工作区纪律（2026-09-20 佬裁决）**：`/home/xu/projects/oms` 主目录固定停在 main、保持干净未提交改动为零，只用于①部署生产（tencent 必须在 main）②临时只读查询/协调。**任何代码或文档改动（含 specs/）一律 `herdr worktree create/open` 建 worktree，session 直接开在 worktree 目录里**，不允许在主目录改文件/切分支。原因：git 状态是目录属性，多 session 共用主目录时问"有没有未提交改动"所有 session 答案相同、无法区分归属，还会互相踩掉未提交改动（2026-09-16 实测翻车）。问工作区状态要到对应 worktree 的 session 里问
 - 并行开发统一用 `herdr worktree create/open` 建 worktree（不要共用主工作区来回切分支，会互相干扰）；跨 worktree 同文件冲突由 herdr 插件 collide 实时监控（区分 overlap/真冲突），看到 badge 报警先协调再动手
 - `gh pr create` 报 GraphQL 错误多为 GitHub 服务短暂抽风，稍后重试；**务必确认 PR 已合并（`gh pr view <编号> --json state,mergedAt`）再继续部署**
 - 分支合并后本地记得删掉已合并的本地分支（`git branch -d <分支名>`，远端已被 --delete-branch 删除）
