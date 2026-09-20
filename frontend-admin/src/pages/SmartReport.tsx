@@ -154,7 +154,12 @@ function defaultChartKind(spec: ReportSpec | null): ChartKind {
 function ChartView({ preview, kind }: { preview: PreviewState; kind: ChartKind }) {
   const { data, metricLabel } = useMemo(() => toChartData(preview), [preview])
   if (!data.length) {
-    return <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">本期没有数据</div>
+    return (
+      <div className="flex h-64 flex-col items-center justify-center gap-1 text-muted-foreground">
+        <span className="text-sm">当前时间范围和筛选条件下没有数据</span>
+        {preview.specText && <span className="text-xs">{preview.specText}</span>}
+      </div>
+    )
   }
   if (kind === 'pie') {
     const top = data.slice(0, 9)
@@ -562,7 +567,12 @@ export function SmartReport() {
                   </thead>
                   <tbody>
                     {preview.rows.length === 0 ? (
-                      <tr><td colSpan={preview.columns.length} className="px-3 py-8 text-center text-muted-foreground">本期没有数据</td></tr>
+                      <tr>
+                        <td colSpan={preview.columns.length} className="px-3 py-8 text-center text-muted-foreground">
+                          <div className="text-sm">当前时间范围和筛选条件下没有数据</div>
+                          {preview.specText && <div className="mt-1 text-xs">{preview.specText}</div>}
+                        </td>
+                      </tr>
                     ) : preview.rows.map((row, i) => {
                       const drillHref = buildDrillHref(preview, row)
                       return (
