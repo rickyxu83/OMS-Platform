@@ -92,7 +92,8 @@ const DATASETS = {
     timeFields: {
       created_at: { label: '创建时间', column: 'so.created_at' },
       submitted_at: { label: '提交时间', column: 'so.submitted_at' },
-      reviewed_at: { label: '结案时间', column: 'so.reviewed_at' },
+      reviewed_at: { label: '审批时间', column: 'so.reviewed_at' },
+      closed_at: { label: '结案时间', column: 'COALESCE(so.reviewed_at, so.submitted_at)' },
     },
     defaultTimeField: 'created_at',
     dimensions: {
