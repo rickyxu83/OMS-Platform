@@ -216,7 +216,8 @@ async function main() {
   console.log('quotation recognition tests passed')
 }
 
-main().catch((error) => {
+// 模块加载会创建 MySQL 连接池（settings/controller → db），事件循环不会自然退出，成功后显式退出
+main().then(() => process.exit(0)).catch((error) => {
   console.error(error)
-  process.exitCode = 1
+  process.exit(1)
 })

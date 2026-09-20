@@ -74,4 +74,5 @@ async function main() {
   console.log('quote-coach auto-retry tests passed')
 }
 
-main().catch((error) => { console.error(error); process.exit(1) })
+// 模块加载会创建 MySQL 连接池（settings/controller → db），事件循环不会自然退出，成功后显式退出
+main().then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1) })
