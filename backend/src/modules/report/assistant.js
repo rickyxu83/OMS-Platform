@@ -5,6 +5,7 @@
  * 由 engine.js 校验并执行，AI 不直接写 SQL、不直接接触数据库。
  */
 const { resolveAiConnection, callAi, extractJson } = require('../mr/lib/quotation-ai-parser')
+const { badRequest, badGateway } = require('../../utils/http-error')
 const { createHash } = require('node:crypto')
 const { DATASETS } = require('./datasets')
 const { RELATIVE_RANGE_LABELS } = require('./engine')
@@ -59,6 +60,7 @@ const SYSTEM_PROMPT = [
   '7. groupBy 最多 3 个维度，metrics 最多 4 个指标；用户只是寒暄或提问不需要出报表时 spec 为 null',
   '8. 用户要求对比（"环比/比上月/与上期相比" → compare.type="previous"；"同比/比去年/去年同期" → compare.type="year_ago"）时在 spec 里加 compare 字段；时间范围为「全部时间」时不要加 compare（不支持）',
   '9. 数据集选择注意同义词区分：问巡检的「完成情况/执行/漏检/应巡」用 inspection_completion（不是 inspection_schedules）；问「备件用量」用 service_parts；问「值班」用 duty_records；问「剩余年假/调休余额」用 leave_balance',
+  '10. 无论对话进行到第几轮、无论用户是追问还是调整口径，每次回复都必须严格只输出上面规定的 JSON 对象，严禁只输出纯文本回复',
   '',
   '数据目录：',
   catalogPrompt(),
@@ -116,20 +118,28 @@ function normalizeMessages(messages) {
  * 对话一轮。返回 { reply, spec, chartType }（spec 为 AI 原始输出，由调用方校验执行）。
  * AI 不可用/输出非法时抛错，由 controller 转为友好提示。
  */
-async function chat(messages) {
+async function chat(messages, { fetchImpl = fetch } = {}) {
   const history = normalizeMessages(messages)
   if (!history.length || history[history.length - 1].role !== 'user') {
-    const err = new Error('缺少用户消息')
-    err.status = 400
-    throw err
+    throw badRequest('缺少用户消息')
   }
   const conn = await resolveAiConnection()
-  const content = await callAi([{ role: 'system', content: SYSTEM_PROMPT }, ...history], 90000, fetch, conn)
-  const parsed = extractJson(content)
+  const aiMessages = [{ role: 'system', content: SYSTEM_PROMPT }, ...history]
+  let content = await callAi(aiMessages, 90000, fetchImpl, conn)
+  let parsed = extractJson(content)
   if (!parsed || typeof parsed !== 'object') {
-    const err = new Error('AI 返回格式异常，请换个说法再试一次')
-    err.status = 502
-    throw err
+    // 重试一次：部分模型（如 kimi-for-coding）多轮追问时偶发只输出纯文本、不输出 JSON 信封；
+    // 把原始输出带回对话并明确纠正，可显著提升成功率（参照 mr 报价识别重试写法）
+    const retryMessages = [
+      ...aiMessages,
+      { role: 'assistant', content: String(content || '').slice(0, 4000) },
+      { role: 'user', content: '你上次的回复不是合法 JSON。请严格只输出一个符合规定的 JSON 对象，不要输出任何其他文字，不要使用 Markdown 代码块。' },
+    ]
+    content = await callAi(retryMessages, 90000, fetchImpl, conn)
+    parsed = extractJson(content)
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    throw badGateway('AI 返回格式异常，请换个说法再试一次')
   }
   return {
     reply: String(parsed.reply || '').trim() || '好的，请继续描述你的需求。',
@@ -172,4 +182,4 @@ async function summarize(specText, columns, rows) {
   }
 }
 
-module.exports = { chat, summarize, catalogPrompt, summaryCacheKey }
+module.exports = { chat, summarize, catalogPrompt, summaryCacheKey, SYSTEM_PROMPT }

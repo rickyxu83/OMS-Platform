@@ -1,6 +1,7 @@
 /** 智能报表引擎单测（spec 014）：白名单校验 / 时间范围解析 / SQL 拼接。不依赖数据库。 */
 const assert = require('node:assert/strict')
-const { validateSpec, resolveRelativeRange, resolveCompareRange, compareCell, buildQuery, describeSpec } = require('../engine')
+const { validateSpec, resolveRelativeRange, resolveCompareRange, compareCell, buildQuery, describeSpec, runSpec } = require('../engine')
+const { HttpError } = require('../../../utils/http-error')
 
 // ---- validateSpec：白名单拦截 ----
 
@@ -312,4 +313,24 @@ const { validateSpec, resolveRelativeRange, resolveCompareRange, compareCell, bu
   assert.equal(columns.find((c) => c.key === 'sales').unit, undefined) // 维度列不带 unit
 }
 
-console.log('report engine tests passed')
+// ---- runSpec：校验失败抛 HttpError 422（details 保留，error-handler 透传真实原因） ----
+
+async function testRunSpecValidationError() {
+  await assert.rejects(
+    () => runSpec({ dataset: 'users; DROP TABLE users', metrics: ['count'] }),
+    (err) => {
+      assert.ok(err instanceof HttpError)
+      assert.equal(err.status, 422)
+      assert.ok(err.message.includes('报表定义无效'))
+      assert.ok(Array.isArray(err.details))
+      assert.ok(err.details.some((e) => e.includes('未知数据集')))
+      return true
+    },
+  )
+  console.log('report engine runSpec 422 tests passed')
+}
+
+testRunSpecValidationError().then(() => console.log('report engine tests passed')).catch((err) => {
+  console.error(err)
+  process.exit(1)
+})

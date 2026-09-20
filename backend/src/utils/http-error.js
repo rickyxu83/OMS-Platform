@@ -23,11 +23,21 @@ function notFound(message = '记录不存在') {
   return new HttpError(404, message)
 }
 
+function unprocessableEntity(message = '请求内容无法处理', details) {
+  return new HttpError(422, message, details)
+}
+
+function badGateway(message = '上游服务异常，请稍后重试') {
+  return new HttpError(502, message)
+}
+
 module.exports = {
   HttpError,
   badRequest,
   unauthorized,
   forbidden,
   notFound,
+  unprocessableEntity,
+  badGateway,
 }
 
