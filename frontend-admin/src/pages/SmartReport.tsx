@@ -66,6 +66,16 @@ const EXAMPLE_PROMPTS = [
 const CHART_LABELS: Record<ChartKind, string> = { table: '表格', bar: '柱状图', line: '折线图', pie: '饼图' }
 const CHART_COLORS = ['#7c3aed', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6', '#f97316', '#84cc16', '#ec4899']
 
+/** 指标数值千分位分组（大金额可读性）；非数值原样返回 */
+function formatThousands(value: unknown): string {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return String(value ?? '-')
+  const [intPart, decPart] = String(num).split('.')
+  const negative = intPart.startsWith('-')
+  const grouped = (negative ? intPart.slice(1) : intPart).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return (negative ? '-' : '') + grouped + (decPart !== undefined ? `.${decPart}` : '')
+}
+
 /** 图表数据：维度值拼接为 name，第一个指标为 value */
 function toChartData(preview: PreviewState) {
   const dimKeys = preview.columns.filter((c) => c.kind === 'dimension').map((c) => c.key)
@@ -501,12 +511,12 @@ export function SmartReport() {
                           const raw = row[col.key]
                           const isPct = col.key.endsWith('__pct')
                           const isDelta = col.key.endsWith('__delta')
-                          let content: React.ReactNode = raw ?? '-'
+                          let content: React.ReactNode = col.kind === 'metric' ? formatThousands(raw) : (raw ?? '-')
                           let trendClass = ''
                           if (isPct || isDelta) {
                             const num = Number(raw)
                             if (Number.isFinite(num)) {
-                              content = isPct ? `${num > 0 ? '+' : ''}${num}%` : `${num > 0 ? '+' : ''}${num}`
+                              content = isPct ? `${num > 0 ? '+' : ''}${num}%` : (num > 0 ? `+${formatThousands(num)}` : formatThousands(num))
                               trendClass = num > 0 ? 'text-green-700 dark:text-green-400' : num < 0 ? 'text-red-700 dark:text-red-400' : ''
                             } else {
                               content = '-'

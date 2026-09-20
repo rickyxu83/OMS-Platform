@@ -28,7 +28,17 @@ function exportTimeText() {
 function isPctCol(key) { return key.endsWith('__pct') }
 function isDeltaCol(key) { return key.endsWith('__delta') }
 
-/** PDF 展示文本：pct 带符号与百分号，delta 带符号 */
+/** 千分位分组（保留原小数位，大金额可读性） */
+function groupThousands(value) {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return String(value)
+  const [intPart, decPart] = String(num).split('.')
+  const negative = intPart.startsWith('-')
+  const grouped = (negative ? intPart.slice(1) : intPart).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return (negative ? '-' : '') + grouped + (decPart !== undefined ? `.${decPart}` : '')
+}
+
+/** PDF 展示文本：指标千分位；pct 带符号与百分号；delta 带符号 */
 function displayValue(col, value) {
   if (value === null || value === undefined || value === '') return '-'
   if (isPctCol(col.key)) {
@@ -39,8 +49,9 @@ function displayValue(col, value) {
   if (isDeltaCol(col.key)) {
     const num = Number(value)
     if (!Number.isFinite(num)) return String(value)
-    return `${num > 0 ? '+' : ''}${num}`
+    return num > 0 ? `+${groupThousands(num)}` : groupThousands(num)
   }
+  if (col.kind === 'metric') return groupThousands(value)
   return String(value)
 }
 
@@ -115,7 +126,8 @@ async function buildXlsx({ title, specText, summary, columns, rows, truncated, c
         cell.alignment = { horizontal: 'right' }
         const num = Number(cell.value)
         if (isPctCol(col.key) && Number.isFinite(num)) cell.numFmt = '+0.0"%";-0.0"%";"-"'
-        else if (isDeltaCol(col.key) && Number.isFinite(num)) cell.numFmt = '+0.##;-0.##;0'
+        else if (isDeltaCol(col.key) && Number.isFinite(num)) cell.numFmt = '+#,##0.##;-#,##0.##;0'
+        else if (Number.isFinite(num)) cell.numFmt = '#,##0.##' // 大金额千分位
         const color = trendColor(col.key, cell.value)
         if (color) cell.font = { color: { argb: `FF${color.slice(1).toUpperCase()}` } }
       }
