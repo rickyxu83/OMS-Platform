@@ -221,6 +221,7 @@ const I18N = {
       create: "新增工单",
       confirmInspection: "确认巡检",
       assign: "派单 / 改派",
+      transition: "状态流转",
     },
     filters: {
       searchPlaceholder: "搜索工单编号、客户、工程师、描述，可用空格组合…",
@@ -482,6 +483,7 @@ const I18N = {
       create: "新增工單",
       confirmInspection: "確認巡檢",
       assign: "派單 / 改派",
+      transition: "狀態流轉",
     },
     filters: {
       searchPlaceholder: "搜尋工單編號、客戶、工程師、描述，可用空格組合…",
@@ -771,6 +773,20 @@ const MODE_BADGE_VARIANT: Record<string, "success" | "info" | "purple" | "second
   onsite: "success",
   remote: "info",
   office: "purple",
+};
+
+// —— 工单状态机：与后端 service-orders transition 的 TRANSITIONS 保持一致，只列出合法流转目标 ——
+const STATUS_TRANSITIONS: Record<string, string[]> = {
+  draft: ["assigned", "cancelled"],
+  pending_confirmation: ["cancelled"],
+  assigned: ["draft", "in_progress", "awaiting_customer_signature", "submitted", "cancelled"],
+  in_progress: ["assigned", "awaiting_customer_signature", "submitted", "cancelled"],
+  awaiting_customer_signature: ["in_progress", "submitted", "cancelled"],
+  submitted: ["in_progress", "approved", "cancelled"],
+  approved: ["submitted", "archived", "cancelled"],
+  cancelled: ["draft", "assigned"],
+  rejected: [],
+  archived: [],
 };
 
 // —— 考勤风格扩散：状态/模式/类型 徽章 → 图标+文字（去 Badge 大色块的刺眼感）——
@@ -1091,7 +1107,7 @@ export function ServiceOrders() {
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const statusFilter = "all";
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
   const customerFilter = "all";
   const [startDate, setStartDate] = useState(searchParams.get("startDate") || "");
   const [endDate, setEndDate] = useState(searchParams.get("endDate") || "");
@@ -1357,10 +1373,10 @@ export function ServiceOrders() {
   const stats = useMemo(() => {
     const counts = statusCounts || { all: total, pending: 0, processing: 0, completed: 0 };
     return [
-      { label: t.stats.all, value: counts.all },
-      { label: t.stats.pending, value: counts.pending },
-      { label: t.stats.processing, value: counts.processing },
-      { label: t.stats.completed, value: counts.completed },
+      { label: t.stats.all, value: counts.all, filter: "all" },
+      { label: t.stats.pending, value: counts.pending, filter: "pending_confirmation" },
+      { label: t.stats.processing, value: counts.processing, filter: "in_progress" },
+      { label: t.stats.completed, value: counts.completed, filter: "submitted" },
     ];
   }, [statusCounts, total, t.stats]);
 
@@ -1836,6 +1852,7 @@ export function ServiceOrders() {
     const serviceTime = serviceTimeRange(order);
     const canConfirmInspection = canAssignOrders && workflowStatus === "pending_confirmation" && order.serviceType === "inspect";
     const canAssign = canAssignOrders && !["cancelled", "submitted", "awaiting_customer_signature"].includes(workflowStatus);
+    const canTransition = (canEditOrders || canApproveOrders) && (STATUS_TRANSITIONS[workflowStatus] || []).length > 0;
     const canExport = ["submitted", "approved", "archived", "completed"].includes(workflowStatus);
     const engineerName = engineerText(order, t.detail.unnamedEngineer);
     return (
@@ -1935,6 +1952,21 @@ export function ServiceOrders() {
                 {t.actions.assign}
               </Button>
             )}
+            {canTransition && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-amber-600 hover:bg-transparent"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openTransition(order);
+                }}
+                disabled={saving}
+              >
+                <RefreshCw className="mr-1 h-4 w-4" />
+                {t.actions.transition}
+              </Button>
+            )}
           </>
         }
       />
@@ -1996,8 +2028,10 @@ export function ServiceOrders() {
   }
 
   function openTransition(order: ServiceOrder) {
+    const targets = STATUS_TRANSITIONS[getWorkflowStatus(order)] || [];
+    if (targets.length === 0) return;
     setTransitionOrder(order);
-    setTransitionForm({ status: getWorkflowStatus(order) === "in_progress" ? "submitted" : "in_progress", reason: "" });
+    setTransitionForm({ status: targets[0], reason: "" });
     setTransitionOpen(true);
   }
 
@@ -2073,16 +2107,31 @@ export function ServiceOrders() {
       <ErrorToast message={error} />
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
-        {stats.map((stat, statIndex) => (
-          <span key={stat.label} className="inline-flex items-baseline gap-1.5">
-            <span className="text-muted-foreground">{stat.label}</span>
-            {initialLoading ? (
-              <Skeleton className="h-5 w-8" />
-            ) : (
-              <span className="stat-value-enter inline-block text-base font-bold" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
-            )}
-          </span>
-        ))}
+        {stats.map((stat, statIndex) => {
+          const active = statusFilter === stat.filter;
+          return (
+            <button
+              key={stat.label}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setStatusFilter(active ? "all" : stat.filter)}
+              className="group -mx-1 inline-flex items-baseline gap-1.5 rounded px-1 transition-colors hover:bg-muted/60"
+              title={stat.label}
+            >
+              <span className="text-muted-foreground">{stat.label}</span>
+              {initialLoading ? (
+                <Skeleton className="h-5 w-8" />
+              ) : (
+                <span
+                  className={`stat-value-enter inline-block text-base font-bold underline-offset-4 group-hover:underline ${active ? "text-primary underline" : ""}`}
+                  style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}
+                >
+                  {formatCount(stat.value)}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <Card>
@@ -2187,6 +2236,7 @@ export function ServiceOrders() {
                     const engineerName = engineerText(order, t.detail.unnamedEngineer);
                     const canConfirmInspection = canAssignOrders && workflowStatus === "pending_confirmation" && order.serviceType === "inspect";
                     const canAssign = canAssignOrders && !["cancelled", "submitted", "awaiting_customer_signature"].includes(workflowStatus);
+                    const canTransition = (canEditOrders || canApproveOrders) && (STATUS_TRANSITIONS[workflowStatus] || []).length > 0;
                     const canExport = ["submitted", "approved", "archived", "completed"].includes(workflowStatus);
                     return (
                       <TableRow
@@ -2291,7 +2341,7 @@ export function ServiceOrders() {
                           {(() => { const conf = STATUS_INDICATOR[getWorkflowStatus(order)] || STATIC_FALLBACK; return indicatorSpan(conf.icon, conf.color, statusLabel); })()}
                         </TableCell>
                         <TableCell onClick={(event) => event.stopPropagation()}>
-                          {(canConfirmInspection || canAssign) ? (
+                          {(canConfirmInspection || canAssign || canTransition) ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <button
@@ -2315,6 +2365,12 @@ export function ServiceOrders() {
                                   <DropdownMenuItem onSelect={() => openAssign(order)} disabled={saving}>
                                     <Send className="h-4 w-4" />
                                     {t.actions.assign}
+                                  </DropdownMenuItem>
+                                )}
+                                {canTransition && (
+                                  <DropdownMenuItem onSelect={() => openTransition(order)} disabled={saving}>
+                                    <RefreshCw className="h-4 w-4" />
+                                    {t.actions.transition}
                                   </DropdownMenuItem>
                                 )}
                               </DropdownMenuContent>
@@ -2673,14 +2729,9 @@ export function ServiceOrders() {
               <Select value={transitionForm.status} onValueChange={(v) => setTransitionForm({ ...transitionForm, status: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="draft">{t.status.draft}</SelectItem>
-                  <SelectItem value="assigned">{t.status.assigned}</SelectItem>
-                  <SelectItem value="in_progress">{t.status.in_progress}</SelectItem>
-                  <SelectItem value="awaiting_customer_signature">{t.status.awaiting_customer_signature}</SelectItem>
-                  <SelectItem value="submitted">{t.status.submitted}</SelectItem>
-                  <SelectItem value="approved">{t.status.approved}</SelectItem>
-                  <SelectItem value="archived">{t.status.archived}</SelectItem>
-                  <SelectItem value="cancelled">{t.status.cancelled}</SelectItem>
+                  {(STATUS_TRANSITIONS[transitionOrder ? getWorkflowStatus(transitionOrder) : ""] || []).map((value) => (
+                    <SelectItem key={value} value={value}>{t.status[value as keyof typeof t.status] || value}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
