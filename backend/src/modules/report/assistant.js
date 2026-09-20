@@ -54,7 +54,7 @@ const SYSTEM_PROMPT = [
   '2. 用户需求不明确（没说统计对象或统计口径）时，spec 输出 null，在 reply 里追问；不要硬猜',
   '3. 用户只说时间没说别的（如"这个月工单怎么样"）→ 选最自然的口径（工单数按状态分组），并在 reply 说明可以继续调整',
   '4. timeRange 相对值可选：' + Object.entries(RELATIVE_RANGE_LABELS).map(([k, v]) => `${k}=${v}`).join('，') + '；用户给了明确起止日期才用 absolute',
-  '5. 用户提到"结案/完成"的时间口径 → 工单数据集 timeField 用 reviewed_at；"结了"的工单筛选 status=["approved"]；"未结/进行中"筛选 status 用未结状态集合',
+  '5. 用户提到"结案/完成"的时间口径 → 工单数据集 timeField 用 closed_at；"结了/完成"的工单筛选 status=["submitted","approved","archived"]（提交即视为完成，审批是可选后续动作）；"未结/进行中"筛选 status 用 ["draft","pending_confirmation","awaiting_customer_signature","assigned","in_progress","rejected"]',
   '6. chartType 选择：含时间维度（month/week/day）→ line；单维度对比 → bar；占比类（用户说"占比/比例"）→ pie；用户要明细 → table',
   '7. groupBy 最多 3 个维度，metrics 最多 4 个指标；用户只是寒暄或提问不需要出报表时 spec 为 null',
   '8. 用户要求对比（"环比/比上月/与上期相比" → compare.type="previous"；"同比/比去年/去年同期" → compare.type="year_ago"）时在 spec 里加 compare 字段；时间范围为「全部时间」时不要加 compare（不支持）',
