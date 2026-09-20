@@ -233,6 +233,8 @@ export function SmartReport() {
         total: Number(result.total || 0),
         truncated: Boolean(result.truncated),
         summary: result.summary || '',
+        compare: result.compare || null,
+        range: result.range || null,
       })
       setChartKind(defaultChartKind(result.spec))
     }
