@@ -536,13 +536,6 @@ export function SmartReport() {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              {preview.summary && (
-                <div className="mb-4 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm leading-relaxed">
-                  <span className="mr-1 inline-flex items-center gap-1 font-medium text-primary"><Sparkles className="h-3.5 w-3.5" />AI 摘要</span>
-                  <p className="mt-1">{preview.summary}</p>
-                </div>
-              )}
-
               {chartKind !== 'table' && (
                 <div ref={chartBoxRef} className="mb-4 rounded-lg border border-border p-2">
                   <ChartView preview={preview} kind={chartKind} />

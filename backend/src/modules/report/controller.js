@@ -34,7 +34,8 @@ async function datasets(req, res) {
 
 /**
  * 对话一轮：body.messages 为会话历史（末条须为 user）。
- * AI 产出 spec 时后端立即校验并出预览 + AI 摘要；校验失败把原因并入 reply 返回（不 500）。
+ * AI 产出 spec 时后端立即校验并出预览；校验失败把原因并入 reply 返回（不 500）。
+ * 2026-09-20 起不再生成 AI 摘要（佬要求报表结果不体现摘要），summary 固定空串保持响应结构。
  */
 async function chat(req, res) {
   const messages = Array.isArray(req.body?.messages) ? req.body.messages.slice(-12) : []
@@ -53,7 +54,7 @@ async function chat(req, res) {
   }
 
   const preview = await runSpec(spec, { limit: 200 })
-  const summary = preview.rows.length ? await assistant.summarize(preview.specText, preview.columns, preview.rows) : ''
+  const summary = ''
   void store.logUsage({ userId: req.user.id, action: 'chat', spec: preview.spec, rowsCount: preview.rows.length })
   res.json({
     reply: result.reply,
@@ -72,7 +73,7 @@ async function chat(req, res) {
 /** 按 spec 直接出预览（模板重跑用） */
 async function preview(req, res) {
   const result = await runSpec(req.body?.spec, { limit: 200 })
-  const summary = result.rows.length ? await assistant.summarize(result.specText, result.columns, result.rows) : ''
+  const summary = '' // 不生成 AI 摘要（订阅邮件摘要走 subscriptions.js，不受影响）
   void store.logUsage({ userId: req.user.id, action: 'preview', spec: result.spec, rowsCount: result.rows.length })
   res.json({
     spec: result.spec,
