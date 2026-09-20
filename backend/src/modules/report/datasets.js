@@ -201,7 +201,7 @@ const DATASETS = {
   inspection_schedules: {
     key: 'inspection_schedules',
     label: '巡检计划',
-    description: '巡检计划（周期性巡检安排），可统计计划数量与分布',
+    description: '巡检计划（周期性巡检安排）本身的数量与分布；不含执行完成情况——问巡检完成/执行/漏检/应巡请用 inspection_completion',
     baseSql: 'FROM inspection_schedules isp JOIN customers c ON c.id = isp.customer_id LEFT JOIN users eng ON eng.id = isp.target_engineer_id',
     timeFields: {
       created_at: { label: '创建时间', column: 'isp.created_at' },
@@ -388,6 +388,53 @@ const DATASETS = {
       status: { label: '状态', type: 'enum', column: 'pt.status', options: PURCHASE_TASK_STATUS_LABELS },
       task_type: { label: '任务类型', type: 'enum', column: 'pt.task_type', options: PURCHASE_TASK_TYPE_LABELS },
       customer: { label: '客户', type: 'text', column: 'mo.customer_name' },
+    },
+  },
+
+  inspection_completion: {
+    key: 'inspection_completion',
+    label: '巡检完成率',
+    description: '巡检计划执行完成情况。应巡次数按周期折算（月检每月1次、双月检0.5、季检约0.33，全部时间下折算为0）；已执行=已生成工单，结案另看。timeRange 只决定折算区间与工单匹配范围，不筛选计划；查漏检建议筛选 是否启用=启用 并限定月份',
+    baseSql: `FROM inspection_schedules isp
+      JOIN customers c ON c.id = isp.customer_id
+      LEFT JOIN users eng ON eng.id = isp.target_engineer_id
+      LEFT JOIN (
+        SELECT inspection_schedule_id, COUNT(*) AS order_cnt,
+               SUM(CASE WHEN status IN ('submitted', 'approved', 'archived') THEN 1 ELSE 0 END) AS closed_cnt
+        FROM service_orders
+        WHERE inspection_schedule_id IS NOT NULL
+          AND (:timeFrom IS NULL OR DATE(inspection_occurrence_date) >= :timeFrom)
+          AND (:timeTo IS NULL OR DATE(inspection_occurrence_date) <= :timeTo)
+        GROUP BY inspection_schedule_id
+      ) oc ON oc.inspection_schedule_id = isp.id`,
+    timeFields: {},
+    defaultTimeField: null,
+    dimensions: {
+      customer: { label: '客户', sql: 'c.name' },
+      engineer: { label: '负责工程师', sql: "COALESCE(eng.real_name, '未指定')" },
+      cadence: { label: '巡检周期', sql: 'isp.cadence', labels: CADENCE_LABELS },
+      active: { label: '是否启用', sql: "CASE WHEN isp.active = 1 THEN '启用' ELSE '停用' END" },
+    },
+    metrics: {
+      plans: { label: '计划数', sql: 'COUNT(*)' },
+      expected: {
+        label: '应巡次数(折算)',
+        sql: `ROUND(SUM(CASE
+          WHEN :timeFrom IS NULL OR :timeTo IS NULL THEN 0
+          WHEN isp.cadence = 'monthly' THEN TIMESTAMPDIFF(MONTH, :timeFrom, :timeTo) + 1
+          WHEN isp.cadence = 'bi-monthly' THEN (TIMESTAMPDIFF(MONTH, :timeFrom, :timeTo) + 1) / 2
+          ELSE (TIMESTAMPDIFF(MONTH, :timeFrom, :timeTo) + 1) / 3 END), 1)`,
+        round: 1,
+      },
+      generated: { label: '已生成工单数', sql: 'COALESCE(SUM(oc.order_cnt), 0)' },
+      closed: { label: '已结案数', sql: 'COALESCE(SUM(oc.closed_cnt), 0)' },
+      missing: { label: '未生成工单的计划数', sql: 'SUM(CASE WHEN oc.inspection_schedule_id IS NULL THEN 1 ELSE 0 END)' },
+    },
+    filters: {
+      customer: { label: '客户', type: 'text', column: 'c.name' },
+      engineer: { label: '工程师', type: 'text', column: 'eng.real_name' },
+      cadence: { label: '巡检周期', type: 'enum', column: 'isp.cadence', options: CADENCE_LABELS },
+      active: { label: '是否启用', type: 'enum', column: 'isp.active', options: { '1': '启用', '0': '停用' } },
     },
   },
 }
