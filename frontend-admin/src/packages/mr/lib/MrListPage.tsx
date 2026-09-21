@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Loader2, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, X, Pencil, Hourglass, CircleCheck, CircleX, CircleSlash, Package, PackageCheck, Minus, FileText, CircleDot, ArrowRight, BellRing, Ban, type LucideIcon } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, RotateCcw, Save, Search, SlidersHorizontal, X, Pencil, Hourglass, CircleCheck, CircleX, CircleSlash, Package, PackageCheck, Minus, FileText, CircleDot, ArrowRight, BellRing, Ban, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
@@ -514,6 +514,10 @@ export function MrListPage() {
                 <TableRow><TableCell colSpan={5} className="h-[50vh] text-center text-muted-foreground">暂无符合条件的 MR 申请单</TableCell></TableRow>
             ) : pagedItems.map((order) => {
               const orderStatus = (order.status || 'draft') as MrStatus
+              // 采购暂存进度：已填品项数 + 备注非空都算有进度（2026-09-21 热修 #175 起备注也落库）
+              const purchaseFilled = Number(order.purchaseFilledCount) || 0
+              const purchaseItemTotal = Number(order.itemCount) || 0
+              const purchaseHasDraft = order.purchaseStatus === 'pending' && (purchaseFilled > 0 || Boolean(String(order.purchaseNote || '').trim()))
               const stepLabel = order.currentStepKey === 'sales' ? '业务负责人' : (order.currentStepLabel || '')
               // 催办（spec 008）：签核中且有权限的行显示铃铛，24h 节流置灰
               const remindThrottled = Boolean(order.lastRemindedAt && (() => { const time = new Date(String(order.lastRemindedAt).replace(' ', 'T')).getTime(); return Number.isFinite(time) && Date.now() - time < 24 * 3600 * 1000 })())
@@ -575,10 +579,10 @@ export function MrListPage() {
                         <>
                           {/* 流程递进箭头：常驻琥珀色（呼应采购状态色）,无打扰动效 */}
                           <ArrowRight className="h-3 w-3 shrink-0 text-amber-600/80" />
-                          <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`采购状态：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}${order.purchaseStatus === 'pending' && Number(order.purchaseDraft) ? '（已暂存部分品项）' : ''}${order.updatedAt ? ` · 更新于 ${shortDate(order.updatedAt)}` : ''}（点击按采购状态筛选）`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
+                          <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`采购状态：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}${purchaseHasDraft ? (purchaseFilled > 0 ? `（已暂存 ${purchaseFilled}/${purchaseItemTotal} 项）` : '（已暂存备注）') : ''}${order.updatedAt ? ` · 更新于 ${shortDate(order.updatedAt)}` : ''}（点击按采购状态筛选）`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
                             {(() => { const conf = PURCHASE_INDICATOR[order.purchaseStatus || '']; const Icon = conf ? conf.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null })()}
                             {PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}
-                            {order.purchaseStatus === 'pending' && Number(order.purchaseDraft) ? <span className="rounded border border-amber-300 bg-amber-50 px-1 text-[10px] leading-4 text-amber-700">已暂存</span> : null}
+                            {purchaseHasDraft ? <Save className="h-3.5 w-3.5 shrink-0 text-amber-600" /> : null}
                           </button>
                         </>
                       ) : null}
