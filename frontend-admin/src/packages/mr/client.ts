@@ -31,6 +31,7 @@ export const voidMr = (id: string | number, reason: string) => api.post(`/mr/${p
 export const decideVoidMr = (id: string | number, action: 'approve' | 'reject', reason = '') => api.post(`/mr/${pathId(id)}/void-decision`, { action, reason }) as Promise<MrOrder>
 export const submitMrContractNo = (id: string | number, body: { contractNo: string }) => api.put(`/mr/${pathId(id)}/contract-no`, body) as Promise<MrOrder>
 export const submitMrPurchase = (id: string | number, body: { items: Array<{ id: string | number; companyPartNo: string; purchaseOrderNo: string; shipmentNo: string }>; note?: string }) => api.put(`/mr/${pathId(id)}/purchase`, body) as Promise<MrOrder>
+export const saveMrPurchaseDraft = (id: string | number, body: { items: Array<{ id: string | number; companyPartNo: string; purchaseOrderNo: string; shipmentNo: string }> }) => api.put(`/mr/${pathId(id)}/purchase-draft`, body) as Promise<MrOrder>
 export const deleteMr = (id: string | number) => api.delete(`/mr/${pathId(id)}`)
 export const getMrConstants = () => api.get('/mr/constants') as Promise<MrConstants>
 export const getAssistantSetting = () => api.get('/mr/assistant-setting') as Promise<AssistantSetting>

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
-import { Ban, CheckCircle2, ClipboardPen, Loader2, ShoppingCart } from 'lucide-react'
+import { Ban, CheckCircle2, ClipboardPen, Loader2, Save, ShoppingCart } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { submitMrPurchase } from '../client'
+import { saveMrPurchaseDraft, submitMrPurchase } from '../client'
 import type { MrOrder } from '../types'
 import { isInternalVendor } from './form-logic'
 import { SectionCard } from './mr-ui'
@@ -132,6 +132,30 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
     setItemSelected(index, dragRef.current.mode)
   }
 
+  const saveDraft = async () => {
+    if (!order.id) return
+    setBusy(true)
+    try {
+      const next = await saveMrPurchaseDraft(order.id, {
+        items: items.map((item) => {
+          const entry = draft[String(item.id)]
+          return {
+            id: item.id as string | number,
+            companyPartNo: (entry?.companyPartNo || '').trim(),
+            purchaseOrderNo: (entry?.purchaseOrderNo || '').trim(),
+            shipmentNo: (entry?.shipmentNo || '').trim(),
+          }
+        }),
+      })
+      toast.success('已暂存，可下次继续填写')
+      onChanged(next)
+    } catch (error) {
+      toast.error((error as Error).message || '暂存失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const submit = async () => {
     if (!order.id) return
     // spec 013：公司料号全品项必填；有外部供应商的品项还需采购单号（后端同样校验，这里先给友好提示）
@@ -175,7 +199,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
       id="purchase"
       title="采购单号"
       icon={ShoppingCart}
-      description="MR 签核通过后，由采购为每个品项填写公司料号；有外部供应商的品项还需填写向供应商下单的采购单号。"
+      description="MR 签核通过后，由采购为每个品项填写公司料号；有外部供应商的品项还需填写向供应商下单的采购单号。多个厂商分天下单时可随时点「暂存」保存进度，全部填完后再提交。"
       actions={<span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${statusMeta.className}`}>{statusMeta.label}</span>}
     >
       <div className="space-y-3 text-sm">
@@ -283,6 +307,11 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
             <p className="text-xs text-muted-foreground">按住鼠标左键拖过品项行即可多选（再次拖过已选行可取消），Shift+点击可选连续区间。</p>
             <Textarea rows={2} value={note} placeholder="采购备注（选填）" onChange={(event) => setNote(event.target.value)} />
             <div className="flex flex-wrap gap-2">
+              {status === 'pending' ? (
+                <Button type="button" variant="outline" disabled={busy} onClick={() => void saveDraft()}>
+                  {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}暂存
+                </Button>
+              ) : null}
               <Button type="button" disabled={busy} onClick={() => void submit()}>
                 {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ClipboardPen className="mr-2 size-4" />}提交采购单号
               </Button>

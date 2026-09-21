@@ -1544,6 +1544,39 @@ async function submitPurchase(req, res) {
   res.json(await loadDetail(req.params.id, req.user))
 }
 
+// 采购暂存（2026-10 采购反馈：同一张 MR 常含多个厂商、分几天下单，需要按厂商分次保存进度）
+// 与 submitPurchase 的差异：跳过必填校验、允许只提交部分品项、不翻 purchase_status、不发通知、不触发归档。
+// 不记审计是刻意取舍：暂存只是进度快照，正式提交时审计会携带 before→after，中间态逐日留痕只会刷屏。
+async function savePurchaseDraft(req, res) {
+  await ensureTables()
+  const rows = Array.isArray(req.body?.items) ? req.body.items : []
+  await transaction(async (connection) => {
+    const order = await loadLockedOrder(connection, req.params.id)
+    if (order.status !== 'approved') throw badRequest('仅已通过的 MR 可以暂存采购信息')
+    if (isVoidLocked(order)) throw badRequest('该 MR 正在作废审批中，已锁定，请等待审批结果')
+    if (String(order.purchaseStatus || '') !== 'pending') throw badRequest('当前 MR 不在采购填写环节；采购已完成后的修改请直接提交')
+    if (!canPurchase(order, req.user)) throw forbidden('当前采购填写任务不属于你')
+    const [itemRows] = await connection.execute('SELECT id FROM mr_items WHERE mr_id = :mrId', { mrId: order.id })
+    const validIds = new Set(itemRows.map((row) => Number(row.id)))
+    const updates = []
+    for (const entry of rows) {
+      const itemId = Number(entry?.id)
+      if (!validIds.has(itemId)) throw badRequest('暂存内容包含不属于本 MR 的品项，请刷新后重试')
+      updates.push([
+        String(entry?.purchaseOrderNo || '').trim().slice(0, 255),
+        String(entry?.companyPartNo || '').trim().slice(0, 100),
+        String(entry?.shipmentNo || '').trim().slice(0, 255),
+        itemId,
+      ])
+    }
+    for (const [value, companyValue, shipmentValue, itemId] of updates) {
+      await connection.execute('UPDATE mr_items SET purchase_order_no = :value, company_part_no = :companyValue, shipment_no = :shipmentValue WHERE id = :itemId AND mr_id = :mrId', { value, companyValue, shipmentValue, itemId, mrId: order.id })
+    }
+    await connection.execute('UPDATE mr_orders SET updated_by = :userId WHERE id = :mrId', { mrId: order.id, userId: req.user.id })
+  })
+  res.json(await loadDetail(req.params.id, req.user))
+}
+
 async function remove(req, res) {
   await ensureTables()
   const assistantIds = await assistantIdsFor(req.user)
@@ -2833,6 +2866,7 @@ module.exports = {
   decideVoid,
   submitContractNo,
   submitPurchase,
+  savePurchaseDraft,
   remove,
   importQuotation,
   importProgressHandler,
