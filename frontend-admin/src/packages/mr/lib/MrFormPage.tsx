@@ -1755,7 +1755,7 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
           ) : null}
 
           {status === 'approved' && id ? (
-            <MrPurchaseCard order={calculated} onChanged={() => void load()} />
+            <MrPurchaseCard order={calculated} onChanged={() => void load()} onDraftSaved={() => navigate('/mr')} />
           ) : null}
 
           <SectionCard id="attachments" title="附件" icon={Paperclip} description="报价、合同等附件随 MR 单一并留存；签核流转时签核人可在右侧查看。PDF/Word/Excel 点击弹窗预览，图片/文本新标签页预览，其他类型点击下载。" flash={flashSection === 'attachments'}>

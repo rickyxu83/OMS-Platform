@@ -20,7 +20,7 @@ function dateTime(value?: string | null) {
   return value ? String(value).replace('T', ' ').slice(0, 16) : '-'
 }
 
-export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged: (next: MrOrder) => void }) {
+export function MrPurchaseCard({ order, onChanged, onDraftSaved }: { order: MrOrder; onChanged: (next: MrOrder) => void; onDraftSaved?: () => void }) {
   type PurchaseDraft = { companyPartNo: string; purchaseOrderNo: string; shipmentNo: string }
   const blankDraft = (): PurchaseDraft => ({ companyPartNo: '', purchaseOrderNo: '', shipmentNo: '' })
   const [draft, setDraft] = useState<Record<string, PurchaseDraft>>({})
@@ -148,9 +148,12 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
             shipmentNo: (entry?.shipmentNo || '').trim(),
           }
         }),
+        note: note.trim() || undefined,
       })
       toast.success('已暂存，可下次继续填写')
       onChanged(next)
+      // 暂存后回列表（2026-09-21 佬裁决）：采购的典型动作是「这单今天先到这」，继续处理下一单
+      onDraftSaved?.()
     } catch (error) {
       toast.error((error as Error).message || '暂存失败')
     } finally {
