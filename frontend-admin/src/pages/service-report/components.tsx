@@ -162,9 +162,6 @@ export function SignaturePad({
   // 画布当前像素对应的 value：笔迹结束回传的 value 与本画布内容一致，重绘时跳过
   // （否则会把裁剪图（仅笔迹包围盒，远小于画布）拉伸铺满画布——“第一笔变很大”的根因）
   const drawnValueRef = useRef("");
-  // 上次重绘时的旋转态：方向翻转但画布 CSS 尺寸不变（100dvh×100dvw 互换）时也要强制重绘，
-  // 否则位图保持旧朝向，再补一笔就会按新旋转态导出、把旧笔迹侧着存进去（横屏签名存储旋转 90° 复发根因）
-  const drawnRotatedRef = useRef(false);
   // 异步图片回画令牌：value 变化（尤其是清空）后，旧图片的 onload 不得再回画，避免“清除后残影复活”
   const drawTokenRef = useRef(0);
 
@@ -181,8 +178,9 @@ export function SignaturePad({
   }
 
   // 竖屏手机打开「横屏全屏签名」时，弹窗整体被 CSS rotate-90 旋转，
-  // 画布视觉尺寸与布局尺寸互换。此时落笔坐标做了反向映射，位图本身是侧着的，
-  // 导出/回显都需要相应转正，否则存下来的签名会旋转 90°。
+  // 画布视觉尺寸与布局尺寸互换，落笔坐标必须做反向映射（墨迹跟手）。
+  // 注意：映射跟手后位图本身就是用户视角的正像，导出/回显绝不能再旋转——
+  // 2026-09-21 实测实证：此前导出 +90°「转正」方向反了，存库签名全部侧躺 90°。
   function isQuarterRotated(canvas: HTMLCanvasElement) {
     // 调用方显式声明优先（弹窗知道自己是否加了 rotate-90）；未声明才几何嗅探兜底
     if (typeof rotated === "boolean") return rotated;
@@ -248,9 +246,8 @@ export function SignaturePad({
     const snapshot = value;
     const targetW = Math.max(1, Math.round(width * ratio));
     const targetH = Math.max(1, Math.round(height * ratio));
-    const rotatedNow = isQuarterRotated(canvas);
-    // 尺寸没变、旋转态没变且当前显示正是这份 value（笔迹回传触发的重绘）：像素已正确，直接跳过
-    if (canvas.width === targetW && canvas.height === targetH && drawnValueRef.current === value && drawnRotatedRef.current === rotatedNow) return;
+    // 尺寸没变且当前显示正是这份 value（笔迹回传触发的重绘）：像素已正确，直接跳过
+    if (canvas.width === targetW && canvas.height === targetH && drawnValueRef.current === value) return;
     canvas.width = targetW;
     canvas.height = targetH;
     const context = canvas.getContext("2d");
@@ -268,7 +265,6 @@ export function SignaturePad({
     if (!snapshot) {
       // 空签名是同步绘制，直接标记“已显示”
       drawnValueRef.current = "";
-      drawnRotatedRef.current = rotatedNow;
       return;
     }
     // 图片回画是异步的：onload 真正画上之前不得标记 drawnValueRef，否则布局抖动
@@ -276,30 +272,16 @@ export function SignaturePad({
     // 提前返回，而本次 onload 又因 drawToken 失效被丢弃——画布空白但提交有数据
     // （2026-09-04 横屏签名保存后预览空白根因）。onerror 兜底防止坏图反复重试。
     drawnValueRef.current = "";
-    drawnRotatedRef.current = rotatedNow;
     const markDrawn = () => {
       drawnValueRef.current = snapshot;
-      drawnRotatedRef.current = rotatedNow;
     };
     const image = new Image();
     image.onload = () => {
       if (drawTokenRef.current !== token) return;
-      // 裁剪图是设备像素：换回 CSS 尺寸（÷ratio）后只缩不放，绝不上采样——恢复/重绘不再放大笔迹
+      // 裁剪图是设备像素：换回 CSS 尺寸（÷ratio）后只缩不放，绝不上采样——恢复/重绘不再放大笔迹。
+      // 位图即用户视角正像，不做任何旋转（含 CSS rotate-90 旋转态，反向映射已保证所见即所得）
       const naturalW = image.width / ratio;
       const naturalH = image.height / ratio;
-      if (rotatedNow) {
-        // 画布被旋转 90° 展示：把图片反向转进画布，用户看到的才是正的
-        const scale = Math.min(1, height / naturalW, width / naturalH);
-        const drawWidth = naturalW * scale;
-        const drawHeight = naturalH * scale;
-        context.save();
-        context.translate(width / 2, height / 2);
-        context.rotate(-Math.PI / 2);
-        context.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-        context.restore();
-        markDrawn();
-        return;
-      }
       const scale = Math.min(1, width / naturalW, height / naturalH);
       const drawWidth = naturalW * scale;
       const drawHeight = naturalH * scale;
@@ -310,7 +292,7 @@ export function SignaturePad({
       if (drawTokenRef.current === token) markDrawn();
     };
     image.src = snapshot;
-  }, [value, rotated]);
+  }, [value]);
 
   useEffect(() => {
     let frame = 0;
@@ -365,26 +347,12 @@ export function SignaturePad({
     const canvas = canvasRef.current;
     let dataUrl = "";
     if (canvas) {
-      let source = canvas;
-      if (isQuarterRotated(canvas)) {
-        // 画布被 CSS 旋转 90°：导出时把位图转正，保证存下来的签名是正的
-        const output = document.createElement("canvas");
-        output.width = canvas.height;
-        output.height = canvas.width;
-        const outputContext = output.getContext("2d");
-        if (outputContext) {
-          outputContext.translate(output.width / 2, output.height / 2);
-          outputContext.rotate(Math.PI / 2);
-          outputContext.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
-          source = output;
-        }
-      }
-      // 裁剪到笔迹包围盒：签名只含笔迹本身，服务记录/归档 PDF 中渲染大小一致
-      dataUrl = cropSignatureDataUrl(source);
-      if (!dataUrl) dataUrl = source.toDataURL("image/png");
+      // 位图即用户视角正像，直接裁剪到笔迹包围盒存储（不做任何旋转）：
+      // 签名只含笔迹本身，服务记录/归档 PDF 中渲染大小一致
+      dataUrl = cropSignatureDataUrl(canvas);
+      if (!dataUrl) dataUrl = canvas.toDataURL("image/png");
     }
     drawnValueRef.current = dataUrl; // 标记本画布已显示此 value，阻止紧随其后的重绘把它拉伸放大
-    if (canvas) drawnRotatedRef.current = isQuarterRotated(canvas); // 位图朝向同步记录，方向翻转时重绘不被跳过
     onChange(dataUrl);
   }
 
