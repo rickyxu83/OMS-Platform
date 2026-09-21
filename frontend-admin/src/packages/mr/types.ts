@@ -122,6 +122,7 @@ export interface MrOrder {
   returnTarget?: 'sales' | 'assistant' | null
   versionNo?: number
   purchaseStatus?: MrPurchaseStatus | null
+  purchaseDraft?: number | null
   purchaseAssigneeUserId?: string | number | null
   purchaseAssigneeName?: string | null
   purchaseAssignmentError?: string | null

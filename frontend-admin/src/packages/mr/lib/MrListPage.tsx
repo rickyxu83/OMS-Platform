@@ -575,9 +575,10 @@ export function MrListPage() {
                         <>
                           {/* 流程递进箭头：常驻琥珀色（呼应采购状态色）,无打扰动效 */}
                           <ArrowRight className="h-3 w-3 shrink-0 text-amber-600/80" />
-                          <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`采购状态：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}${order.updatedAt ? ` · 更新于 ${shortDate(order.updatedAt)}` : ''}（点击按采购状态筛选）`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
+                          <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`采购状态：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}${order.purchaseStatus === 'pending' && Number(order.purchaseDraft) ? '（已暂存部分品项）' : ''}${order.updatedAt ? ` · 更新于 ${shortDate(order.updatedAt)}` : ''}（点击按采购状态筛选）`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
                             {(() => { const conf = PURCHASE_INDICATOR[order.purchaseStatus || '']; const Icon = conf ? conf.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null })()}
                             {PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}
+                            {order.purchaseStatus === 'pending' && Number(order.purchaseDraft) ? <span className="rounded border border-amber-300 bg-amber-50 px-1 text-[10px] leading-4 text-amber-700">已暂存</span> : null}
                           </button>
                         </>
                       ) : null}
