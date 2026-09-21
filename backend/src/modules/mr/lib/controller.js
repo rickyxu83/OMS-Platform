@@ -633,8 +633,9 @@ async function list(req, res) {
             sales.assistant_user_id, assistant.real_name AS assistant_name,
             purchase_assignee.real_name AS purchase_assignee_name,
             c.code AS customer_code, (SELECT COUNT(*) FROM mr_items i WHERE i.mr_id = o.id) AS item_count,
-            EXISTS (SELECT 1 FROM mr_items di WHERE di.mr_id = o.id
-                    AND (di.company_part_no <> '' OR di.purchase_order_no <> '' OR di.shipment_no <> '')) AS purchase_draft,
+            (EXISTS (SELECT 1 FROM mr_items di WHERE di.mr_id = o.id
+                     AND (di.company_part_no <> '' OR di.purchase_order_no <> '' OR di.shipment_no <> ''))
+             OR (o.purchase_note IS NOT NULL AND o.purchase_note <> '')) AS purchase_draft,
             pending.step_key AS current_step_key, pending.step_label AS current_step_label,
             pending.assignee_user_id AS current_assignee_user_id, current_assignee.real_name AS current_assignee_name, pending.assignment_error,
             (SELECT va.approver_id FROM mr_void_approvals va
@@ -1551,6 +1552,8 @@ async function submitPurchase(req, res) {
 // 不记审计是刻意取舍：暂存只是进度快照，正式提交时审计会携带 before→after，中间态逐日留痕只会刷屏。
 async function savePurchaseDraft(req, res) {
   await ensureTables()
+  // 备注也是暂存内容的一部分（2026-09-21 佬反馈：只写备注点暂存，重开全丢）
+  const note = String(req.body?.note || '').trim().slice(0, 500) || null
   const rows = Array.isArray(req.body?.items) ? req.body.items : []
   await transaction(async (connection) => {
     const order = await loadLockedOrder(connection, req.params.id)
@@ -1574,7 +1577,7 @@ async function savePurchaseDraft(req, res) {
     for (const [value, companyValue, shipmentValue, itemId] of updates) {
       await connection.execute('UPDATE mr_items SET purchase_order_no = :value, company_part_no = :companyValue, shipment_no = :shipmentValue WHERE id = :itemId AND mr_id = :mrId', { value, companyValue, shipmentValue, itemId, mrId: order.id })
     }
-    await connection.execute('UPDATE mr_orders SET updated_by = :userId WHERE id = :mrId', { mrId: order.id, userId: req.user.id })
+    await connection.execute('UPDATE mr_orders SET purchase_note = :note, updated_by = :userId WHERE id = :mrId', { mrId: order.id, userId: req.user.id, note })
   })
   res.json(await loadDetail(req.params.id, req.user))
 }
