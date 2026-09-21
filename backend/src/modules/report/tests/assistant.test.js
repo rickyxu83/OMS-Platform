@@ -6,6 +6,7 @@ process.env.AI_API_KEY = 'test-key'
 process.env.AI_MODEL = 'test-model'
 const { summaryCacheKey, chat, SYSTEM_PROMPT } = require('../assistant')
 const { HttpError } = require('../../../utils/http-error')
+const { pool } = require('../../../config/db')
 
 const columns = [{ key: 'engineer', label: '工程师' }, { key: 'count', label: '单数' }]
 const rows = [
@@ -95,7 +96,12 @@ async function testChatRetry() {
   console.log('report assistant chat retry tests passed')
 }
 
-testChatRetry().then(() => console.log('report assistant tests passed')).catch((err) => {
-  console.error(err)
-  process.exit(1)
-})
+testChatRetry()
+  // chat() 内部 resolveAiConnection 会查一次设置表，mysql2 连接池的空闲连接会吊住事件循环，
+  // 不关池进程不退（曾致全量 npm test 挂 4 分钟+，超时被杀还得重跑）
+  .then(() => pool.end())
+  .then(() => console.log('report assistant tests passed'))
+  .catch((err) => {
+    console.error(err)
+    process.exit(1)
+  })

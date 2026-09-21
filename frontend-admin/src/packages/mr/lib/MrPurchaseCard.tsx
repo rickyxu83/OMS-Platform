@@ -27,7 +27,9 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
   const [batchNo, setBatchNo] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [note, setNote] = useState('')
-  const [busy, setBusy] = useState(false)
+  // 分动作跟踪忙碌状态：暂存/提交各自转自己的圈，避免一个请求两个按钮同时 spin
+  const [busyAction, setBusyAction] = useState<'draft' | 'submit' | null>(null)
+  const busy = busyAction !== null
 
   const items = order.items || []
   const status = String(order.purchaseStatus || '')
@@ -134,7 +136,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
 
   const saveDraft = async () => {
     if (!order.id) return
-    setBusy(true)
+    setBusyAction('draft')
     try {
       const next = await saveMrPurchaseDraft(order.id, {
         items: items.map((item) => {
@@ -152,7 +154,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
     } catch (error) {
       toast.error((error as Error).message || '暂存失败')
     } finally {
-      setBusy(false)
+      setBusyAction(null)
     }
   }
 
@@ -169,7 +171,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
       toast.error(`第 ${items.indexOf(missingPo) + 1} 项有外部供应商，需填写采购单号`)
       return
     }
-    setBusy(true)
+    setBusyAction('submit')
     try {
       const next = await submitMrPurchase(order.id, {
         items: items.map((item) => {
@@ -189,7 +191,7 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
     } catch (error) {
       toast.error((error as Error).message || '采购单号提交失败')
     } finally {
-      setBusy(false)
+      setBusyAction(null)
     }
   }
 
@@ -309,11 +311,11 @@ export function MrPurchaseCard({ order, onChanged }: { order: MrOrder; onChanged
             <div className="flex flex-wrap gap-2">
               {status === 'pending' ? (
                 <Button type="button" variant="outline" disabled={busy} onClick={() => void saveDraft()}>
-                  {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}暂存
+                  {busyAction === 'draft' ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}暂存
                 </Button>
               ) : null}
               <Button type="button" disabled={busy} onClick={() => void submit()}>
-                {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ClipboardPen className="mr-2 size-4" />}提交采购单号
+                {busyAction === 'submit' ? <Loader2 className="mr-2 size-4 animate-spin" /> : <ClipboardPen className="mr-2 size-4" />}提交采购单号
               </Button>
             </div>
           </div>

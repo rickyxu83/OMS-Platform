@@ -633,6 +633,8 @@ async function list(req, res) {
             sales.assistant_user_id, assistant.real_name AS assistant_name,
             purchase_assignee.real_name AS purchase_assignee_name,
             c.code AS customer_code, (SELECT COUNT(*) FROM mr_items i WHERE i.mr_id = o.id) AS item_count,
+            EXISTS (SELECT 1 FROM mr_items di WHERE di.mr_id = o.id
+                    AND (di.company_part_no <> '' OR di.purchase_order_no <> '' OR di.shipment_no <> '')) AS purchase_draft,
             pending.step_key AS current_step_key, pending.step_label AS current_step_label,
             pending.assignee_user_id AS current_assignee_user_id, current_assignee.real_name AS current_assignee_name, pending.assignment_error,
             (SELECT va.approver_id FROM mr_void_approvals va
