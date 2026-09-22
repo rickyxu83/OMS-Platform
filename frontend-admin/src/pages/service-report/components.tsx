@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type * as React from "react";
-import { CheckCircle, FileText, PenLine, RotateCcw, X } from "lucide-react";
+import { CheckCircle, Eye, FileText, PenLine, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cropSignatureDataUrl } from "@/lib/signature-crop";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -535,21 +535,35 @@ export function ReportPreviewBlock({ label, value, markdown = false }: { label: 
 
 
 
-export function markdownReplacement(action: MarkdownAction, selected: string) {
+export interface MarkdownReplacement {
+  text: string;
+  /** 插入文本内的光标/选区起止偏移 */
+  selectionStart: number;
+  selectionEnd: number;
+}
+
+export function markdownReplacement(action: MarkdownAction, selected: string): MarkdownReplacement {
   const value = selected || "";
-  if (action === "heading") return { text: `## ${value || "小标题"}`, placeholder: value ? "" : "小标题" };
-  if (action === "bold") return { text: `**${value || "重点内容"}**`, placeholder: value ? "" : "重点内容" };
-  if (action === "inlineCode") return { text: `\`${value || "命令或错误代码"}\``, placeholder: value ? "" : "命令或错误代码" };
-  if (action === "codeBlock") {
-    return { text: `\`\`\`\n${value || "粘贴命令、日志或错误代码"}\n\`\`\``, placeholder: value ? "" : "粘贴命令、日志或错误代码" };
+  const at = (text: string, offset: number): MarkdownReplacement => ({ text, selectionStart: offset, selectionEnd: offset });
+  if (action === "heading") return at(`## ${value}`, 3 + value.length);
+  if (action === "bold") return at(`**${value}**`, value ? 2 + value.length + 2 : 2);
+  if (action === "inlineCode") return at(`\`${value}\``, value ? 1 + value.length + 1 : 1);
+  if (action === "codeBlock") return at(`\`\`\`\n${value}\n\`\`\``, value ? 4 + value.length + 4 : 4);
+  if (action === "link") return at(`[${value}]()`, value ? 1 + value.length + 2 : 1);
+  if (action === "quote") {
+    const lines = value ? value.split("\n") : [""];
+    const text = lines.map((line) => `> ${line}`).join("\n");
+    return at(text, text.length);
   }
-  if (action === "link") return { text: `[${value || "链接文字"}](https://example.com)`, placeholder: value ? "https://example.com" : "链接文字" };
+  if (action === "divider") return at("---", 3);
   if (action === "numbered") {
-    const lines = (value || "列表项").split("\n");
-    return { text: lines.map((line, index) => `${index + 1}. ${line || "列表项"}`).join("\n"), placeholder: value ? "" : "列表项" };
+    const lines = value ? value.split("\n") : [""];
+    const text = lines.map((line, index) => `${index + 1}. ${line}`).join("\n");
+    return at(text, text.length);
   }
-  const lines = (value || "列表项").split("\n");
-  return { text: lines.map((line) => `- ${line || "列表项"}`).join("\n"), placeholder: value ? "" : "列表项" };
+  const lines = value ? value.split("\n") : [""];
+  const text = lines.map((line) => `- ${line}`).join("\n");
+  return at(text, text.length);
 }
 
 export function MarkdownTextarea({
@@ -562,6 +576,7 @@ export function MarkdownTextarea({
   rows?: number;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [mode, setMode] = useState<"edit" | "preview">("edit");
 
   function applyMarkdown(action: MarkdownAction) {
     const textarea = textareaRef.current;
@@ -575,15 +590,7 @@ export function MarkdownTextarea({
       const current = textareaRef.current;
       if (!current) return;
       current.focus();
-      if (replacement.placeholder) {
-        const placeholderStart = replacement.text.indexOf(replacement.placeholder);
-        if (placeholderStart >= 0) {
-          current.setSelectionRange(start + placeholderStart, start + placeholderStart + replacement.placeholder.length);
-          return;
-        }
-      }
-      const nextCursor = start + replacement.text.length;
-      current.setSelectionRange(nextCursor, nextCursor);
+      current.setSelectionRange(start + replacement.selectionStart, start + replacement.selectionEnd);
     });
   }
 
@@ -601,20 +608,54 @@ export function MarkdownTextarea({
               className="h-8 w-8 rounded-md text-muted-foreground hover:text-foreground"
               title={tool.label}
               aria-label={tool.label}
+              disabled={mode === "preview"}
               onClick={() => applyMarkdown(tool.action)}
             >
               <Icon className="h-4 w-4" />
             </Button>
           );
         })}
+        <div className="ml-auto flex items-center gap-1">
+          <Button
+            type="button"
+            variant={mode === "edit" ? "secondary" : "ghost"}
+            size="sm"
+            className="h-8 gap-1 px-2 text-xs"
+            onClick={() => setMode("edit")}
+          >
+            <PenLine className="h-3.5 w-3.5" />
+            编辑
+          </Button>
+          <Button
+            type="button"
+            variant={mode === "preview" ? "secondary" : "ghost"}
+            size="sm"
+            className="h-8 gap-1 px-2 text-xs"
+            onClick={() => setMode("preview")}
+          >
+            <Eye className="h-3.5 w-3.5" />
+            预览
+          </Button>
+        </div>
       </div>
-      <Textarea
-        ref={textareaRef}
-        rows={rows}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="min-h-[180px] resize-y rounded-none border-0 shadow-none hover:bg-white focus-visible:border-transparent focus-visible:ring-0"
-      />
+      {mode === "edit" ? (
+        <Textarea
+          ref={textareaRef}
+          rows={rows}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="支持 Markdown 源码，可直接粘贴"
+          className="min-h-[180px] resize-y rounded-none border-0 shadow-none hover:bg-white focus-visible:border-transparent focus-visible:ring-0"
+        />
+      ) : (
+        <div className="max-h-[360px] min-h-[180px] overflow-y-auto bg-white px-3 py-2">
+          {value.trim() ? (
+            <MarkdownContent content={value} />
+          ) : (
+            <span className="text-sm text-muted-foreground">暂无内容</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

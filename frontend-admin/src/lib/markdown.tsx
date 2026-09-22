@@ -9,7 +9,7 @@ function safeHref(value: string) {
 
 function inlineMarkdown(text: string): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[(red|blue|green)\][\s\S]+?\[\/\2\]|\[[^\]]+\]\([^)]+\))/g;
+  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|~~[^~]+~~|!\[[^\]]*\]\([^)]+\)|\[(red|blue|green)\][\s\S]+?\[\/\2\]|\[[^\]]+\]\([^)]+\))/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -22,6 +22,14 @@ function inlineMarkdown(text: string): ReactNode[] {
       nodes.push(<code key={key}>{token.slice(1, -1)}</code>);
     } else if (token.startsWith("**")) {
       nodes.push(<strong key={key}>{inlineMarkdown(token.slice(2, -2))}</strong>);
+    } else if (token.startsWith("~~")) {
+      nodes.push(<del key={key}>{inlineMarkdown(token.slice(2, -2))}</del>);
+    } else if (token.startsWith("!")) {
+      const image = token.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+      const src = image ? safeHref(image[2]) : "";
+      nodes.push(src ? (
+        <img key={key} src={src} alt={image?.[1] || ""} loading="lazy" />
+      ) : token);
     } else if (token.startsWith("*")) {
       nodes.push(<em key={key}>{inlineMarkdown(token.slice(1, -1))}</em>);
     } else if (/^\[(red|blue|green)\]/.test(token)) {
@@ -68,6 +76,43 @@ function renderInlineLines(lines: string[]) {
   ));
 }
 
+const THEMATIC_BREAK = /^\s*([-*_])(?:\s*\1){2,}\s*$/;
+
+function splitTableRow(line: string): string[] {
+  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim());
+}
+
+function isTableSeparator(line: string): boolean {
+  if (!line.trim()) return false;
+  return splitTableRow(line).every((cell) => /^:?-+:?$/.test(cell));
+}
+
+function tableAlignments(separator: string): Array<"left" | "center" | "right"> {
+  return splitTableRow(separator).map((cell) => {
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    return left && right ? "center" : right ? "right" : "left";
+  });
+}
+
+function isTableStart(lines: string[], index: number): boolean {
+  return lines[index].includes("|") && index + 1 < lines.length && isTableSeparator(lines[index + 1]);
+}
+
+/** 判断某行是否开启新的块级结构（用于列表续行与段落的终止判定） */
+function isBlockStart(lines: string[], index: number): boolean {
+  const line = lines[index];
+  return (
+    /^(#{1,6})\s+/.test(line)
+    || /^```/.test(line)
+    || /^\s*>\s?/.test(line)
+    || THEMATIC_BREAK.test(line)
+    || /^\s*[-*]\s+/.test(line)
+    || /^\s*\d+\.\s+/.test(line)
+    || isTableStart(lines, index)
+  );
+}
+
 export function MarkdownContent({ content, className = "" }: { content: string; className?: string }) {
   const lines = normalizeMarkdownLines(content);
   const blocks: ReactNode[] = [];
@@ -98,12 +143,60 @@ export function MarkdownContent({ content, className = "" }: { content: string; 
       continue;
     }
 
-    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
       const level = heading[1].length;
       const Tag = (`h${level}` as keyof JSX.IntrinsicElements);
       blocks.push(<Tag key={index}>{inlineMarkdown(heading[2])}</Tag>);
       index += 1;
+      continue;
+    }
+
+    if (THEMATIC_BREAK.test(line)) {
+      blocks.push(<hr key={`hr-${index}`} />);
+      index += 1;
+      continue;
+    }
+
+    if (/^\s*>\s?/.test(line)) {
+      const quoteLines: string[] = [];
+      while (index < lines.length && /^\s*>\s?/.test(lines[index])) {
+        quoteLines.push(lines[index].replace(/^\s*>\s?/, ""));
+        index += 1;
+      }
+      blocks.push(<blockquote key={`quote-${index}`}>{renderInlineLines(quoteLines)}</blockquote>);
+      continue;
+    }
+
+    if (isTableStart(lines, index)) {
+      const headerCells = splitTableRow(line);
+      const aligns = tableAlignments(lines[index + 1]);
+      index += 2;
+      const bodyRows: string[][] = [];
+      while (index < lines.length && lines[index].trim() && lines[index].includes("|")) {
+        bodyRows.push(splitTableRow(lines[index]));
+        index += 1;
+      }
+      blocks.push(
+        <table key={`table-${index}`}>
+          <thead>
+            <tr>
+              {headerCells.map((cell, cellIndex) => (
+                <th key={cellIndex} style={{ textAlign: aligns[cellIndex] || "left" }}>{inlineMarkdown(cell)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {bodyRows.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {row.map((cell, cellIndex) => (
+                  <td key={cellIndex} style={{ textAlign: aligns[cellIndex] || "left" }}>{inlineMarkdown(cell)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>,
+      );
       continue;
     }
 
@@ -121,13 +214,7 @@ export function MarkdownContent({ content, className = "" }: { content: string; 
         if (!/^\s*[-*]\s+/.test(lines[index])) break;
         const itemLines = [lines[index].replace(/^\s*[-*]\s+/, "")];
         index += 1;
-        while (
-          index < lines.length
-          && lines[index].trim()
-          && !/^(#{1,3})\s+/.test(lines[index])
-          && !/^\s*[-*]\s+/.test(lines[index])
-          && !/^\s*\d+\.\s+/.test(lines[index])
-        ) {
+        while (index < lines.length && lines[index].trim() && !isBlockStart(lines, index)) {
           itemLines.push(lines[index].trim());
           index += 1;
         }
@@ -154,13 +241,7 @@ export function MarkdownContent({ content, className = "" }: { content: string; 
         if (!/^\s*\d+\.\s+/.test(lines[index])) break;
         const itemLines = [lines[index].replace(/^\s*\d+\.\s+/, "")];
         index += 1;
-        while (
-          index < lines.length
-          && lines[index].trim()
-          && !/^(#{1,3})\s+/.test(lines[index])
-          && !/^\s*[-*]\s+/.test(lines[index])
-          && !/^\s*\d+\.\s+/.test(lines[index])
-        ) {
+        while (index < lines.length && lines[index].trim() && !isBlockStart(lines, index)) {
           itemLines.push(lines[index].trim());
           index += 1;
         }
@@ -171,13 +252,7 @@ export function MarkdownContent({ content, className = "" }: { content: string; 
     }
 
     const paragraph: string[] = [];
-    while (
-      index < lines.length
-      && lines[index].trim()
-      && !/^(#{1,3})\s+/.test(lines[index])
-      && !/^\s*[-*]\s+/.test(lines[index])
-      && !/^\s*\d+\.\s+/.test(lines[index])
-    ) {
+    while (index < lines.length && lines[index].trim() && !isBlockStart(lines, index)) {
       paragraph.push(lines[index]);
       index += 1;
     }
