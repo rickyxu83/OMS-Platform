@@ -46,11 +46,16 @@ function fakeAiResponse(content) {
   })
 }
 
+// 路由调用识别：路由 system prompt 含「数据集路由器」标记；本组测试路由一律返回 null（走全量目录回退路径）
+const isRouterCall = (body) => String(body.messages?.[0]?.content || '').includes('数据集路由器')
+
 async function testChatRetry() {
   // ①首次输出非 JSON，重试后成功
   const calls = []
   const flakyFetch = async (url, options) => {
-    calls.push(JSON.parse(options.body))
+    const body = JSON.parse(options.body)
+    if (isRouterCall(body)) return fakeAiResponse(JSON.stringify({ dataset: null }))
+    calls.push(body)
     return calls.length === 1
       ? fakeAiResponse('好的，本月工单共 128 单，其中已结案 96 单。') // 纯文本，无 JSON 信封
       : fakeAiResponse(JSON.stringify({ reply: '本月工单统计如下', spec: { dataset: 'service_orders' } }))

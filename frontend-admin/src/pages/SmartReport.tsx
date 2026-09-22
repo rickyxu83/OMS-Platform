@@ -66,7 +66,8 @@ const EXAMPLE_PROMPTS = [
 ]
 
 const CHART_LABELS: Record<ChartKind, string> = { table: '表格', bar: '柱状图', line: '折线图', pie: '饼图' }
-const CHART_COLORS = ['#7c3aed', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6', '#f97316', '#84cc16', '#ec4899']
+// 主色用公司 logo 紫（dunyang-mark.png 取样 #5F2890）
+const CHART_COLORS = ['#5F2890', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6', '#f97316', '#84cc16', '#ec4899']
 
 /** 指标数值千分位分组（大金额可读性）；非数值原样返回 */
 function formatThousands(value: unknown): string {
@@ -144,11 +145,12 @@ function toChartData(preview: PreviewState) {
   return { data, metricLabel }
 }
 
-function defaultChartKind(spec: ReportSpec | null): ChartKind {
-  if (!spec) return 'table'
-  if (spec.chartType && ['bar', 'line', 'pie', 'table'].includes(spec.chartType)) return spec.chartType as ChartKind
-  if (spec.groupBy.some((k) => ['month', 'week', 'day'].includes(k))) return 'line'
-  return spec.groupBy.length ? 'bar' : 'table'
+/** 图表类型偏好持久化：记住用户手动选择，默认柱状图 */
+const CHART_KIND_KEY = 'smart-report:chartKind'
+
+function loadChartKind(): ChartKind {
+  const saved = localStorage.getItem(CHART_KIND_KEY)
+  return saved && ['table', 'bar', 'line', 'pie'].includes(saved) ? (saved as ChartKind) : 'bar'
 }
 
 function ChartView({ preview, kind }: { preview: PreviewState; kind: ChartKind }) {
@@ -184,7 +186,7 @@ function ChartView({ preview, kind }: { preview: PreviewState; kind: ChartKind }
           <XAxis dataKey="name" fontSize={11} tickLine={false} />
           <YAxis fontSize={11} tickLine={false} axisLine={false} width={48} />
           <Tooltip formatter={(value) => [`${value}`, metricLabel]} />
-          <Line type="monotone" dataKey="value" stroke="#7c3aed" strokeWidth={2} dot={{ r: 3 }} />
+          <Line type="monotone" dataKey="value" stroke="#5F2890" strokeWidth={2} dot={{ r: 3 }} />
         </ReLineChart>
       </ResponsiveContainer>
     )
@@ -196,7 +198,7 @@ function ChartView({ preview, kind }: { preview: PreviewState; kind: ChartKind }
         <XAxis dataKey="name" fontSize={11} tickLine={false} />
         <YAxis fontSize={11} tickLine={false} axisLine={false} width={48} />
         <Tooltip formatter={(value) => [`${value}`, metricLabel]} />
-        <Bar dataKey="value" fill="#7c3aed" radius={[4, 4, 0, 0]} maxBarSize={48} />
+        <Bar dataKey="value" fill="#5F2890" radius={[4, 4, 0, 0]} maxBarSize={48} />
       </BarChart>
     </ResponsiveContainer>
   )
@@ -205,9 +207,16 @@ function ChartView({ preview, kind }: { preview: PreviewState; kind: ChartKind }
 export function SmartReport() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
+  const [nextTip, setNextTip] = useState('') // AI 给的下一轮追问提示，作为输入框占位文案
   const [sending, setSending] = useState(false)
   const [preview, setPreview] = useState<PreviewState | null>(null)
-  const [chartKind, setChartKind] = useState<ChartKind>('table')
+  const [chartKind, setChartKindState] = useState<ChartKind>(loadChartKind)
+
+  /** 手动切换图表类型：生效并记住选择（下次访问/新报表都沿用） */
+  const setChartKind = (kind: ChartKind) => {
+    setChartKindState(kind)
+    localStorage.setItem(CHART_KIND_KEY, kind)
+  }
   const [templates, setTemplates] = useState<ReportTemplate[]>([])
   const [saveOpen, setSaveOpen] = useState(false)
   const [templateName, setTemplateName] = useState('')
@@ -221,6 +230,7 @@ export function SmartReport() {
   const [runningTemplateId, setRunningTemplateId] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const chartBoxRef = useRef<HTMLDivElement>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
 
   const loadTemplates = useCallback(async () => {
     try {
@@ -236,6 +246,7 @@ export function SmartReport() {
     if (assistantReply !== undefined) {
       setMessages((prev) => [...prev, { role: 'assistant', content: assistantReply }])
     }
+    if (result?.suggestion) setNextTip(String(result.suggestion))
     if (result?.spec) {
       setPreview({
         spec: result.spec,
@@ -248,7 +259,11 @@ export function SmartReport() {
         compare: result.compare || null,
         range: result.range || null,
       })
-      setChartKind(defaultChartKind(result.spec))
+      // 图表类型沿用用户记住的选择，不再随每张报表自动切换
+      // 窄屏（手机/小窗）下预览在对话上方：新报表生成后自动滚回预览，不用手动往上拉
+      if (window.innerWidth < 1024) {
+        requestAnimationFrame(() => previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+      }
     }
   }
 
@@ -275,7 +290,8 @@ export function SmartReport() {
     try {
       const result = await api.post('/report/preview', { spec: template.spec })
       applyResult(result)
-      if (template.chartType) setChartKind(template.chartType as ChartKind)
+      // 模板带自己的图表类型：临时应用但不覆盖用户手动记住的偏好
+      if (template.chartType) setChartKindState(template.chartType as ChartKind)
       setMessages((prev) => [...prev, { role: 'assistant', content: `已运行报表「${template.name}」，结果为最新数据。` }])
     } catch (error: any) {
       toast.error(error?.message || '模板运行失败')
@@ -451,7 +467,7 @@ export function SmartReport() {
           </div>
         )}
 
-        <div className="flex min-h-[320px] flex-1 flex-col rounded-xl border border-border bg-card">
+        <div className="flex max-h-[60vh] min-h-[320px] flex-1 flex-col rounded-xl border border-border bg-card lg:max-h-none">
           <div className="flex items-center gap-1.5 border-b border-border px-3 py-2.5 text-sm font-medium">
             <Sparkles className="h-4 w-4 text-primary" /> 描述你想要的报表
           </div>
@@ -490,7 +506,7 @@ export function SmartReport() {
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="例如：换成按客户分组 / 只看已结案的"
+              placeholder={nextTip ? `例如：${nextTip}` : '例如：换成按客户分组 / 只看已结案的'}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) void send(input) }}
               disabled={sending}
             />
@@ -501,12 +517,12 @@ export function SmartReport() {
         </div>
       </div>
 
-      {/* 右栏：预览 */}
-      <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-border bg-card">
+      {/* 右栏：预览（窄屏提到最上方，对话变化不再把它顶走） */}
+      <div ref={previewRef} className="order-first flex min-h-0 flex-1 flex-col rounded-xl border border-border bg-card lg:order-none">
         {!preview ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-sm text-muted-foreground">
             <Sparkles className="h-8 w-8 text-primary/40" />
-            <p>在左侧描述想看的报表，这里会实时出结果</p>
+            <p>描述想看的报表，这里会实时出结果</p>
             <p className="text-xs">支持工单、工时、考勤、巡检计划、设备、订购申请（MR）六类数据</p>
           </div>
         ) : (

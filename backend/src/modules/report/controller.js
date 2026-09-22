@@ -42,7 +42,7 @@ async function chat(req, res) {
   const result = await assistant.chat(messages)
 
   if (!result.spec) {
-    return res.json({ reply: result.reply, spec: null })
+    return res.json({ reply: result.reply, spec: null, suggestion: result.suggestion || '' })
   }
 
   const { errors, spec } = validateSpec(result.spec)
@@ -50,6 +50,7 @@ async function chat(req, res) {
     return res.json({
       reply: `${result.reply}\n\n（这张报表我暂时生成不了：${errors.join('；')}。可以换个说法，或换用支持的维度/指标。）`,
       spec: null,
+      suggestion: result.suggestion || '',
     })
   }
 
@@ -71,6 +72,7 @@ async function chat(req, res) {
     summary,
     compare: preview.compare,
     range: preview.range,
+    suggestion: result.suggestion || '',
   })
 }
 

@@ -85,6 +85,10 @@ const env = {
       ? null
       : Number(process.env.AI_QUOTE_TEMPERATURE),
     quoteMaxPages: Number(process.env.AI_QUOTE_MAX_PAGES || 3),
+    // 智能报表数据集路由：默认启用；AI_REPORT_ROUTER_DISABLED=true 一键回退全量目录旧行为；
+    // AI_REPORT_ROUTER_MODEL 可给路由单独配小模型（不配则沿用主模型）
+    reportRouterDisabled: process.env.AI_REPORT_ROUTER_DISABLED === 'true',
+    reportRouterModel: process.env.AI_REPORT_ROUTER_MODEL || '',
   },
   db: {
     host: process.env.DB_HOST || '127.0.0.1',
