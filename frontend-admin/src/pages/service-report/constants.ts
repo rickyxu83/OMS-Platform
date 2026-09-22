@@ -3,7 +3,7 @@
  */
 import {
   Bold, Braces, Camera, ClipboardCheck, ClipboardPenLine, Code2, FileText,
-  HardDrive, Heading2, Link, List, ListOrdered, MonitorCog, Package, Upload, Wrench,
+  HardDrive, Heading2, Link, List, ListOrdered, Minus, MonitorCog, Package, TextQuote, Upload, Wrench,
 } from "lucide-react";
 import type { AttachmentPurpose, BadgeVariant, MarkdownAction, ServiceMode, ServiceModuleOption } from "./types";
 
@@ -142,4 +142,6 @@ export const MARKDOWN_TOOLS = [
   { action: "inlineCode", label: "行内代码", icon: Code2 },
   { action: "codeBlock", label: "代码块", icon: Braces },
   { action: "link", label: "链接", icon: Link },
+  { action: "quote", label: "引用", icon: TextQuote },
+  { action: "divider", label: "分割线", icon: Minus },
 ] as const;

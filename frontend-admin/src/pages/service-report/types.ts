@@ -296,4 +296,4 @@ export interface CreateDraftItem {
   updatedAt?: string;
 }
 
-export type MarkdownAction = "heading" | "bold" | "bullet" | "numbered" | "inlineCode" | "codeBlock" | "link";
+export type MarkdownAction = "heading" | "bold" | "bullet" | "numbered" | "inlineCode" | "codeBlock" | "link" | "quote" | "divider";
