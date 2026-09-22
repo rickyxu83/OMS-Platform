@@ -89,6 +89,8 @@ const env = {
     // AI_REPORT_ROUTER_MODEL 可给路由单独配小模型（不配则沿用主模型）
     reportRouterDisabled: process.env.AI_REPORT_ROUTER_DISABLED === 'true',
     reportRouterModel: process.env.AI_REPORT_ROUTER_MODEL || '',
+    // 智能报表专用模型（DB 系统设置 ai.reportModel 优先，此为兜底）；留空跟随主模型
+    reportModel: process.env.AI_REPORT_MODEL || '',
   },
   db: {
     host: process.env.DB_HOST || '127.0.0.1',

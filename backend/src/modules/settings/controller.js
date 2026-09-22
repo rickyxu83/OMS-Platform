@@ -12,6 +12,7 @@ const settingKeys = [
   'ai.apiUrl',
   'ai.apiKey',
   'ai.model',
+  'ai.reportModel',
   'mail.enabled',
   'mail.host',
   'mail.port',
@@ -72,6 +73,8 @@ async function effectiveSettings() {
       apiUrl: saved['ai.apiUrl'] ?? env.ai.apiUrl,
       apiKey: saved['ai.apiKey'] ?? env.ai.apiKey,
       model: saved['ai.model'] ?? env.ai.model,
+      // 智能报表专用模型（可选，留空跟随主模型）：报表是多轮工具循环，可用高速模型降延迟，报价识别等仍用主模型
+      reportModel: saved['ai.reportModel'] ?? env.ai.reportModel,
     },
     mail: {
       enabled: boolText(saved['mail.enabled'], false),
@@ -176,6 +179,7 @@ function normalizeAiSettings(bodyAi = {}, currentAi) {
     provider: String(bodyAi.provider || currentAi.provider || 'custom').trim(),
     apiUrl: String(bodyAi.apiUrl || currentAi.apiUrl || '').trim(),
     model: String(bodyAi.model || currentAi.model || '').trim(),
+    reportModel: bodyAi.reportModel !== undefined ? String(bodyAi.reportModel).trim() : (currentAi.reportModel || ''),
     apiKey: apiKey && apiKey !== HIDDEN_SECRET ? apiKey : currentAi.apiKey,
   }
 }
@@ -224,6 +228,7 @@ async function update(req, res) {
     next['ai.provider'] = ai.provider
     next['ai.apiUrl'] = ai.apiUrl
     next['ai.model'] = ai.model
+    next['ai.reportModel'] = ai.reportModel
     next['ai.apiKey'] = ai.apiKey
   }
 
