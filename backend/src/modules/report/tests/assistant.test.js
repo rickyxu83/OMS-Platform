@@ -182,6 +182,24 @@ async function testAgentLoop() {
     assert.equal(conn.apiUrl, process.env.AI_API_URL, '未配独立地址时跟随主通道')
   }
 
+  // ⑨currentSpec 注入：带当前报表定义时，主调用消息含【当前报表】上下文（追问调整的基准）
+  {
+    const mains = []
+    const fetchImpl = async (url, options) => {
+      const body = JSON.parse(options.body)
+      if (isRouterCall(body)) return ROUTER_NULL()
+      mains.push(body)
+      return fakeAiResponse(JSON.stringify({ action: 'final', reply: '好的', suggestions: [] }))
+    }
+    await chat([{ role: 'user', content: '只看 top5' }], {
+      fetchImpl,
+      currentSpec: { dataset: 'timesheets', groupBy: ['customer'], metrics: ['hours'], limit: null },
+    })
+    const ctxMsg = mains[0].messages.find((m) => String(m.content).includes('【当前报表】'))
+    assert.ok(ctxMsg, '应注入当前报表上下文')
+    assert.ok(ctxMsg.content.includes('timesheets'), '上下文应含当前 spec')
+  }
+
   console.log('report assistant agent-loop tests passed')
 }
 

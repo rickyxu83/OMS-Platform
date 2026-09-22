@@ -75,6 +75,7 @@ const SYSTEM_RULES = [
   '2. 工具结果不符合用户意图（选错数据集/口径不对/分组不对）→ 修正 spec 重新 run_report，不要将就',
   '3. 需求不明确（没说统计对象或统计口径）→ 直接 final 追问，不要硬猜；用户寒暄或提问不需要报表 → 直接 final 回答。但涉及任何统计数据、名单、数字的回答，必须先在本轮用 run_report 拿到真实数据再 final——你看不到上文的工具结果（每轮对话不保留），凭记忆或经验列举客户名、公司名、数字一律视为编造，严禁',
   '4. 用户只说时间没说别的（如"这个月工单怎么样"）→ 选最自然的口径执行（工单数按状态分组），final 里说明可以继续调整',
+  '5. 对话里若带【当前报表】上下文（用户正在看的报表定义）：追问多为对它的调整（改排序/前 N 名/换分组/换时间/加筛选），在现有 spec 基础上修改并重新 run_report；严禁只文字回答调整结果而不重新执行',
   '',
   'spec 规则：',
   '5. dataset/groupBy/metrics/filters/timeField 的 key 只能从下方数据目录中选，严禁编造',
@@ -211,7 +212,7 @@ async function defaultRunReport(rawSpec) {
  * 返回 { reply, suggestions, preview }；preview 为最后一次成功执行的报表结果（未执行报表为 null）。
  * 循环耗尽但有成功报表 → 兜底返回；完全没有 → 502 友好提示。
  */
-async function chat(messages, { fetchImpl = fetch, runReport = defaultRunReport } = {}) {
+async function chat(messages, { fetchImpl = fetch, runReport = defaultRunReport, currentSpec = null } = {}) {
   const history = normalizeMessages(messages)
   if (!history.length || history[history.length - 1].role !== 'user') {
     throw badRequest('缺少用户消息')
@@ -229,6 +230,13 @@ async function chat(messages, { fetchImpl = fetch, runReport = defaultRunReport 
     }
   }
   const loopMessages = [{ role: 'system', content: system }, ...history]
+  // 注入当前报表上下文：追问（「只看 top5」「按金额排序」）是针对它的修改，让模型在现有 spec 上改而不是瞎猜
+  if (currentSpec && typeof currentSpec === 'object') {
+    loopMessages.splice(1, 0, {
+      role: 'user',
+      content: `【当前报表】用户正在看的报表定义：${JSON.stringify(currentSpec).slice(0, 1500)}。若用户最新消息是对它的调整，请在此基础上修改并重新 run_report。`,
+    })
+  }
   let lastPreview = null
 
   for (let step = 0; step < MAX_AGENT_STEPS; step++) {
@@ -247,7 +255,7 @@ async function chat(messages, { fetchImpl = fetch, runReport = defaultRunReport 
 
     if (!parsed || typeof parsed !== 'object') {
       // 部分模型偶发只输出纯文本（kimi-for-coding 实测）：把原始输出带回并明确纠正
-      pushToolResult({ ok: false, errors: ['你的回复不是合法 JSON。请严格只输出规定的动作 JSON（run_report 或 final），不要输出任何其他文字，不要使用 Markdown 代码块'] })
+      pushToolResult({ ok: false, errors: ['你的回复不是合法 JSON。请严格只输出规定的动作 JSON（run_report 或 final），不要输出任何其他文字，不要使用 Markdown 代码块；若用户在追问或调整报表，应输出 run_report 重新执行报表'] })
       continue
     }
 

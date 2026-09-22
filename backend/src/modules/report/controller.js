@@ -39,7 +39,9 @@ async function datasets(req, res) {
  */
 async function chat(req, res) {
   const messages = Array.isArray(req.body?.messages) ? req.body.messages.slice(-12) : []
-  const result = await assistant.chat(messages)
+  // 当前报表定义（前端正在展示的 spec）：追问调整的基准，防模型瞎猜或只文字回答
+  const currentSpec = req.body?.currentSpec && typeof req.body.currentSpec === 'object' ? req.body.currentSpec : null
+  const result = await assistant.chat(messages, { currentSpec })
 
   if (!result.preview) {
     return res.json({ reply: result.reply, spec: null, suggestions: result.suggestions || [] })
