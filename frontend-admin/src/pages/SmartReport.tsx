@@ -207,6 +207,7 @@ function ChartView({ preview, kind }: { preview: PreviewState; kind: ChartKind }
 export function SmartReport() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
+  const [nextTip, setNextTip] = useState('') // AI 给的下一轮追问提示，作为输入框占位文案
   const [sending, setSending] = useState(false)
   const [preview, setPreview] = useState<PreviewState | null>(null)
   const [chartKind, setChartKindState] = useState<ChartKind>(loadChartKind)
@@ -245,6 +246,7 @@ export function SmartReport() {
     if (assistantReply !== undefined) {
       setMessages((prev) => [...prev, { role: 'assistant', content: assistantReply }])
     }
+    if (result?.suggestion) setNextTip(String(result.suggestion))
     if (result?.spec) {
       setPreview({
         spec: result.spec,
@@ -504,7 +506,7 @@ export function SmartReport() {
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="例如：换成按客户分组 / 只看已结案的"
+              placeholder={nextTip ? `例如：${nextTip}` : '例如：换成按客户分组 / 只看已结案的'}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) void send(input) }}
               disabled={sending}
             />

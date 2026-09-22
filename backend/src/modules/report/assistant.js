@@ -55,6 +55,7 @@ const SYSTEM_RULES = [
   '    "chartType": "table" | "bar" | "line" | "pie"',
   '    "compare": null 或 { "type": "previous" | "year_ago" }（可选，不需要对比时省略或为 null）',
   '  }',
+  '  "suggestion": "给用户的下一轮追问提示（20 字以内的中文短句，不带「例如」前缀）",',
   '}',
   '',
   '规则：',
@@ -68,6 +69,7 @@ const SYSTEM_RULES = [
   '8. 用户要求对比（"环比/比上月/与上期相比" → compare.type="previous"；"同比/比去年/去年同期" → compare.type="year_ago"）时在 spec 里加 compare 字段；时间范围为「全部时间」时不要加 compare（不支持）',
   '9. 数据集选择注意同义词区分：问巡检的「完成情况/执行/漏检/应巡」用 inspection_completion（不是 inspection_schedules）；问「备件用量」用 service_parts；问「值班」用 duty_records；问「剩余年假/调休余额」用 leave_balance',
   '10. 无论对话进行到第几轮、无论用户是追问还是调整口径，每次回复都必须严格只输出上面规定的 JSON 对象，严禁只输出纯文本回复',
+  '11. suggestion 根据刚生成的报表给一条自然的下一步调整建议（如换分组/换时间范围/加对比/只看某状态，需结合当前报表内容，不要泛泛）；spec 为 null 时给一条引导用户说清需求的提问示例；没有合适建议时填空字符串',
 ].join('\n')
 
 /**
@@ -172,6 +174,7 @@ async function chat(messages, { fetchImpl = fetch } = {}) {
   return {
     reply: String(parsed.reply || '').trim() || '好的，请继续描述你的需求。',
     spec: parsed.spec && typeof parsed.spec === 'object' ? parsed.spec : null,
+    suggestion: String(parsed.suggestion || '').trim().slice(0, 30),
   }
 }
 

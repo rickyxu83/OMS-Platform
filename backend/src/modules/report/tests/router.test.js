@@ -67,7 +67,7 @@ async function main() {
       const body = JSON.parse(options.body)
       if (isRouterCall(body)) return fakeAiResponse(JSON.stringify({ dataset: 'inspection_completion' }))
       mains.push(body)
-      return fakeAiResponse(JSON.stringify({ reply: '巡检完成情况统计如下', spec: { dataset: 'inspection_completion' } }))
+      return fakeAiResponse(JSON.stringify({ reply: '巡检完成情况统计如下', spec: { dataset: 'inspection_completion' }, suggestion: '换成按工程师分组' }))
     }
     const result = await chat(history, { fetchImpl })
     assert.equal(mains.length, 1, '主流程应只调用一次')
@@ -75,6 +75,7 @@ async function main() {
     assert.ok(sys.includes('【inspection_completion】'))
     assert.ok(!sys.includes('【service_orders】'))
     assert.equal(result.spec.dataset, 'inspection_completion')
+    assert.equal(result.suggestion, '换成按工程师分组', 'suggestion 应透传给前端做追问提示')
   }
 
   // ⑥chat 集成：路由未命中 → 主调用回退全量目录（旧行为）
