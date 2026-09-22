@@ -91,6 +91,9 @@ const env = {
     reportRouterModel: process.env.AI_REPORT_ROUTER_MODEL || '',
     // 智能报表专用模型（DB 系统设置 ai.reportModel 优先，此为兜底）；留空跟随主模型
     reportModel: process.env.AI_REPORT_MODEL || '',
+    // 报表独立通道兜底（跨厂商时连地址+密钥一起配）
+    reportApiUrl: process.env.AI_REPORT_API_URL || '',
+    reportApiKey: process.env.AI_REPORT_API_KEY || '',
   },
   db: {
     host: process.env.DB_HOST || '127.0.0.1',
