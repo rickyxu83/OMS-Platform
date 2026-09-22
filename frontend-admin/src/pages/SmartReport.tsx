@@ -286,7 +286,7 @@ export function SmartReport() {
     setInput('')
     setSending(true)
     try {
-      const result = await api.post('/report/chat', { messages: nextMessages.slice(-12) })
+      const result = await api.post('/report/chat', { messages: nextMessages.slice(-12), currentSpec: preview?.spec || null })
       applyResult(result, String(result?.reply || ''))
     } catch (error: any) {
       setMessages((prev) => [...prev, { role: 'assistant', content: `出错了：${error?.message || '请求失败'}，请换个说法再试。` }])
