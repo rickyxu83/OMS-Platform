@@ -66,7 +66,8 @@ const EXAMPLE_PROMPTS = [
 ]
 
 const CHART_LABELS: Record<ChartKind, string> = { table: '表格', bar: '柱状图', line: '折线图', pie: '饼图' }
-const CHART_COLORS = ['#7c3aed', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6', '#f97316', '#84cc16', '#ec4899']
+// 主色用公司 logo 紫（dunyang-mark.png 取样 #5F2890）
+const CHART_COLORS = ['#5F2890', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6', '#f97316', '#84cc16', '#ec4899']
 
 /** 指标数值千分位分组（大金额可读性）；非数值原样返回 */
 function formatThousands(value: unknown): string {
@@ -185,7 +186,7 @@ function ChartView({ preview, kind }: { preview: PreviewState; kind: ChartKind }
           <XAxis dataKey="name" fontSize={11} tickLine={false} />
           <YAxis fontSize={11} tickLine={false} axisLine={false} width={48} />
           <Tooltip formatter={(value) => [`${value}`, metricLabel]} />
-          <Line type="monotone" dataKey="value" stroke="#7c3aed" strokeWidth={2} dot={{ r: 3 }} />
+          <Line type="monotone" dataKey="value" stroke="#5F2890" strokeWidth={2} dot={{ r: 3 }} />
         </ReLineChart>
       </ResponsiveContainer>
     )
@@ -197,7 +198,7 @@ function ChartView({ preview, kind }: { preview: PreviewState; kind: ChartKind }
         <XAxis dataKey="name" fontSize={11} tickLine={false} />
         <YAxis fontSize={11} tickLine={false} axisLine={false} width={48} />
         <Tooltip formatter={(value) => [`${value}`, metricLabel]} />
-        <Bar dataKey="value" fill="#7c3aed" radius={[4, 4, 0, 0]} maxBarSize={48} />
+        <Bar dataKey="value" fill="#5F2890" radius={[4, 4, 0, 0]} maxBarSize={48} />
       </BarChart>
     </ResponsiveContainer>
   )
