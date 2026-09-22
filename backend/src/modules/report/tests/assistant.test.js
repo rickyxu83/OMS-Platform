@@ -4,7 +4,8 @@ process.env.JWT_SECRET = 'test-secret'
 process.env.AI_API_URL = 'https://example.invalid/v1/chat/completions'
 process.env.AI_API_KEY = 'test-key'
 process.env.AI_MODEL = 'test-model'
-const { summaryCacheKey, chat, SYSTEM_PROMPT } = require('../assistant')
+process.env.AI_REPORT_MODEL = 'report-test-model'
+const { summaryCacheKey, chat, SYSTEM_PROMPT, resolveReportConnection } = require('../assistant')
 const { HttpError } = require('../../../utils/http-error')
 const { pool } = require('../../../config/db')
 
@@ -173,6 +174,13 @@ async function testAgentLoop() {
   assert.ok(SYSTEM_PROMPT.includes('run_report'))
   assert.ok(SYSTEM_PROMPT.includes('final'))
   assert.ok(SYSTEM_PROMPT.includes('严禁编造'))
+
+  // ⑧resolveReportConnection：无 DB 时回退 env 覆盖（回归：2026-09-22 require 路径错误被静默吞掉，独立通道失效）
+  {
+    const conn = await resolveReportConnection()
+    assert.equal(conn.model, 'report-test-model', 'AI_REPORT_MODEL 应覆盖主模型')
+    assert.equal(conn.apiUrl, process.env.AI_API_URL, '未配独立地址时跟随主通道')
+  }
 
   console.log('report assistant agent-loop tests passed')
 }

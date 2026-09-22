@@ -179,7 +179,7 @@ const MAX_AGENT_STEPS = 4 // 工具循环上限：run_report 失败自愈 + 重�
 async function resolveReportConnection() {
   const conn = await resolveAiConnection()
   try {
-    const { effectiveSettings } = require('../../settings/controller')
+    const { effectiveSettings } = require('../settings/controller')
     const settings = await effectiveSettings()
     const model = settings.ai.reportModel || env.ai.reportModel
     const apiUrl = settings.ai.reportApiUrl || env.ai.reportApiUrl
@@ -189,7 +189,9 @@ async function resolveReportConnection() {
       apiKey: apiKey || conn.apiKey,
       model: model || conn.model,
     }
-  } catch {
+  } catch (error) {
+    // 2026-09-22 事故：require 路径多写了一级（../../settings/controller），catch 静默吞掉导致独立通道悄悄失效
+    console.error('[report] resolveReportConnection 回退主通道:', error?.message || error)
     return {
       apiUrl: env.ai.reportApiUrl || conn.apiUrl,
       apiKey: env.ai.reportApiKey || conn.apiKey,
@@ -323,4 +325,4 @@ async function summarize(specText, columns, rows) {
   }
 }
 
-module.exports = { chat, summarize, catalogPrompt, buildSystemPrompt, summaryCacheKey, SYSTEM_PROMPT }
+module.exports = { chat, summarize, catalogPrompt, buildSystemPrompt, summaryCacheKey, SYSTEM_PROMPT, resolveReportConnection }
