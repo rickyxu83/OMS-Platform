@@ -183,7 +183,7 @@ interface ServiceOrderDeletePreview {
   customerSignatureRequestCount?: number;
 }
 
-const ORDER_ATTACHMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.jpg,.jpeg,.png,.webp,.heic,.heif,.zip";
+const ORDER_ATTACHMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.jpg,.jpeg,.png,.webp,.heic,.heif,.zip";
 const ORDER_ATTACHMENT_EXTENSIONS = new Set(ORDER_ATTACHMENT_ACCEPT.split(","));
 const ORDER_ATTACHMENT_MAX_SIZE = 20 * 1024 * 1024;
 

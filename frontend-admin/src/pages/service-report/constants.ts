@@ -125,7 +125,7 @@ export const FORM_SKIN = [
   "[&_[data-slot=textarea]]:focus-visible:bg-background",
   "[&_[data-slot=textarea]]:focus-visible:ring-primary/20",
 ].join(" ");
-export const INSPECTION_DOCUMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.log,.cfg,.conf,.ini,.json,.xml,.yaml,.yml,.jpg,.jpeg,.png,.webp,.heic,.heif,.zip";
+export const INSPECTION_DOCUMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.log,.cfg,.conf,.ini,.json,.xml,.yaml,.yml,.jpg,.jpeg,.png,.webp,.heic,.heif,.zip";
 export const INSPECTION_DOCUMENT_EXTENSIONS = new Set(INSPECTION_DOCUMENT_ACCEPT.split(","));
 export const MAX_FILE_SIZE = 20 * 1024 * 1024;
 export const COMPRESSIBLE_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
