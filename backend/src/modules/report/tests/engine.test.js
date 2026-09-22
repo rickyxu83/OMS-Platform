@@ -229,6 +229,83 @@ const { HttpError } = require('../../../utils/http-error')
 }
 
 {
+  // 分组含时间维度（month/week/day）时 compare 被丢弃：两期分组键永远对不上，compareOnly 只会产生空行
+  const { errors, spec } = validateSpec({
+    dataset: 'timesheets',
+    timeRange: { type: 'absolute', from: '2026-08-01', to: '2026-09-30' },
+    groupBy: ['engineer', 'month'],
+    metrics: ['hours'],
+    compare: { type: 'previous' },
+  })
+  assert.deepEqual(errors, [])
+  assert.equal(spec.compare, null, '按月分组时 compare 应被丢弃')
+
+  // 非时间分组不受影响
+  const ok = validateSpec({
+    dataset: 'timesheets',
+    timeRange: { type: 'absolute', from: '2026-08-01', to: '2026-09-30' },
+    groupBy: ['engineer'],
+    metrics: ['hours'],
+    compare: { type: 'previous' },
+  })
+  assert.deepEqual(ok.spec.compare, { type: 'previous' })
+}
+
+{
+  // TopN：limit 合法解析、随 specText 展示、进入 SQL LIMIT；非法值报错
+  const { errors, spec } = validateSpec({
+    dataset: 'service_orders',
+    timeRange: { type: 'relative', value: 'this_month' },
+    groupBy: ['customer'],
+    metrics: ['count'],
+    limit: 5,
+  })
+  assert.deepEqual(errors, [])
+  assert.equal(spec.limit, 5)
+  const { sql } = buildQuery(spec)
+  assert.ok(sql.includes('LIMIT 5'), 'TopN 应进入 SQL LIMIT')
+  const { range } = buildQuery(spec)
+  assert.ok(describeSpec(spec, range).includes('前 5 名'))
+
+  // 超过 100 封顶
+  const capped = validateSpec({ dataset: 'service_orders', metrics: ['count'], limit: 500 })
+  assert.equal(capped.spec.limit, 100)
+
+  // 非正整数报错
+  const bad = validateSpec({ dataset: 'service_orders', metrics: ['count'], limit: 'abc' })
+  assert.equal(bad.spec, null)
+  assert.ok(bad.errors.some((e) => e.includes('limit')))
+
+  // 不带 limit 时 spec.limit 为 null，SQL 用默认预览上限
+  const noLimit = validateSpec({ dataset: 'service_orders', metrics: ['count'] })
+  assert.equal(noLimit.spec.limit, null)
+  assert.ok(buildQuery(noLimit.spec).sql.includes('LIMIT 500'))
+}
+
+{
+  // sortBy：指定排序指标进入 ORDER BY；不在已选指标中报错；缺省按第一个指标
+  const { errors, spec } = validateSpec({
+    dataset: 'mr_orders',
+    timeRange: { type: 'relative', value: 'this_year' },
+    groupBy: ['customer'],
+    metrics: ['count', 'amount'],
+    sortBy: 'amount',
+    limit: 3,
+  })
+  assert.deepEqual(errors, [])
+  assert.equal(spec.sortBy, 'amount')
+  assert.ok(buildQuery(spec).sql.includes('ORDER BY `amount` DESC'), '应按 sortBy 排序')
+
+  const bad = validateSpec({ dataset: 'mr_orders', metrics: ['count'], sortBy: 'amount' })
+  assert.equal(bad.spec, null)
+  assert.ok(bad.errors.some((e) => e.includes('排序指标')))
+
+  const fallback = validateSpec({ dataset: 'mr_orders', groupBy: ['customer'], metrics: ['count', 'amount'] })
+  assert.equal(fallback.spec.sortBy, null)
+  assert.ok(buildQuery(fallback.spec).sql.includes('ORDER BY `count` DESC'), '缺省按第一个指标')
+}
+
+{
   // 非法对比类型被拦截
   const { errors, spec } = validateSpec({ dataset: 'service_orders', metrics: ['count'], compare: { type: 'decade' } })
   assert.equal(spec, null)

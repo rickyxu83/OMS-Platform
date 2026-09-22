@@ -11,6 +11,9 @@ const MAX_METRICS = 4
 const CHART_TYPES = new Set(['table', 'bar', 'line', 'pie'])
 
 const COMPARE_TYPES = new Set(['previous', 'year_ago'])
+
+/** 时间分组维度：含这些维度时 compare 无意义（两期分组键永远对不上），validateSpec 会丢弃 compare */
+const TIME_GROUP_DIMS = new Set(['month', 'week', 'day'])
 const COMPARE_TYPE_LABELS = { previous: '环比', year_ago: '同比' }
 
 const RELATIVE_RANGES = new Set([
@@ -193,8 +196,36 @@ function validateSpec(raw) {
     }
   }
 
+  // 硬保护：分组含时间维度（month/week/day）时丢弃 compare——两期的时间分组键永远对不上，
+  // compareOnly 只会多出一堆当期为空的幽灵行（2026-09-22 生产实测：8~9 月按月分组+对比上期，多出 6/7 月空行）
+  if (compare && dims.some((k) => TIME_GROUP_DIMS.has(k))) {
+    compare = null
+  }
+
+  // TopN 限制（可选）：用户说「前 N 名 / top N」。封顶 100，超过按 100 处理
+  let topN = null
+  if (raw.limit !== undefined && raw.limit !== null) {
+    const n = Math.floor(Number(raw.limit))
+    if (!Number.isFinite(n) || n < 1) {
+      errors.push('limit 必须是正整数')
+    } else {
+      topN = Math.min(n, 100)
+    }
+  }
+
+  // 排序指标（可选）：用户说「按某指标最大/最高排序」。必须出自已选 metrics；默认按第一个指标降序
+  let sortBy = null
+  if (raw.sortBy !== undefined && raw.sortBy !== null) {
+    const key = String(raw.sortBy)
+    if (!metrics.includes(key)) {
+      errors.push(`排序指标 ${key.slice(0, 40)} 不在已选指标中（可选：${metrics.join('/')}）`)
+    } else {
+      sortBy = key
+    }
+  }
+
   if (errors.length) return { errors, spec: null }
-  return { errors, spec: { dataset: dataset.key, timeField, timeRange, filters, groupBy: dims, metrics, chartType, compare } }
+  return { errors, spec: { dataset: dataset.key, timeField, timeRange, filters, groupBy: dims, metrics, chartType, compare, limit: topN, sortBy } }
 }
 
 /** YYYY-MM-DD 偏移指定天数（UTC 安全） */
@@ -302,7 +333,7 @@ function buildQuery(spec, { limit = 500 } = {}) {
   }
 
   const safeLimit = Math.min(Math.max(1, Math.floor(Number(limit) || 500)), 2000)
-  const orderBy = `ORDER BY \`${spec.metrics[0]}\` DESC`
+  const orderBy = `ORDER BY \`${spec.sortBy || spec.metrics[0]}\` DESC`
   const sql = [
     `SELECT ${selectParts.join(', ')}`,
     dataset.baseSql,
@@ -324,6 +355,8 @@ function describeSpec(spec, range) {
     : '全部时间'
   parts.push(timeLabel)
   if (spec.groupBy.length) parts.push(`按 ${spec.groupBy.map((k) => dataset.dimensions[k].label).join('、')} 分组`)
+  if (spec.limit) parts.push(`前 ${spec.limit} 名`)
+  if (spec.sortBy && spec.sortBy !== spec.metrics[0]) parts.push(`按${dataset.metrics[spec.sortBy].label}降序`)
   parts.push(`指标：${spec.metrics.map((k) => dataset.metrics[k].label).join('、')}`)
   const filterTexts = Object.entries(spec.filters).map(([key, value]) => {
     const def = dataset.filters[key]
@@ -363,19 +396,22 @@ async function runSpec(rawSpec, { limit = 500 } = {}) {
     throw unprocessableEntity(`报表定义无效：${errors.join('；')}`, errors)
   }
   const dataset = DATASETS[spec.dataset]
-  const { sql, params, columns, range } = buildQuery(spec, { limit: limit + 1 })
+  // TopN 时按 TopN 查询（不做截断检测）；否则按预览上限 +1 查询以检测截断
+  const topN = spec.limit || null
+  const { sql, params, columns, range } = buildQuery(spec, { limit: topN ?? limit + 1 })
 
   const compareRange = spec.compare ? resolveCompareRange(range, spec.compare.type) : null
+  // 对比查询不带 TopN：取对比期全量分组，保证能匹配上当期 TopN 的分组键
   const compareQuery = compareRange
-    ? buildQuery({ ...spec, timeRange: { type: 'absolute', from: compareRange.from, to: compareRange.to } }, { limit: 2000 })
+    ? buildQuery({ ...spec, limit: null, timeRange: { type: 'absolute', from: compareRange.from, to: compareRange.to } }, { limit: 2000 })
     : null
 
   const [rawRows, compareRawRows] = await Promise.all([
     query(sql, params),
     compareQuery ? query(compareQuery.sql, compareQuery.params) : Promise.resolve([]),
   ])
-  const truncated = rawRows.length > limit
-  const rows = rawRows.slice(0, limit).map((row) => translateRow(dataset, columns, row))
+  const truncated = !topN && rawRows.length > limit
+  const rows = rawRows.slice(0, topN ?? limit).map((row) => translateRow(dataset, columns, row))
 
   if (!compareRange) {
     return {
@@ -431,7 +467,10 @@ async function runSpec(rawSpec, { limit = 500 } = {}) {
   const compareOnly = compareTranslated
     .filter((row) => !seen.has(groupKeyOf(row, spec.groupBy)))
     .sort((a, b) => (Number(b[spec.metrics[0]]) || 0) - (Number(a[spec.metrics[0]]) || 0))
-  for (const row of compareOnly) mergedRows.push(buildMerged(null, row))
+  // TopN 模式下不追加对比期独有行（会冲破 TopN 限制）
+  if (!spec.limit) {
+    for (const row of compareOnly) mergedRows.push(buildMerged(null, row))
+  }
 
   const compareLabel = `${COMPARE_TYPE_LABELS[spec.compare.type]}（${compareRange.from} ~ ${compareRange.to}）`
   return {

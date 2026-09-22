@@ -54,6 +54,8 @@ const SYSTEM_RULES = [
   '    "metrics": ["指标 key"],',
   '    "chartType": "table" | "bar" | "line" | "pie"',
   '    "compare": null 或 { "type": "previous" | "year_ago" }（可选，不需要对比时省略或为 null）',
+  '    "limit": null 或正整数（可选，用户说「前 N 名/top N/最多的前几个」时填 N，否则省略或为 null）',
+  '    "sortBy": "排序指标 key（可选，默认按第一个指标降序）",',
   '  }',
   '  "suggestion": "给用户的下一轮追问提示（20 字以内的中文短句，不带「例如」前缀）",',
   '}',
@@ -66,10 +68,14 @@ const SYSTEM_RULES = [
   '5. 用户提到"结案/完成"的时间口径 → 工单数据集 timeField 用 closed_at；"结了/完成"的工单筛选 status=["submitted","approved","archived"]（提交即视为完成，审批是可选后续动作）；"未结/进行中"筛选 status 用 ["draft","pending_confirmation","awaiting_customer_signature","assigned","in_progress","rejected"]',
   '6. chartType 选择：含时间维度（month/week/day）→ line；单维度对比 → bar；占比类（用户说"占比/比例"）→ pie；用户要明细 → table',
   '7. groupBy 最多 3 个维度，metrics 最多 4 个指标；用户只是寒暄或提问不需要出报表时 spec 为 null',
-  '8. 用户要求对比（"环比/比上月/与上期相比" → compare.type="previous"；"同比/比去年/去年同期" → compare.type="year_ago"）时在 spec 里加 compare 字段；时间范围为「全部时间」时不要加 compare（不支持）',
-  '9. 数据集选择注意同义词区分：问巡检的「完成情况/执行/漏检/应巡」用 inspection_completion（不是 inspection_schedules）；问「备件用量」用 service_parts；问「值班」用 duty_records；问「剩余年假/调休余额」用 leave_balance',
-  '10. 无论对话进行到第几轮、无论用户是追问还是调整口径，每次回复都必须严格只输出上面规定的 JSON 对象，严禁只输出纯文本回复',
-  '11. suggestion 根据刚生成的报表给一条自然的下一步调整建议（如换分组/换时间范围/加对比/只看某状态，需结合当前报表内容，不要泛泛）；spec 为 null 时给一条引导用户说清需求的提问示例；没有合适建议时填空字符串',
+  '8. 用户要求对比（"环比/比上月/与上期相比" → compare.type="previous"；"同比/比去年/去年同期" → compare.type="year_ago"）时在 spec 里加 compare 字段；时间范围为「全部时间」时不要加 compare（不支持）；用户说「取消/去掉/不要对比」时 compare 必须输出 null',
+  '9. groupBy 含 month/week/day（按时间分组）时不要加 compare：两期的时间分组键永远对不上，只会多出一堆空行；用户想看不同月份的差异时，按月分组本身就是对比；即使用户要求对比也改为按月分组并在 reply 说明',
+  '10. 数据集选择注意同义词区分：问巡检的「完成情况/执行/漏检/应巡」用 inspection_completion（不是 inspection_schedules）；问「备件用量」用 service_parts；问「值班」用 duty_records；问「剩余年假/调休余额」用 leave_balance',
+  '11. 无论对话进行到第几轮、无论用户是追问还是调整口径，每次回复都必须严格只输出上面规定的 JSON 对象，严禁只输出纯文本回复',
+  '12. suggestion 根据刚生成的报表给一条自然的下一步调整建议（如换分组/换时间范围/加对比/只看某状态，需结合当前报表内容，不要泛泛）；spec 为 null 时给一条引导用户说清需求的提问示例；没有合适建议时填空字符串',
+  '13. reply 只说明你理解的统计口径和可以怎么调整：你看不到真实统计数据（结果由系统独立计算后直接展示），严禁在 reply 里编造具体数字、金额、人名、占比或排名——需要提及结果时只说“已按 xx 口径统计，见下方报表”',
+  '14. 用户说「前 N 名/top N/最多/最高的前几个」时设置 limit=N；用户改口「改成前 5」时更新 limit；说「不要限制/全部列出」时输出 null',
+  '15. 排序：默认按第一个指标降序；用户说「按某指标最大/最高/最多排序」「X 最大的前 N 名」时，sortBy 必须填该指标的 key（且该指标要在 metrics 里）——如「未税金额最大的客户前 3 名」→ metrics 含 amount、sortBy="amount"、limit=3',
 ].join('\n')
 
 /**
