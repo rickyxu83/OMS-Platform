@@ -215,21 +215,26 @@ async function chat(messages, { fetchImpl = fetch, runReport = defaultRunReport 
     throw badRequest('缺少用户消息')
   }
   const conn = await resolveReportConnection()
+  const chatStart = Date.now()
   // 数据集路由：命中则主 prompt 只带目标数据集的完整元数据；路由失败/未命中回退全量目录（纯优化，不影响可用性）
   let system = SYSTEM_PROMPT
   if (!env.ai.reportRouterDisabled) {
+    const routerStart = Date.now()
     const routed = await routeDataset(history, { fetchImpl, conn })
+    console.log(`[report] router → ${routed || 'null'} ${Date.now() - routerStart}ms model=${conn.model}`)
     if (routed) {
       system = buildSystemPrompt(routed)
-      console.log(`[report] router → ${routed}`)
     }
   }
   const loopMessages = [{ role: 'system', content: system }, ...history]
   let lastPreview = null
 
   for (let step = 0; step < MAX_AGENT_STEPS; step++) {
+    const stepStart = Date.now()
     const content = await callAi(loopMessages, 90000, fetchImpl, conn)
     const parsed = extractJson(content)
+    const action = parsed && typeof parsed === 'object' ? (parsed.action || (parsed.reply !== undefined ? 'final' : 'unknown')) : 'invalid'
+    console.log(`[report] step${step} ${Date.now() - stepStart}ms action=${action}`)
     // 工具结果以 user 消息回喂（OpenAI 兼容端点通用，不依赖 tool role 支持）
     const pushToolResult = (payload) => {
       loopMessages.push(
@@ -264,6 +269,7 @@ async function chat(messages, { fetchImpl = fetch, runReport = defaultRunReport 
     }
 
     if (parsed.action === 'final' || parsed.reply !== undefined) {
+      console.log(`[report] chat total ${Date.now() - chatStart}ms`)
       return {
         reply: String(parsed.reply || '').trim() || '好的，请继续描述你的需求。',
         suggestions: normalizeSuggestions(parsed),
@@ -275,6 +281,7 @@ async function chat(messages, { fetchImpl = fetch, runReport = defaultRunReport 
   }
 
   // 循环耗尽兜底：有成功报表就带回（回复用套话），否则 502
+  console.log(`[report] chat total ${Date.now() - chatStart}ms`)
   if (lastPreview) {
     return { reply: `已生成报表：${lastPreview.specText}。`, suggestions: [], preview: lastPreview }
   }
