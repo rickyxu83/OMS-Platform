@@ -229,6 +229,29 @@ const { HttpError } = require('../../../utils/http-error')
 }
 
 {
+  // 分组含时间维度（month/week/day）时 compare 被丢弃：两期分组键永远对不上，compareOnly 只会产生空行
+  const { errors, spec } = validateSpec({
+    dataset: 'timesheets',
+    timeRange: { type: 'absolute', from: '2026-08-01', to: '2026-09-30' },
+    groupBy: ['engineer', 'month'],
+    metrics: ['hours'],
+    compare: { type: 'previous' },
+  })
+  assert.deepEqual(errors, [])
+  assert.equal(spec.compare, null, '按月分组时 compare 应被丢弃')
+
+  // 非时间分组不受影响
+  const ok = validateSpec({
+    dataset: 'timesheets',
+    timeRange: { type: 'absolute', from: '2026-08-01', to: '2026-09-30' },
+    groupBy: ['engineer'],
+    metrics: ['hours'],
+    compare: { type: 'previous' },
+  })
+  assert.deepEqual(ok.spec.compare, { type: 'previous' })
+}
+
+{
   // 非法对比类型被拦截
   const { errors, spec } = validateSpec({ dataset: 'service_orders', metrics: ['count'], compare: { type: 'decade' } })
   assert.equal(spec, null)

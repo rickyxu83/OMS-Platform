@@ -11,6 +11,9 @@ const MAX_METRICS = 4
 const CHART_TYPES = new Set(['table', 'bar', 'line', 'pie'])
 
 const COMPARE_TYPES = new Set(['previous', 'year_ago'])
+
+/** 时间分组维度：含这些维度时 compare 无意义（两期分组键永远对不上），validateSpec 会丢弃 compare */
+const TIME_GROUP_DIMS = new Set(['month', 'week', 'day'])
 const COMPARE_TYPE_LABELS = { previous: '环比', year_ago: '同比' }
 
 const RELATIVE_RANGES = new Set([
@@ -191,6 +194,12 @@ function validateSpec(raw) {
     } else {
       compare = { type }
     }
+  }
+
+  // 硬保护：分组含时间维度（month/week/day）时丢弃 compare——两期的时间分组键永远对不上，
+  // compareOnly 只会多出一堆当期为空的幽灵行（2026-09-22 生产实测：8~9 月按月分组+对比上期，多出 6/7 月空行）
+  if (compare && dims.some((k) => TIME_GROUP_DIMS.has(k))) {
+    compare = null
   }
 
   if (errors.length) return { errors, spec: null }
