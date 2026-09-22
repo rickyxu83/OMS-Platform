@@ -67,7 +67,7 @@ const SYSTEM_RULES = [
   '{',
   '  "action": "final",',
   '  "reply": "给用户看的简明中文回复",',
-  '  "suggestion": "下一轮追问提示（20 字以内的中文短句，不带「例如」前缀，没有合适建议填空字符串）"',
+  '  "suggestions": ["下一轮追问提示 1", "追问提示 2"]（1~3 条，每条 20 字以内中文短句，不带「例如」前缀；没有合适建议给空数组）',
   '}',
   '',
   '工作流程：',
@@ -92,8 +92,8 @@ const SYSTEM_RULES = [
   '15. 执行过报表时，reply 基于工具返回的真实数据写 2~4 句总结（总量、分布、值得注意的客观异常）；可以引用真实数字，但严禁编造工具结果里没有的数字、人名、占比',
   '16. 不对工程师、销售等个人之间做对比或排名（不说谁第一谁垫底），只总结总体分布',
   '17. 列名带「(对比期)/(差值)/(变化%)」时提及总体涨跌幅；变化%为 null 表示对比期为 0 无法计算',
-  '18. 总行数为 0 时明确说「该时间范围和筛选条件下没有数据」，并在 suggestion 里建议调整时间范围或减少筛选',
-  '19. suggestion 结合当前报表给一条自然的下一步调整建议（如换分组/换时间范围/加对比/只看某状态）；追问/闲聊时给一条引导提问示例',
+  '18. 总行数为 0 时明确说「该时间范围和筛选条件下没有数据」，并在 suggestions 里建议调整时间范围或减少筛选',
+  '19. suggestions 结合当前报表给 1~3 条自然的下一步调整建议（如换分组/换时间范围/加对比/只看某状态，会作为可点击按钮展示）；追问/闲聊时给引导提问示例',
 ].join('\n')
 
 /**
@@ -163,6 +163,12 @@ function normalizeMessages(messages) {
  * 对话一轮。返回 { reply, spec, chartType }（spec 为 AI 原始输出，由调用方校验执行）。
  * AI 不可用/输出非法时抛错，由 controller 转为友好提示。
  */
+/** 追问提示归一化：兼容 suggestions 数组与旧 suggestion 字符串，最多 3 条、每条 ≤30 字 */
+function normalizeSuggestions(parsed) {
+  const list = Array.isArray(parsed.suggestions) ? parsed.suggestions : [parsed.suggestion]
+  return list.map((s) => String(s || '').trim().slice(0, 30)).filter(Boolean).slice(0, 3)
+}
+
 const MAX_AGENT_STEPS = 4 // 工具循环上限：run_report 失败自愈 + 重试都在循环内，防失控
 
 /** 默认报表执行器：校验 + 查询（单测注入假的，避免依赖数据库） */
@@ -173,7 +179,7 @@ async function defaultRunReport(rawSpec) {
 /**
  * 工具循环对话（agent 模式）：AI 输出 run_report 执行报表——校验失败/口径不对能看到反馈自愈，
  * 成功则基于真实统计数据写 final 回复（根治旧版「AI 看不到结果、编造数字」的结构性问题）。
- * 返回 { reply, suggestion, preview }；preview 为最后一次成功执行的报表结果（未执行报表为 null）。
+ * 返回 { reply, suggestions, preview }；preview 为最后一次成功执行的报表结果（未执行报表为 null）。
  * 循环耗尽但有成功报表 → 兜底返回；完全没有 → 502 友好提示。
  */
 async function chat(messages, { fetchImpl = fetch, runReport = defaultRunReport } = {}) {
@@ -233,7 +239,7 @@ async function chat(messages, { fetchImpl = fetch, runReport = defaultRunReport 
     if (parsed.action === 'final' || parsed.reply !== undefined) {
       return {
         reply: String(parsed.reply || '').trim() || '好的，请继续描述你的需求。',
-        suggestion: String(parsed.suggestion || '').trim().slice(0, 30),
+        suggestions: normalizeSuggestions(parsed),
         preview: lastPreview,
       }
     }
@@ -243,7 +249,7 @@ async function chat(messages, { fetchImpl = fetch, runReport = defaultRunReport 
 
   // 循环耗尽兜底：有成功报表就带回（回复用套话），否则 502
   if (lastPreview) {
-    return { reply: `已生成报表：${lastPreview.specText}。`, suggestion: '', preview: lastPreview }
+    return { reply: `已生成报表：${lastPreview.specText}。`, suggestions: [], preview: lastPreview }
   }
   throw badGateway('AI 返回格式异常，请换个说法再试一次')
 }

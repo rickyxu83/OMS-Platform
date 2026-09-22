@@ -69,12 +69,12 @@ async function testAgentLoop() {
       const body = JSON.parse(options.body)
       if (isRouterCall(body)) return ROUTER_NULL()
       mains.push(body)
-      return fakeAiResponse(JSON.stringify({ action: 'final', reply: '你好，想看什么报表？', suggestion: '这个月工单怎么样' }))
+      return fakeAiResponse(JSON.stringify({ action: 'final', reply: '你好，想看什么报表？', suggestions: ['这个月工单怎么样', '上月请假统计'] }))
     }
     const result = await chat([{ role: 'user', content: '你好' }], { fetchImpl })
     assert.equal(mains.length, 1)
     assert.equal(result.reply, '你好，想看什么报表？')
-    assert.equal(result.suggestion, '这个月工单怎么样')
+    assert.deepEqual(result.suggestions, ['这个月工单怎么样', '上月请假统计'])
     assert.equal(result.preview, null)
   }
 
@@ -89,7 +89,7 @@ async function testAgentLoop() {
       if (mains.length === 1) {
         return fakeAiResponse(JSON.stringify({ action: 'run_report', spec: { dataset: 'service_orders', metrics: ['count'] } }))
       }
-      return fakeAiResponse(JSON.stringify({ action: 'final', reply: '本月共 12 单。', suggestion: '换成按客户分组' }))
+      return fakeAiResponse(JSON.stringify({ action: 'final', reply: '本月共 12 单。', suggestions: ['换成按客户分组'] }))
     }
     const runReport = async (spec) => {
       runReportCalls.push(spec)

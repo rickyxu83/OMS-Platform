@@ -74,7 +74,7 @@ async function main() {
       if (mains.length === 1) {
         return fakeAiResponse(JSON.stringify({ action: 'run_report', spec: { dataset: 'inspection_completion' } }))
       }
-      return fakeAiResponse(JSON.stringify({ action: 'final', reply: '巡检完成情况统计如下', suggestion: '换成按工程师分组' }))
+      return fakeAiResponse(JSON.stringify({ action: 'final', reply: '巡检完成情况统计如下', suggestions: ['换成按工程师分组'] }))
     }
     const result = await chat(history, { fetchImpl, runReport: async () => fakePreview })
     assert.equal(mains.length, 2, 'run_report + final 共两轮')
@@ -82,7 +82,7 @@ async function main() {
     assert.ok(sys.includes('【inspection_completion】'))
     assert.ok(!sys.includes('【service_orders】'))
     assert.equal(result.preview.spec.dataset, 'inspection_completion')
-    assert.equal(result.suggestion, '换成按工程师分组', 'suggestion 应透传给前端做追问提示')
+    assert.deepEqual(result.suggestions, ['换成按工程师分组'], 'suggestions 应透传给前端做可点击追问')
   }
 
   // ⑥chat 集成：路由未命中 → 主调用回退全量目录（旧行为）
@@ -92,7 +92,7 @@ async function main() {
       const body = JSON.parse(options.body)
       if (isRouterCall(body)) return fakeAiResponse(JSON.stringify({ dataset: null }))
       mains.push(body)
-      return fakeAiResponse(JSON.stringify({ action: 'final', reply: '好的', suggestion: '' }))
+      return fakeAiResponse(JSON.stringify({ action: 'final', reply: '好的', suggestions: [] }))
     }
     await chat([{ role: 'user', content: '随便聊聊' }], { fetchImpl })
     assert.ok(mains[0].messages[0].content.includes('【service_orders】'), '回退后应带全量目录')

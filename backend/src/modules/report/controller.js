@@ -42,14 +42,14 @@ async function chat(req, res) {
   const result = await assistant.chat(messages)
 
   if (!result.preview) {
-    return res.json({ reply: result.reply, spec: null, suggestion: result.suggestion || '' })
+    return res.json({ reply: result.reply, spec: null, suggestions: result.suggestions || [] })
   }
 
   const preview = result.preview
   void store.logUsage({ userId: req.user.id, action: 'chat', spec: preview.spec, rowsCount: preview.rows.length })
   res.json({
     reply: result.reply,
-    suggestion: result.suggestion || '',
+    suggestions: result.suggestions || [],
     spec: preview.spec,
     specText: preview.specText,
     columns: preview.columns,
