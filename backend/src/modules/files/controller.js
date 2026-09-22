@@ -24,6 +24,7 @@ const allowedUploadExtensions = new Set([
   '.jpeg',
   '.json',
   '.log',
+  '.md',
   '.pdf',
   '.png',
   '.txt',
@@ -51,7 +52,9 @@ const allowedUploadMimeTypes = new Set([
   'image/png',
   'image/webp',
   'text/csv',
+  'text/markdown',
   'text/plain',
+  'text/x-markdown',
   'text/xml',
   'text/yaml',
 ])
@@ -71,7 +74,7 @@ function fileFilter(_req, file, cb) {
   const extension = path.extname(originalName || file.originalname || '').toLowerCase()
   const mimeType = String(file.mimetype || '').toLowerCase()
   if (!allowedUploadExtensions.has(extension)) {
-    cb(badRequest('附件类型不支持，请上传 PDF、Office 文档、图片、文本、日志、配置文件、CSV 或 ZIP'))
+    cb(badRequest('附件类型不支持，请上传 PDF、Office 文档、图片、文本、Markdown、日志、配置文件、CSV 或 ZIP'))
     return
   }
   if (mimeType && !allowedUploadMimeTypes.has(mimeType)) {
