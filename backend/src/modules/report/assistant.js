@@ -6,13 +6,16 @@
  *
  * 数据集路由（router.js）：主流程先让路由从 11 个数据集中选一个，命中后主 prompt 只带
  * 该数据集的完整元数据（其余压缩成一句话目录，主模型仍可改选）；路由失败/未命中回退全量目录。
+ *
+ * 工具循环（2026-09-22 改造）：AI 用 run_report 动作执行报表，能看到校验错误自愈、
+ * 基于真实统计结果写回复（旧版 AI 盲输出 JSON 看不到数据，会编造数字且无法自愈）。
  */
 const env = require('../../config/env')
 const { resolveAiConnection, callAi, extractJson } = require('../mr/lib/quotation-ai-parser')
 const { badRequest, badGateway } = require('../../utils/http-error')
 const { createHash } = require('node:crypto')
 const { DATASETS } = require('./datasets')
-const { RELATIVE_RANGE_LABELS } = require('./engine')
+const { RELATIVE_RANGE_LABELS, runSpec } = require('./engine')
 const { routeDataset, compactCatalog } = require('./router')
 
 /** 单个数据集的完整元数据块（主 prompt 用） */
@@ -39,43 +42,58 @@ function catalogPrompt() {
 }
 
 const SYSTEM_RULES = [
-  '你是运维管理系统（OMS）的智能报表助手。用户是公司主管，用中文大白话描述想看的统计报表，你负责把需求翻译成「报表定义 JSON」。',
+  '你是运维管理系统（OMS）的智能报表助手。用户是公司主管，用中文大白话描述想看的统计报表。',
+  '你有一个报表工具：把需求翻译成「报表定义 JSON」并执行，系统会把校验错误或真实统计结果发给你。看到真实数据后再给用户最终回复。',
   '你必须严格只输出一个合法 JSON 对象，不要输出任何其他文字，不要使用 Markdown 代码块。',
   '',
-  '输出结构：',
+  '每次回复是两种动作之一：',
+  '动作 1 · 执行报表：',
   '{',
-  '  "reply": "给用户看的回复（简明中文，说明你理解了什么、将如何统计）",',
-  '  "spec": null | {',
+  '  "action": "run_report",',
+  '  "spec": {',
   '    "dataset": "数据集 key",',
   '    "timeField": "时间字段 key（可选，不填用默认）",',
   '    "timeRange": { "type": "relative", "value": "last_month" } 或 { "type": "absolute", "from": "2026-08-01", "to": "2026-08-31" },',
   '    "filters": { "筛选 key": ["枚举值"] 或 "关键词" },',
   '    "groupBy": ["维度 key"],',
   '    "metrics": ["指标 key"],',
-  '    "chartType": "table" | "bar" | "line" | "pie"',
-  '    "compare": null 或 { "type": "previous" | "year_ago" }（可选，不需要对比时省略或为 null）',
-  '    "limit": null 或正整数（可选，用户说「前 N 名/top N/最多的前几个」时填 N，否则省略或为 null）',
-  '    "sortBy": "排序指标 key（可选，默认按第一个指标降序）",',
+  '    "chartType": "table" | "bar" | "line" | "pie",',
+  '    "compare": null 或 { "type": "previous" | "year_ago" }（可选，不需要对比时省略或为 null）,',
+  '    "limit": null 或正整数（可选，用户说「前 N 名/top N/最多的前几个」时填 N，否则省略或为 null）,',
+  '    "sortBy": "排序指标 key（可选，默认按第一个指标降序）"',
   '  }',
-  '  "suggestion": "给用户的下一轮追问提示（20 字以内的中文短句，不带「例如」前缀）",',
+  '}',
+  '动作 2 · 最终回复：',
+  '{',
+  '  "action": "final",',
+  '  "reply": "给用户看的简明中文回复",',
+  '  "suggestion": "下一轮追问提示（20 字以内的中文短句，不带「例如」前缀，没有合适建议填空字符串）"',
   '}',
   '',
-  '规则：',
-  '1. dataset/groupBy/metrics/filters/timeField 的 key 只能从下方数据目录中选，严禁编造',
-  '2. 用户需求不明确（没说统计对象或统计口径）时，spec 输出 null，在 reply 里追问；不要硬猜',
-  '3. 用户只说时间没说别的（如"这个月工单怎么样"）→ 选最自然的口径（工单数按状态分组），并在 reply 说明可以继续调整',
-  '4. timeRange 相对值可选：' + Object.entries(RELATIVE_RANGE_LABELS).map(([k, v]) => `${k}=${v}`).join('，') + '；用户给了明确起止日期才用 absolute',
-  '5. 用户提到"结案/完成"的时间口径 → 工单数据集 timeField 用 closed_at；"结了/完成"的工单筛选 status=["submitted","approved","archived"]（提交即视为完成，审批是可选后续动作）；"未结/进行中"筛选 status 用 ["draft","pending_confirmation","awaiting_customer_signature","assigned","in_progress","rejected"]',
-  '6. chartType 选择：含时间维度（month/week/day）→ line；单维度对比 → bar；占比类（用户说"占比/比例"）→ pie；用户要明细 → table',
-  '7. groupBy 最多 3 个维度，metrics 最多 4 个指标；用户只是寒暄或提问不需要出报表时 spec 为 null',
-  '8. 用户要求对比（"环比/比上月/与上期相比" → compare.type="previous"；"同比/比去年/去年同期" → compare.type="year_ago"）时在 spec 里加 compare 字段；时间范围为「全部时间」时不要加 compare（不支持）；用户说「取消/去掉/不要对比」时 compare 必须输出 null',
-  '9. groupBy 含 month/week/day（按时间分组）时不要加 compare：两期的时间分组键永远对不上，只会多出一堆空行；用户想看不同月份的差异时，按月分组本身就是对比；即使用户要求对比也改为按月分组并在 reply 说明',
-  '10. 数据集选择注意同义词区分：问巡检的「完成情况/执行/漏检/应巡」用 inspection_completion（不是 inspection_schedules）；问「备件用量」用 service_parts；问「值班」用 duty_records；问「剩余年假/调休余额」用 leave_balance',
-  '11. 无论对话进行到第几轮、无论用户是追问还是调整口径，每次回复都必须严格只输出上面规定的 JSON 对象，严禁只输出纯文本回复',
-  '12. suggestion 根据刚生成的报表给一条自然的下一步调整建议（如换分组/换时间范围/加对比/只看某状态，需结合当前报表内容，不要泛泛）；spec 为 null 时给一条引导用户说清需求的提问示例；没有合适建议时填空字符串',
-  '13. reply 只说明你理解的统计口径和可以怎么调整：你看不到真实统计数据（结果由系统独立计算后直接展示），严禁在 reply 里编造具体数字、金额、人名、占比或排名——需要提及结果时只说“已按 xx 口径统计，见下方报表”',
-  '14. 用户说「前 N 名/top N/最多/最高的前几个」时设置 limit=N；用户改口「改成前 5」时更新 limit；说「不要限制/全部列出」时输出 null',
-  '15. 排序：默认按第一个指标降序；用户说「按某指标最大/最高/最多排序」「X 最大的前 N 名」时，sortBy 必须填该指标的 key（且该指标要在 metrics 里）——如「未税金额最大的客户前 3 名」→ metrics 含 amount、sortBy="amount"、limit=3',
+  '工作流程：',
+  '1. 需求明确 → 输出 run_report；收到「工具执行结果」后：ok=false 就按错误信息修正 spec 重新 run_report，ok=true 就基于真实数据输出 final',
+  '2. 工具结果不符合用户意图（选错数据集/口径不对/分组不对）→ 修正 spec 重新 run_report，不要将就',
+  '3. 需求不明确（没说统计对象或统计口径）→ 直接 final 追问，不要硬猜；用户寒暄或提问不需要报表 → 直接 final 回答',
+  '4. 用户只说时间没说别的（如"这个月工单怎么样"）→ 选最自然的口径执行（工单数按状态分组），final 里说明可以继续调整',
+  '',
+  'spec 规则：',
+  '5. dataset/groupBy/metrics/filters/timeField 的 key 只能从下方数据目录中选，严禁编造',
+  '6. timeRange 相对值可选：' + Object.entries(RELATIVE_RANGE_LABELS).map(([k, v]) => `${k}=${v}`).join('，') + '；用户给了明确起止日期才用 absolute',
+  '7. 用户提到"结案/完成"的时间口径 → 工单数据集 timeField 用 closed_at；"结了/完成"的工单筛选 status=["submitted","approved","archived"]（提交即视为完成，审批是可选后续动作）；"未结/进行中"筛选 status 用 ["draft","pending_confirmation","awaiting_customer_signature","assigned","in_progress","rejected"]',
+  '8. chartType 选择：含时间维度（month/week/day）→ line；单维度对比 → bar；占比类（用户说"占比/比例"）→ pie；用户要明细 → table',
+  '9. groupBy 最多 3 个维度，metrics 最多 4 个指标',
+  '10. 用户要求对比（"环比/比上月/与上期相比" → compare.type="previous"；"同比/比去年/去年同期" → compare.type="year_ago"）时在 spec 里加 compare 字段；时间范围为「全部时间」时不要加 compare（不支持）；用户说「取消/去掉/不要对比」时 compare 必须输出 null',
+  '11. groupBy 含 month/week/day（按时间分组）时不要加 compare：两期的时间分组键永远对不上，只会多出一堆空行；用户想看不同月份的差异时，按月分组本身就是对比',
+  '12. 数据集选择注意同义词区分：问巡检的「完成情况/执行/漏检/应巡」用 inspection_completion（不是 inspection_schedules）；问「备件用量」用 service_parts；问「值班」用 duty_records；问「剩余年假/调休余额」用 leave_balance',
+  '13. 用户说「前 N 名/top N/最多/最高的前几个」时设置 limit=N；用户改口「改成前 5」时更新 limit；说「不要限制/全部列出」时输出 null',
+  '14. 排序：默认按第一个指标降序；用户说「按某指标最大/最高/最多排序」「X 最大的前 N 名」时，sortBy 必须填该指标的 key（且该指标要在 metrics 里）——如「未税金额最大的客户前 3 名」→ metrics 含 amount、sortBy="amount"、limit=3',
+  '',
+  'final 回复规则：',
+  '15. 执行过报表时，reply 基于工具返回的真实数据写 2~4 句总结（总量、分布、值得注意的客观异常）；可以引用真实数字，但严禁编造工具结果里没有的数字、人名、占比',
+  '16. 不对工程师、销售等个人之间做对比或排名（不说谁第一谁垫底），只总结总体分布',
+  '17. 列名带「(对比期)/(差值)/(变化%)」时提及总体涨跌幅；变化%为 null 表示对比期为 0 无法计算',
+  '18. 总行数为 0 时明确说「该时间范围和筛选条件下没有数据」，并在 suggestion 里建议调整时间范围或减少筛选',
+  '19. suggestion 结合当前报表给一条自然的下一步调整建议（如换分组/换时间范围/加对比/只看某状态）；追问/闲聊时给一条引导提问示例',
 ].join('\n')
 
 /**
@@ -145,7 +163,20 @@ function normalizeMessages(messages) {
  * 对话一轮。返回 { reply, spec, chartType }（spec 为 AI 原始输出，由调用方校验执行）。
  * AI 不可用/输出非法时抛错，由 controller 转为友好提示。
  */
-async function chat(messages, { fetchImpl = fetch } = {}) {
+const MAX_AGENT_STEPS = 4 // 工具循环上限：run_report 失败自愈 + 重试都在循环内，防失控
+
+/** 默认报表执行器：校验 + 查询（单测注入假的，避免依赖数据库） */
+async function defaultRunReport(rawSpec) {
+  return runSpec(rawSpec, { limit: 200 })
+}
+
+/**
+ * 工具循环对话（agent 模式）：AI 输出 run_report 执行报表——校验失败/口径不对能看到反馈自愈，
+ * 成功则基于真实统计数据写 final 回复（根治旧版「AI 看不到结果、编造数字」的结构性问题）。
+ * 返回 { reply, suggestion, preview }；preview 为最后一次成功执行的报表结果（未执行报表为 null）。
+ * 循环耗尽但有成功报表 → 兜底返回；完全没有 → 502 友好提示。
+ */
+async function chat(messages, { fetchImpl = fetch, runReport = defaultRunReport } = {}) {
   const history = normalizeMessages(messages)
   if (!history.length || history[history.length - 1].role !== 'user') {
     throw badRequest('缺少用户消息')
@@ -160,28 +191,61 @@ async function chat(messages, { fetchImpl = fetch } = {}) {
       console.log(`[report] router → ${routed}`)
     }
   }
-  const aiMessages = [{ role: 'system', content: system }, ...history]
-  let content = await callAi(aiMessages, 90000, fetchImpl, conn)
-  let parsed = extractJson(content)
-  if (!parsed || typeof parsed !== 'object') {
-    // 重试一次：部分模型（如 kimi-for-coding）多轮追问时偶发只输出纯文本、不输出 JSON 信封；
-    // 把原始输出带回对话并明确纠正，可显著提升成功率（参照 mr 报价识别重试写法）
-    const retryMessages = [
-      ...aiMessages,
-      { role: 'assistant', content: String(content || '').slice(0, 4000) },
-      { role: 'user', content: '你上次的回复不是合法 JSON。请严格只输出一个符合规定的 JSON 对象，不要输出任何其他文字，不要使用 Markdown 代码块。' },
-    ]
-    content = await callAi(retryMessages, 90000, fetchImpl, conn)
-    parsed = extractJson(content)
+  const loopMessages = [{ role: 'system', content: system }, ...history]
+  let lastPreview = null
+
+  for (let step = 0; step < MAX_AGENT_STEPS; step++) {
+    const content = await callAi(loopMessages, 90000, fetchImpl, conn)
+    const parsed = extractJson(content)
+    // 工具结果以 user 消息回喂（OpenAI 兼容端点通用，不依赖 tool role 支持）
+    const pushToolResult = (payload) => {
+      loopMessages.push(
+        { role: 'assistant', content: String(content || '').slice(0, 4000) },
+        { role: 'user', content: `工具执行结果：${JSON.stringify(payload)}` },
+      )
+    }
+
+    if (!parsed || typeof parsed !== 'object') {
+      // 部分模型偶发只输出纯文本（kimi-for-coding 实测）：把原始输出带回并明确纠正
+      pushToolResult({ ok: false, errors: ['你的回复不是合法 JSON。请严格只输出规定的动作 JSON（run_report 或 final），不要输出任何其他文字，不要使用 Markdown 代码块'] })
+      continue
+    }
+
+    if (parsed.action === 'run_report' && parsed.spec && typeof parsed.spec === 'object') {
+      try {
+        const preview = await runReport(parsed.spec)
+        lastPreview = preview
+        pushToolResult({
+          ok: true,
+          specText: preview.specText,
+          列: preview.columns.map((c) => c.label),
+          总行数: preview.total,
+          数据: preview.rows.slice(0, 30),
+          提示: '以上是真实统计数据。请基于此输出 final 回复；若结果不符合用户意图（选错数据集/口径/分组），请修正 spec 重新 run_report',
+        })
+      } catch (error) {
+        const errors = Array.isArray(error?.details) ? error.details : [error?.message || '执行失败']
+        pushToolResult({ ok: false, errors })
+      }
+      continue
+    }
+
+    if (parsed.action === 'final' || parsed.reply !== undefined) {
+      return {
+        reply: String(parsed.reply || '').trim() || '好的，请继续描述你的需求。',
+        suggestion: String(parsed.suggestion || '').trim().slice(0, 30),
+        preview: lastPreview,
+      }
+    }
+
+    pushToolResult({ ok: false, errors: ['未知动作：action 只能是 "run_report" 或 "final"'] })
   }
-  if (!parsed || typeof parsed !== 'object') {
-    throw badGateway('AI 返回格式异常，请换个说法再试一次')
+
+  // 循环耗尽兜底：有成功报表就带回（回复用套话），否则 502
+  if (lastPreview) {
+    return { reply: `已生成报表：${lastPreview.specText}。`, suggestion: '', preview: lastPreview }
   }
-  return {
-    reply: String(parsed.reply || '').trim() || '好的，请继续描述你的需求。',
-    spec: parsed.spec && typeof parsed.spec === 'object' ? parsed.spec : null,
-    suggestion: String(parsed.suggestion || '').trim().slice(0, 30),
-  }
+  throw badGateway('AI 返回格式异常，请换个说法再试一次')
 }
 
 /**
