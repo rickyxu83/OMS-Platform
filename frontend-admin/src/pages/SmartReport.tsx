@@ -517,8 +517,8 @@ export function SmartReport() {
         </div>
       </div>
 
-      {/* 右栏：预览（窄屏提到最上方，对话变化不再把它顶走） */}
-      <div ref={previewRef} className="order-first flex min-h-0 flex-1 flex-col rounded-xl border border-border bg-card lg:order-none">
+      {/* 右栏：预览（窄屏提到最上方，对话变化不再把它顶走）；min-w-0 允许面板收缩，宽表格在内部横向滚动而不是撑爆整页 */}
+      <div ref={previewRef} className="order-first flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-border bg-card lg:order-none">
         {!preview ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-sm text-muted-foreground">
             <Sparkles className="h-8 w-8 text-primary/40" />
