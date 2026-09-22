@@ -221,6 +221,7 @@ export function SmartReport() {
   const [runningTemplateId, setRunningTemplateId] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const chartBoxRef = useRef<HTMLDivElement>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
 
   const loadTemplates = useCallback(async () => {
     try {
@@ -249,6 +250,10 @@ export function SmartReport() {
         range: result.range || null,
       })
       setChartKind(defaultChartKind(result.spec))
+      // 窄屏（手机/小窗）下预览在对话上方：新报表生成后自动滚回预览，不用手动往上拉
+      if (window.innerWidth < 1024) {
+        requestAnimationFrame(() => previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+      }
     }
   }
 
@@ -451,7 +456,7 @@ export function SmartReport() {
           </div>
         )}
 
-        <div className="flex min-h-[320px] flex-1 flex-col rounded-xl border border-border bg-card">
+        <div className="flex max-h-[60vh] min-h-[320px] flex-1 flex-col rounded-xl border border-border bg-card lg:max-h-none">
           <div className="flex items-center gap-1.5 border-b border-border px-3 py-2.5 text-sm font-medium">
             <Sparkles className="h-4 w-4 text-primary" /> 描述你想要的报表
           </div>
@@ -501,12 +506,12 @@ export function SmartReport() {
         </div>
       </div>
 
-      {/* 右栏：预览 */}
-      <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-border bg-card">
+      {/* 右栏：预览（窄屏提到最上方，对话变化不再把它顶走） */}
+      <div ref={previewRef} className="order-first flex min-h-0 flex-1 flex-col rounded-xl border border-border bg-card lg:order-none">
         {!preview ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-sm text-muted-foreground">
             <Sparkles className="h-8 w-8 text-primary/40" />
-            <p>在左侧描述想看的报表，这里会实时出结果</p>
+            <p>描述想看的报表，这里会实时出结果</p>
             <p className="text-xs">支持工单、工时、考勤、巡检计划、设备、订购申请（MR）六类数据</p>
           </div>
         ) : (
