@@ -766,7 +766,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           ref={contentRef}
           className={`mobile-admin-content relative z-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-transparent lg:pb-0 ${hideMobileChrome ? "pb-0" : "pb-[calc(5rem_+_env(safe-area-inset-bottom))]"}`}
         >
-          <div key={location.pathname} className={navigationType === "POP" ? "route-enter-pop" : "route-enter-push"}>
+          {/* h-full 把 main 的高度传给整页高度型页面（如智能报表对话+预览布局）；普通列表页内容超高时随 main 滚动，行为不变 */}
+          <div key={location.pathname} className={`h-full ${navigationType === "POP" ? "route-enter-pop" : "route-enter-push"}`}>
             {children}
           </div>
         </main>
