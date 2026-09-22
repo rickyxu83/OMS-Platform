@@ -283,6 +283,29 @@ const { HttpError } = require('../../../utils/http-error')
 }
 
 {
+  // sortBy：指定排序指标进入 ORDER BY；不在已选指标中报错；缺省按第一个指标
+  const { errors, spec } = validateSpec({
+    dataset: 'mr_orders',
+    timeRange: { type: 'relative', value: 'this_year' },
+    groupBy: ['customer'],
+    metrics: ['count', 'amount'],
+    sortBy: 'amount',
+    limit: 3,
+  })
+  assert.deepEqual(errors, [])
+  assert.equal(spec.sortBy, 'amount')
+  assert.ok(buildQuery(spec).sql.includes('ORDER BY `amount` DESC'), '应按 sortBy 排序')
+
+  const bad = validateSpec({ dataset: 'mr_orders', metrics: ['count'], sortBy: 'amount' })
+  assert.equal(bad.spec, null)
+  assert.ok(bad.errors.some((e) => e.includes('排序指标')))
+
+  const fallback = validateSpec({ dataset: 'mr_orders', groupBy: ['customer'], metrics: ['count', 'amount'] })
+  assert.equal(fallback.spec.sortBy, null)
+  assert.ok(buildQuery(fallback.spec).sql.includes('ORDER BY `count` DESC'), '缺省按第一个指标')
+}
+
+{
   // 非法对比类型被拦截
   const { errors, spec } = validateSpec({ dataset: 'service_orders', metrics: ['count'], compare: { type: 'decade' } })
   assert.equal(spec, null)

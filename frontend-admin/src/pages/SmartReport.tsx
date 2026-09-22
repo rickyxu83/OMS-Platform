@@ -34,6 +34,7 @@ interface ReportSpec {
   chartType?: string | null
   compare?: { type: 'previous' | 'year_ago' } | null
   limit?: number | null
+  sortBy?: string | null
 }
 interface CompareInfo { type: string; label: string; from: string; to: string }
 interface RangeInfo { from: string | null; to: string | null }

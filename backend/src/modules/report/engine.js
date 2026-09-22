@@ -213,8 +213,19 @@ function validateSpec(raw) {
     }
   }
 
+  // 排序指标（可选）：用户说「按某指标最大/最高排序」。必须出自已选 metrics；默认按第一个指标降序
+  let sortBy = null
+  if (raw.sortBy !== undefined && raw.sortBy !== null) {
+    const key = String(raw.sortBy)
+    if (!metrics.includes(key)) {
+      errors.push(`排序指标 ${key.slice(0, 40)} 不在已选指标中（可选：${metrics.join('/')}）`)
+    } else {
+      sortBy = key
+    }
+  }
+
   if (errors.length) return { errors, spec: null }
-  return { errors, spec: { dataset: dataset.key, timeField, timeRange, filters, groupBy: dims, metrics, chartType, compare, limit: topN } }
+  return { errors, spec: { dataset: dataset.key, timeField, timeRange, filters, groupBy: dims, metrics, chartType, compare, limit: topN, sortBy } }
 }
 
 /** YYYY-MM-DD 偏移指定天数（UTC 安全） */
@@ -322,7 +333,7 @@ function buildQuery(spec, { limit = 500 } = {}) {
   }
 
   const safeLimit = Math.min(Math.max(1, Math.floor(Number(limit) || 500)), 2000)
-  const orderBy = `ORDER BY \`${spec.metrics[0]}\` DESC`
+  const orderBy = `ORDER BY \`${spec.sortBy || spec.metrics[0]}\` DESC`
   const sql = [
     `SELECT ${selectParts.join(', ')}`,
     dataset.baseSql,
@@ -345,6 +356,7 @@ function describeSpec(spec, range) {
   parts.push(timeLabel)
   if (spec.groupBy.length) parts.push(`按 ${spec.groupBy.map((k) => dataset.dimensions[k].label).join('、')} 分组`)
   if (spec.limit) parts.push(`前 ${spec.limit} 名`)
+  if (spec.sortBy && spec.sortBy !== spec.metrics[0]) parts.push(`按${dataset.metrics[spec.sortBy].label}降序`)
   parts.push(`指标：${spec.metrics.map((k) => dataset.metrics[k].label).join('、')}`)
   const filterTexts = Object.entries(spec.filters).map(([key, value]) => {
     const def = dataset.filters[key]
