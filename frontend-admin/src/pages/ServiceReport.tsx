@@ -76,6 +76,7 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 import { PdfPreview } from "@/components/PdfPreview";
 import { OfficePreviewContent } from "@/components/OfficePreviewContent";
+import { MarkdownPreviewContent } from "@/components/MarkdownPreviewContent";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, type AppLang } from "@/contexts/LanguageContext";
 import { MarkdownContent } from "@/lib/markdown";
@@ -1782,7 +1783,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       if (kind === "unsupported") {
         throw new Error("当前文件类型暂不支持在线预览，请下载后查看");
       }
-      if (kind === "text") {
+      if (kind === "text" || kind === "markdown") {
         setAttachmentPreviewText(await blob.text());
       } else if (kind === "pdf") {
         setAttachmentPreviewPdfData(new Uint8Array(await previewBlob(blob, kind).arrayBuffer()));
@@ -3318,6 +3319,8 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                   fileName={attachmentPreviewFile.originalName || `附件 #${attachmentPreviewFile.id}`}
                   type={attachmentPreviewOffice.kind}
                 />
+              ) : attachmentPreviewText && attachmentPreviewFile && attachmentPreviewKind(attachmentPreviewFile) === "markdown" ? (
+                <MarkdownPreviewContent text={attachmentPreviewText} />
               ) : attachmentPreviewText ? (
                 <pre className="min-h-[360px] whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-left text-xs leading-6 text-slate-200">
                   {attachmentPreviewText}
