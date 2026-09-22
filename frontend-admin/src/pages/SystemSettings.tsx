@@ -27,6 +27,8 @@ interface SettingsForm {
     apiKey: string;
     model: string;
     reportModel: string;
+    reportApiUrl: string;
+    reportApiKey: string;
   };
   mail: {
     enabled: boolean;
@@ -106,6 +108,8 @@ const emptyForm: SettingsForm = {
     apiKey: "",
     model: "",
     reportModel: "",
+    reportApiUrl: "",
+    reportApiKey: "",
   },
   mail: {
     enabled: false,
@@ -500,6 +504,8 @@ export function SystemSettings() {
           apiKey: item.ai?.apiKey || "",
           model: item.ai?.model || "",
           reportModel: item.ai?.reportModel || "",
+          reportApiUrl: item.ai?.reportApiUrl || "",
+          reportApiKey: item.ai?.reportApiKey || "",
         },
         mail: {
           enabled: toBool(item.mail?.enabled),
@@ -775,7 +781,20 @@ export function SystemSettings() {
                 <div className="space-y-2">
                   <Label>智能报表模型（可选）</Label>
                   <Input value={form.ai.reportModel} onChange={(e) => setForm({ ...form, ai: { ...form.ai, reportModel: e.target.value } })} placeholder="留空跟随主模型，如 kimi-for-coding-highspeed" />
-                  <p className="text-xs text-muted-foreground">智能报表是多轮对话，对速度敏感，可单独配高速模型；报价识别等其他功能仍用主模型</p>
+                  <p className="text-xs text-muted-foreground">智能报表是多轮对话，对速度敏感；报价识别等其他功能仍用主模型。跨厂商时连下面两项一起填（如 DeepSeek）</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>智能报表 API 地址（可选）</Label>
+                  <Input value={form.ai.reportApiUrl} onChange={(e) => setForm({ ...form, ai: { ...form.ai, reportApiUrl: e.target.value } })} placeholder="留空跟随主配置，如 https://api.deepseek.com/chat/completions" />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>智能报表 API Token（可选）</Label>
+                  <Input
+                    type="password"
+                    value={form.ai.reportApiKey}
+                    onChange={(e) => setForm({ ...form, ai: { ...form.ai, reportApiKey: e.target.value } })}
+                    placeholder="留空跟随主配置；保存后以星号显示"
+                  />
                 </div>
               </div>
 

@@ -13,6 +13,8 @@ const settingKeys = [
   'ai.apiKey',
   'ai.model',
   'ai.reportModel',
+  'ai.reportApiUrl',
+  'ai.reportApiKey',
   'mail.enabled',
   'mail.host',
   'mail.port',
@@ -75,6 +77,9 @@ async function effectiveSettings() {
       model: saved['ai.model'] ?? env.ai.model,
       // 智能报表专用模型（可选，留空跟随主模型）：报表是多轮工具循环，可用高速模型降延迟，报价识别等仍用主模型
       reportModel: saved['ai.reportModel'] ?? env.ai.reportModel,
+      // 报表独立通道（可选）：跨厂商时连同 apiUrl/apiKey 一起配（如报表走 DeepSeek，主通道保持 Kimi）
+      reportApiUrl: saved['ai.reportApiUrl'] ?? env.ai.reportApiUrl,
+      reportApiKey: saved['ai.reportApiKey'] ?? env.ai.reportApiKey,
     },
     mail: {
       enabled: boolText(saved['mail.enabled'], false),
@@ -180,6 +185,10 @@ function normalizeAiSettings(bodyAi = {}, currentAi) {
     apiUrl: String(bodyAi.apiUrl || currentAi.apiUrl || '').trim(),
     model: String(bodyAi.model || currentAi.model || '').trim(),
     reportModel: bodyAi.reportModel !== undefined ? String(bodyAi.reportModel).trim() : (currentAi.reportModel || ''),
+    reportApiUrl: bodyAi.reportApiUrl !== undefined ? String(bodyAi.reportApiUrl).trim() : (currentAi.reportApiUrl || ''),
+    reportApiKey: bodyAi.reportApiKey !== undefined && String(bodyAi.reportApiKey).trim() !== HIDDEN_SECRET
+      ? String(bodyAi.reportApiKey).trim()
+      : currentAi.reportApiKey,
     apiKey: apiKey && apiKey !== HIDDEN_SECRET ? apiKey : currentAi.apiKey,
   }
 }
@@ -229,6 +238,8 @@ async function update(req, res) {
     next['ai.apiUrl'] = ai.apiUrl
     next['ai.model'] = ai.model
     next['ai.reportModel'] = ai.reportModel
+    next['ai.reportApiUrl'] = ai.reportApiUrl
+    next['ai.reportApiKey'] = ai.reportApiKey
     next['ai.apiKey'] = ai.apiKey
   }
 
