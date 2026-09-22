@@ -252,6 +252,37 @@ const { HttpError } = require('../../../utils/http-error')
 }
 
 {
+  // TopN：limit 合法解析、随 specText 展示、进入 SQL LIMIT；非法值报错
+  const { errors, spec } = validateSpec({
+    dataset: 'service_orders',
+    timeRange: { type: 'relative', value: 'this_month' },
+    groupBy: ['customer'],
+    metrics: ['count'],
+    limit: 5,
+  })
+  assert.deepEqual(errors, [])
+  assert.equal(spec.limit, 5)
+  const { sql } = buildQuery(spec)
+  assert.ok(sql.includes('LIMIT 5'), 'TopN 应进入 SQL LIMIT')
+  const { range } = buildQuery(spec)
+  assert.ok(describeSpec(spec, range).includes('前 5 名'))
+
+  // 超过 100 封顶
+  const capped = validateSpec({ dataset: 'service_orders', metrics: ['count'], limit: 500 })
+  assert.equal(capped.spec.limit, 100)
+
+  // 非正整数报错
+  const bad = validateSpec({ dataset: 'service_orders', metrics: ['count'], limit: 'abc' })
+  assert.equal(bad.spec, null)
+  assert.ok(bad.errors.some((e) => e.includes('limit')))
+
+  // 不带 limit 时 spec.limit 为 null，SQL 用默认预览上限
+  const noLimit = validateSpec({ dataset: 'service_orders', metrics: ['count'] })
+  assert.equal(noLimit.spec.limit, null)
+  assert.ok(buildQuery(noLimit.spec).sql.includes('LIMIT 500'))
+}
+
+{
   // 非法对比类型被拦截
   const { errors, spec } = validateSpec({ dataset: 'service_orders', metrics: ['count'], compare: { type: 'decade' } })
   assert.equal(spec, null)

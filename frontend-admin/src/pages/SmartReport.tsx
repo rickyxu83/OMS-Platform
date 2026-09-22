@@ -33,6 +33,7 @@ interface ReportSpec {
   metrics: string[]
   chartType?: string | null
   compare?: { type: 'previous' | 'year_ago' } | null
+  limit?: number | null
 }
 interface CompareInfo { type: string; label: string; from: string; to: string }
 interface RangeInfo { from: string | null; to: string | null }
