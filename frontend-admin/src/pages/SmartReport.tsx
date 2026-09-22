@@ -144,11 +144,12 @@ function toChartData(preview: PreviewState) {
   return { data, metricLabel }
 }
 
-function defaultChartKind(spec: ReportSpec | null): ChartKind {
-  if (!spec) return 'table'
-  if (spec.chartType && ['bar', 'line', 'pie', 'table'].includes(spec.chartType)) return spec.chartType as ChartKind
-  if (spec.groupBy.some((k) => ['month', 'week', 'day'].includes(k))) return 'line'
-  return spec.groupBy.length ? 'bar' : 'table'
+/** 图表类型偏好持久化：记住用户手动选择，默认柱状图 */
+const CHART_KIND_KEY = 'smart-report:chartKind'
+
+function loadChartKind(): ChartKind {
+  const saved = localStorage.getItem(CHART_KIND_KEY)
+  return saved && ['table', 'bar', 'line', 'pie'].includes(saved) ? (saved as ChartKind) : 'bar'
 }
 
 function ChartView({ preview, kind }: { preview: PreviewState; kind: ChartKind }) {
@@ -207,7 +208,13 @@ export function SmartReport() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [preview, setPreview] = useState<PreviewState | null>(null)
-  const [chartKind, setChartKind] = useState<ChartKind>('table')
+  const [chartKind, setChartKindState] = useState<ChartKind>(loadChartKind)
+
+  /** 手动切换图表类型：生效并记住选择（下次访问/新报表都沿用） */
+  const setChartKind = (kind: ChartKind) => {
+    setChartKindState(kind)
+    localStorage.setItem(CHART_KIND_KEY, kind)
+  }
   const [templates, setTemplates] = useState<ReportTemplate[]>([])
   const [saveOpen, setSaveOpen] = useState(false)
   const [templateName, setTemplateName] = useState('')
@@ -249,7 +256,7 @@ export function SmartReport() {
         compare: result.compare || null,
         range: result.range || null,
       })
-      setChartKind(defaultChartKind(result.spec))
+      // 图表类型沿用用户记住的选择，不再随每张报表自动切换
       // 窄屏（手机/小窗）下预览在对话上方：新报表生成后自动滚回预览，不用手动往上拉
       if (window.innerWidth < 1024) {
         requestAnimationFrame(() => previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
@@ -280,7 +287,8 @@ export function SmartReport() {
     try {
       const result = await api.post('/report/preview', { spec: template.spec })
       applyResult(result)
-      if (template.chartType) setChartKind(template.chartType as ChartKind)
+      // 模板带自己的图表类型：临时应用但不覆盖用户手动记住的偏好
+      if (template.chartType) setChartKindState(template.chartType as ChartKind)
       setMessages((prev) => [...prev, { role: 'assistant', content: `已运行报表「${template.name}」，结果为最新数据。` }])
     } catch (error: any) {
       toast.error(error?.message || '模板运行失败')
