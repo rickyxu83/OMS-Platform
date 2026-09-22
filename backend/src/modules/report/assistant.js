@@ -3,17 +3,21 @@
  *
  * 安全设计（对齐 quote-coach）：AI 只输出白名单内的结构化 JSON（dataset/filters/groupBy/metrics），
  * 由 engine.js 校验并执行，AI 不直接写 SQL、不直接接触数据库。
+ *
+ * 数据集路由（router.js）：主流程先让路由从 11 个数据集中选一个，命中后主 prompt 只带
+ * 该数据集的完整元数据（其余压缩成一句话目录，主模型仍可改选）；路由失败/未命中回退全量目录。
  */
+const env = require('../../config/env')
 const { resolveAiConnection, callAi, extractJson } = require('../mr/lib/quotation-ai-parser')
 const { badRequest, badGateway } = require('../../utils/http-error')
 const { createHash } = require('node:crypto')
 const { DATASETS } = require('./datasets')
 const { RELATIVE_RANGE_LABELS } = require('./engine')
+const { routeDataset, compactCatalog } = require('./router')
 
-/** 把语义层元数据序列化为 prompt 文本（AI 选字段的唯一依据） */
-function catalogPrompt() {
-  const blocks = Object.values(DATASETS).map((ds) => {
-    const lines = [`【${ds.key}】${ds.label}：${ds.description}`]
+/** 单个数据集的完整元数据块（主 prompt 用） */
+function datasetBlock(ds) {
+  const lines = [`【${ds.key}】${ds.label}：${ds.description}`]
     if (ds.timeFields && Object.keys(ds.timeFields).length) {
       lines.push(`  时间字段 timeField（默认 ${ds.defaultTimeField}）：${Object.entries(ds.timeFields).map(([k, v]) => `${k}=${v.label}`).join('，')}`)
     } else {
@@ -26,12 +30,15 @@ function catalogPrompt() {
       return `${k}=${v.label}（文本模糊匹配，填关键词）`
     })
     lines.push(`  筛选 filters：${filters.join('；')}`)
-    return lines.join('\n')
-  })
-  return blocks.join('\n\n')
+  return lines.join('\n')
 }
 
-const SYSTEM_PROMPT = [
+/** 把语义层元数据序列化为 prompt 文本（AI 选字段的唯一依据） */
+function catalogPrompt() {
+  return Object.values(DATASETS).map(datasetBlock).join('\n\n')
+}
+
+const SYSTEM_RULES = [
   '你是运维管理系统（OMS）的智能报表助手。用户是公司主管，用中文大白话描述想看的统计报表，你负责把需求翻译成「报表定义 JSON」。',
   '你必须严格只输出一个合法 JSON 对象，不要输出任何其他文字，不要使用 Markdown 代码块。',
   '',
@@ -61,10 +68,22 @@ const SYSTEM_PROMPT = [
   '8. 用户要求对比（"环比/比上月/与上期相比" → compare.type="previous"；"同比/比去年/去年同期" → compare.type="year_ago"）时在 spec 里加 compare 字段；时间范围为「全部时间」时不要加 compare（不支持）',
   '9. 数据集选择注意同义词区分：问巡检的「完成情况/执行/漏检/应巡」用 inspection_completion（不是 inspection_schedules）；问「备件用量」用 service_parts；问「值班」用 duty_records；问「剩余年假/调休余额」用 leave_balance',
   '10. 无论对话进行到第几轮、无论用户是追问还是调整口径，每次回复都必须严格只输出上面规定的 JSON 对象，严禁只输出纯文本回复',
-  '',
-  '数据目录：',
-  catalogPrompt(),
 ].join('\n')
+
+/**
+ * 组装主 system prompt。
+ * routedKey 命中（数据集路由）：只带该数据集完整元数据 + 其他数据集一句话目录（主模型仍可改选），
+ * 大幅缩短 prompt、降低选错率；否则全量目录（路由失败/未命中时的回退行为）。
+ */
+function buildSystemPrompt(routedKey) {
+  const routed = routedKey && DATASETS[routedKey] ? DATASETS[routedKey] : null
+  const catalog = routed
+    ? `${datasetBlock(routed)}\n\n其他数据集一句话目录（用户问题其实属于下列之一时，改选对应 key）：\n${compactCatalog(routed.key)}`
+    : catalogPrompt()
+  return `${SYSTEM_RULES}\n\n数据目录：\n${catalog}`
+}
+
+const SYSTEM_PROMPT = buildSystemPrompt(null)
 
 /**
  * 摘要缓存（spec 017）：同一报表口径 + 数据结果 → 同一摘要，避免模板反复重跑时重复调 AI。
@@ -124,7 +143,16 @@ async function chat(messages, { fetchImpl = fetch } = {}) {
     throw badRequest('缺少用户消息')
   }
   const conn = await resolveAiConnection()
-  const aiMessages = [{ role: 'system', content: SYSTEM_PROMPT }, ...history]
+  // 数据集路由：命中则主 prompt 只带目标数据集的完整元数据；路由失败/未命中回退全量目录（纯优化，不影响可用性）
+  let system = SYSTEM_PROMPT
+  if (!env.ai.reportRouterDisabled) {
+    const routed = await routeDataset(history, { fetchImpl, conn })
+    if (routed) {
+      system = buildSystemPrompt(routed)
+      console.log(`[report] router → ${routed}`)
+    }
+  }
+  const aiMessages = [{ role: 'system', content: system }, ...history]
   let content = await callAi(aiMessages, 90000, fetchImpl, conn)
   let parsed = extractJson(content)
   if (!parsed || typeof parsed !== 'object') {
@@ -182,4 +210,4 @@ async function summarize(specText, columns, rows) {
   }
 }
 
-module.exports = { chat, summarize, catalogPrompt, summaryCacheKey, SYSTEM_PROMPT }
+module.exports = { chat, summarize, catalogPrompt, buildSystemPrompt, summaryCacheKey, SYSTEM_PROMPT }
