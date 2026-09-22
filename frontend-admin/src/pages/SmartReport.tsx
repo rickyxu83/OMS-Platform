@@ -6,7 +6,7 @@ import {
 import { toast } from 'sonner'
 import { saveAs } from 'file-saver'
 import {
-  Bar, BarChart, CartesianGrid, Cell, Line, LineChart as ReLineChart, Pie, PieChart as RePieChart,
+  Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart as ReLineChart, Pie, PieChart as RePieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { api } from '@/services/api'
@@ -132,17 +132,19 @@ function buildDrillHref(preview: PreviewState, row: Record<string, string | numb
   return `${base}service-orders?${params.toString()}`
 }
 
-/** 图表数据：维度值拼接为 name，第一个指标为 value */
+/** 图表数据：维度值拼接为 name，第一个指标为 value；有对比时附带对比期数值（compareValue） */
 function toChartData(preview: PreviewState) {
   const dimKeys = preview.columns.filter((c) => c.kind === 'dimension').map((c) => c.key)
-  const metricKey = preview.columns.find((c) => c.kind === 'metric')?.key
-  if (!metricKey) return { data: [], metricLabel: '' }
+  const metricKey = preview.columns.find((c) => c.kind === 'metric' && !c.key.includes('__'))?.key
+  if (!metricKey) return { data: [], metricLabel: '', compareLabel: '' }
   const metricLabel = preview.columns.find((c) => c.key === metricKey)?.label || metricKey
+  const compareKey = preview.compare ? `${metricKey}__compare` : null
   const data = preview.rows.slice(0, 30).map((row) => ({
     name: dimKeys.map((k) => String(row[k] ?? '')).join(' / ') || '合计',
     value: Number(row[metricKey]) || 0,
+    ...(compareKey ? { compareValue: Number(row[compareKey]) || 0 } : {}),
   }))
-  return { data, metricLabel }
+  return { data, metricLabel, compareLabel: compareKey ? `对比期（${preview.compare?.label || '上期'}）` : '' }
 }
 
 /** 图表类型偏好持久化：记住用户手动选择，默认柱状图 */
@@ -154,7 +156,8 @@ function loadChartKind(): ChartKind {
 }
 
 function ChartView({ preview, kind }: { preview: PreviewState; kind: ChartKind }) {
-  const { data, metricLabel } = useMemo(() => toChartData(preview), [preview])
+  const { data, metricLabel, compareLabel } = useMemo(() => toChartData(preview), [preview])
+  const hasCompare = Boolean(compareLabel)
   if (!data.length) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-1 text-muted-foreground">
@@ -186,7 +189,9 @@ function ChartView({ preview, kind }: { preview: PreviewState; kind: ChartKind }
           <XAxis dataKey="name" fontSize={11} tickLine={false} />
           <YAxis fontSize={11} tickLine={false} axisLine={false} width={48} />
           <Tooltip formatter={(value) => [`${value}`, metricLabel]} />
-          <Line type="monotone" dataKey="value" stroke="#5F2890" strokeWidth={2} dot={{ r: 3 }} />
+          {hasCompare && <Legend />}
+          <Line type="monotone" dataKey="value" name={metricLabel} stroke="#5F2890" strokeWidth={2} dot={{ r: 3 }} />
+          {hasCompare && <Line type="monotone" dataKey="compareValue" name={compareLabel} stroke="#CAB7DA" strokeWidth={2} strokeDasharray="6 4" dot={{ r: 3 }} />}
         </ReLineChart>
       </ResponsiveContainer>
     )
@@ -198,7 +203,9 @@ function ChartView({ preview, kind }: { preview: PreviewState; kind: ChartKind }
         <XAxis dataKey="name" fontSize={11} tickLine={false} />
         <YAxis fontSize={11} tickLine={false} axisLine={false} width={48} />
         <Tooltip formatter={(value) => [`${value}`, metricLabel]} />
-        <Bar dataKey="value" fill="#5F2890" radius={[4, 4, 0, 0]} maxBarSize={48} />
+        {hasCompare && <Legend />}
+        <Bar dataKey="value" name={metricLabel} fill="#5F2890" radius={[4, 4, 0, 0]} maxBarSize={48} />
+        {hasCompare && <Bar dataKey="compareValue" name={compareLabel} fill="#CAB7DA" radius={[4, 4, 0, 0]} maxBarSize={48} />}
       </BarChart>
     </ResponsiveContainer>
   )
