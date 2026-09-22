@@ -216,7 +216,7 @@ function ChartView({ preview, kind }: { preview: PreviewState; kind: ChartKind }
 export function SmartReport() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
-  const [nextTip, setNextTip] = useState('') // AI 给的下一轮追问提示，作为输入框占位文案
+  const [suggestions, setSuggestions] = useState<string[]>([]) // AI 给的下一轮追问提示，渲染为可点击胶囊
   const [sending, setSending] = useState(false)
   const [preview, setPreview] = useState<PreviewState | null>(null)
   const [chartKind, setChartKindState] = useState<ChartKind>(loadChartKind)
@@ -255,7 +255,9 @@ export function SmartReport() {
     if (assistantReply !== undefined) {
       setMessages((prev) => [...prev, { role: 'assistant', content: assistantReply }])
     }
-    if (result?.suggestion) setNextTip(String(result.suggestion))
+    if (Array.isArray(result?.suggestions)) {
+      setSuggestions(result.suggestions.map((s: unknown) => String(s)).filter(Boolean).slice(0, 3))
+    }
     if (result?.spec) {
       setPreview({
         spec: result.spec,
@@ -511,17 +513,33 @@ export function SmartReport() {
               </div>
             )}
           </div>
-          <div className="flex gap-2 border-t border-border p-3">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={nextTip ? `例如：${nextTip}` : '例如：换成按客户分组 / 只看已结案的'}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) void send(input) }}
-              disabled={sending}
-            />
-            <Button size="icon" onClick={() => void send(input)} disabled={sending || !input.trim()}>
-              <Send className="h-4 w-4" />
-            </Button>
+          <div className="border-t border-border p-3">
+            {suggestions.length > 0 && !sending && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {suggestions.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="rounded-full border border-border bg-card px-2.5 py-1 text-xs text-foreground transition hover:border-primary hover:text-primary"
+                    onClick={() => void send(s)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="例如：换成按客户分组 / 只看已结案的"
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) void send(input) }}
+                disabled={sending}
+              />
+              <Button size="icon" onClick={() => void send(input)} disabled={sending || !input.trim()}>
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>

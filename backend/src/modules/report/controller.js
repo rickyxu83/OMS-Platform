@@ -34,45 +34,31 @@ async function datasets(req, res) {
 
 /**
  * 对话一轮：body.messages 为会话历史（末条须为 user）。
- * AI 产出 spec 时后端立即校验并出预览；校验失败把原因并入 reply 返回（不 500）。
+ * assistant.chat 内部跑工具循环：AI 执行报表 → 看校验错误/真实数据自愈 → final 回复。
  * 2026-09-20 起不再生成 AI 摘要（佬要求报表结果不体现摘要），summary 固定空串保持响应结构。
  */
 async function chat(req, res) {
   const messages = Array.isArray(req.body?.messages) ? req.body.messages.slice(-12) : []
   const result = await assistant.chat(messages)
 
-  if (!result.spec) {
-    return res.json({ reply: result.reply, spec: null, suggestion: result.suggestion || '' })
+  if (!result.preview) {
+    return res.json({ reply: result.reply, spec: null, suggestions: result.suggestions || [] })
   }
 
-  const { errors, spec } = validateSpec(result.spec)
-  if (!spec) {
-    return res.json({
-      reply: `${result.reply}\n\n（这张报表我暂时生成不了：${errors.join('；')}。可以换个说法，或换用支持的维度/指标。）`,
-      spec: null,
-      suggestion: result.suggestion || '',
-    })
-  }
-
-  const preview = await runSpec(spec, { limit: 200 })
-  const summary = ''
+  const preview = result.preview
   void store.logUsage({ userId: req.user.id, action: 'chat', spec: preview.spec, rowsCount: preview.rows.length })
-  // 查询成功但 0 条数据时追加明确提示（不改 AI 原 reply 文本），帮用户区分"失败"与"没数据"
-  const emptyHint = preview.rows.length === 0
-    ? '\n\n（该时间范围和筛选条件下没有匹配的数据，可以试试扩大时间范围或减少筛选条件）'
-    : ''
   res.json({
-    reply: `${result.reply}${emptyHint}`,
+    reply: result.reply,
+    suggestions: result.suggestions || [],
     spec: preview.spec,
     specText: preview.specText,
     columns: preview.columns,
     rows: preview.rows,
     total: preview.total,
     truncated: preview.truncated,
-    summary,
+    summary: '',
     compare: preview.compare,
     range: preview.range,
-    suggestion: result.suggestion || '',
   })
 }
 

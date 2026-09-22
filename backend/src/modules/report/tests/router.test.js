@@ -60,22 +60,29 @@ async function main() {
     assert.equal(buildSystemPrompt('not_a_dataset'), SYSTEM_PROMPT, '未知 key 回退全量目录')
   }
 
-  // ⑤chat 集成：路由命中 → 主调用 system prompt 用精简版
+  // ⑤chat 集成：路由命中 → 主调用 system prompt 用精简版；run_report 执行后 preview 透传
   {
     const mains = []
+    const fakePreview = {
+      spec: { dataset: 'inspection_completion' }, specText: '巡检完成', columns: [], rows: [], total: 0,
+      truncated: false, compare: null, range: null,
+    }
     const fetchImpl = async (url, options) => {
       const body = JSON.parse(options.body)
       if (isRouterCall(body)) return fakeAiResponse(JSON.stringify({ dataset: 'inspection_completion' }))
       mains.push(body)
-      return fakeAiResponse(JSON.stringify({ reply: '巡检完成情况统计如下', spec: { dataset: 'inspection_completion' }, suggestion: '换成按工程师分组' }))
+      if (mains.length === 1) {
+        return fakeAiResponse(JSON.stringify({ action: 'run_report', spec: { dataset: 'inspection_completion' } }))
+      }
+      return fakeAiResponse(JSON.stringify({ action: 'final', reply: '巡检完成情况统计如下', suggestions: ['换成按工程师分组'] }))
     }
-    const result = await chat(history, { fetchImpl })
-    assert.equal(mains.length, 1, '主流程应只调用一次')
+    const result = await chat(history, { fetchImpl, runReport: async () => fakePreview })
+    assert.equal(mains.length, 2, 'run_report + final 共两轮')
     const sys = mains[0].messages[0].content
     assert.ok(sys.includes('【inspection_completion】'))
     assert.ok(!sys.includes('【service_orders】'))
-    assert.equal(result.spec.dataset, 'inspection_completion')
-    assert.equal(result.suggestion, '换成按工程师分组', 'suggestion 应透传给前端做追问提示')
+    assert.equal(result.preview.spec.dataset, 'inspection_completion')
+    assert.deepEqual(result.suggestions, ['换成按工程师分组'], 'suggestions 应透传给前端做可点击追问')
   }
 
   // ⑥chat 集成：路由未命中 → 主调用回退全量目录（旧行为）
@@ -85,9 +92,9 @@ async function main() {
       const body = JSON.parse(options.body)
       if (isRouterCall(body)) return fakeAiResponse(JSON.stringify({ dataset: null }))
       mains.push(body)
-      return fakeAiResponse(JSON.stringify({ reply: '好的', spec: { dataset: 'service_orders' } }))
+      return fakeAiResponse(JSON.stringify({ action: 'final', reply: '好的', suggestions: [] }))
     }
-    await chat([{ role: 'user', content: '这个月工单怎么样' }], { fetchImpl })
+    await chat([{ role: 'user', content: '随便聊聊' }], { fetchImpl })
     assert.ok(mains[0].messages[0].content.includes('【service_orders】'), '回退后应带全量目录')
   }
 
