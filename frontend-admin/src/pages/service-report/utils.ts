@@ -297,13 +297,15 @@ export function attachmentFileExtension(file: OrderFile) {
   return String(file.originalName || "").split(".").pop()?.toLowerCase() || "";
 }
 
-export type AttachmentPreviewKind = "image" | "pdf" | "text" | "docx" | "xlsx" | "unsupported";
+export type AttachmentPreviewKind = "image" | "pdf" | "text" | "markdown" | "docx" | "xlsx" | "unsupported";
 
 export function attachmentPreviewKind(file: OrderFile, blob?: Blob): AttachmentPreviewKind {
   const mimeType = String(file.mimeType || blob?.type || "").toLowerCase();
   const extension = attachmentFileExtension(file);
   if (mimeType.startsWith("image/") || ["jpg", "jpeg", "png", "webp", "gif"].includes(extension)) return "image";
   if (mimeType === "application/pdf" || extension === "pdf") return "pdf";
+  // Markdown 需在 text/plain 之前判断：.md 的 MIME 可能是 text/plain 或为空，按扩展名识别，走渲染预览而非源码
+  if (mimeType === "text/markdown" || ["md", "markdown"].includes(extension)) return "markdown";
   if (mimeType === "text/plain" || ["txt", "log", "csv"].includes(extension)) return "text";
   // docx 与 Excel（xls/xlsx，SheetJS 兼容 BIFF 旧版二进制）走客户端渲染预览；旧版 .doc 与 .ppt/.pptx 客户端无法解析，仍走下载
   if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || extension === "docx") return "docx";
