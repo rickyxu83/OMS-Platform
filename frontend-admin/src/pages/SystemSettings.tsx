@@ -26,6 +26,7 @@ interface SettingsForm {
     apiUrl: string;
     apiKey: string;
     model: string;
+    reportModel: string;
   };
   mail: {
     enabled: boolean;
@@ -104,6 +105,7 @@ const emptyForm: SettingsForm = {
     apiUrl: "",
     apiKey: "",
     model: "",
+    reportModel: "",
   },
   mail: {
     enabled: false,
@@ -497,6 +499,7 @@ export function SystemSettings() {
           apiUrl: item.ai?.apiUrl || "",
           apiKey: item.ai?.apiKey || "",
           model: item.ai?.model || "",
+          reportModel: item.ai?.reportModel || "",
         },
         mail: {
           enabled: toBool(item.mail?.enabled),
@@ -768,6 +771,11 @@ export function SystemSettings() {
                 <div className="space-y-2">
                   <Label>模型</Label>
                   <Input value={form.ai.model} onChange={(e) => setForm({ ...form, ai: { ...form.ai, model: e.target.value } })} placeholder="deepseek-v4-flash" />
+                </div>
+                <div className="space-y-2">
+                  <Label>智能报表模型（可选）</Label>
+                  <Input value={form.ai.reportModel} onChange={(e) => setForm({ ...form, ai: { ...form.ai, reportModel: e.target.value } })} placeholder="留空跟随主模型，如 kimi-for-coding-highspeed" />
+                  <p className="text-xs text-muted-foreground">智能报表是多轮对话，对速度敏感，可单独配高速模型；报价识别等其他功能仍用主模型</p>
                 </div>
               </div>
 

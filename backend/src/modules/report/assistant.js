@@ -171,6 +171,25 @@ function normalizeSuggestions(parsed) {
 
 const MAX_AGENT_STEPS = 4 // 工具循环上限：run_report 失败自愈 + 重试都在循环内，防失控
 
+/**
+ * 报表模块专用 AI 连接：系统设置 ai.reportModel（或 env AI_REPORT_MODEL）非空时覆盖模型。
+ * 报表是多轮工具循环、对延迟敏感，可配高速模型（如 kimi-for-coding-highspeed）；报价识别等仍用主模型。
+ */
+async function resolveReportConnection() {
+  const conn = await resolveAiConnection()
+  try {
+    const { effectiveSettings } = require('../../settings/controller')
+    const settings = await effectiveSettings()
+    const reportModel = settings.ai.reportModel || env.ai.reportModel
+    if (reportModel && reportModel !== conn.model) {
+      return { ...conn, model: reportModel }
+    }
+  } catch {
+    if (env.ai.reportModel) return { ...conn, model: env.ai.reportModel }
+  }
+  return conn
+}
+
 /** 默认报表执行器：校验 + 查询（单测注入假的，避免依赖数据库） */
 async function defaultRunReport(rawSpec) {
   return runSpec(rawSpec, { limit: 200 })
@@ -187,7 +206,7 @@ async function chat(messages, { fetchImpl = fetch, runReport = defaultRunReport 
   if (!history.length || history[history.length - 1].role !== 'user') {
     throw badRequest('缺少用户消息')
   }
-  const conn = await resolveAiConnection()
+  const conn = await resolveReportConnection()
   // 数据集路由：命中则主 prompt 只带目标数据集的完整元数据；路由失败/未命中回退全量目录（纯优化，不影响可用性）
   let system = SYSTEM_PROMPT
   if (!env.ai.reportRouterDisabled) {
@@ -264,7 +283,7 @@ async function summarize(specText, columns, rows) {
   const cached = summaryCacheGet(cacheKey)
   if (cached !== null) return cached
   try {
-    const conn = await resolveAiConnection()
+    const conn = await resolveReportConnection()
     const payload = {
       报表: specText,
       列: columns.map((c) => c.label),
