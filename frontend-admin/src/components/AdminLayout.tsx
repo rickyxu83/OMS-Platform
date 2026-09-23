@@ -229,7 +229,8 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
     groupKey: "reports",
     items: [
       { labelKey: "attendance", icon: CalendarClock, path: "attendance", requiredPermissions: ["attendance.apply", "attendance.approve", "attendance.view", "attendance.report.export", "attendance.admin.approve", "attendance.manage"] },
-      { labelKey: "timesheets", icon: BarChart3, path: "timesheets", requiredPermissions: ["timesheet.view"] },
+      // 月报导出并入智能报表（明细模式），导航隐藏；路由保留，稳定一段时间后下掉页面代码
+      // { labelKey: "timesheets", icon: BarChart3, path: "timesheets", requiredPermissions: ["timesheet.view"] },
       { labelKey: "smart-report", icon: Sparkles, path: "smart-report", requiredPermissions: ["report.use"] },
     ],
   },

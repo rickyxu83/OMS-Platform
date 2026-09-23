@@ -270,7 +270,8 @@ export function SmartReport() {
         compare: result.compare || null,
         range: result.range || null,
       })
-      // 图表类型沿用用户记住的选择，不再随每张报表自动切换
+      // 图表类型沿用用户记住的选择，不再随每张报表自动切换；明细模式强制表格（无聚合指标可画）
+      if (result.spec.detail) setChartKindState('table')
       // 窄屏（手机/小窗）下预览在对话上方：新报表生成后自动滚回预览，不用手动往上拉
       if (window.innerWidth < 1024) {
         requestAnimationFrame(() => previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))

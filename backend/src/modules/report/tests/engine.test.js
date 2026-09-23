@@ -1,6 +1,6 @@
 /** 智能报表引擎单测（spec 014）：白名单校验 / 时间范围解析 / SQL 拼接。不依赖数据库。 */
 const assert = require('node:assert/strict')
-const { validateSpec, resolveRelativeRange, resolveCompareRange, compareCell, buildQuery, describeSpec, runSpec } = require('../engine')
+const { validateSpec, resolveRelativeRange, resolveCompareRange, compareCell, buildQuery, buildDetailQuery, describeSpec, runSpec } = require('../engine')
 const { HttpError } = require('../../../utils/http-error')
 
 // ---- validateSpec：白名单拦截 ----
@@ -303,6 +303,54 @@ const { HttpError } = require('../../../utils/http-error')
   const fallback = validateSpec({ dataset: 'mr_orders', groupBy: ['customer'], metrics: ['count', 'amount'] })
   assert.equal(fallback.spec.sortBy, null)
   assert.ok(buildQuery(fallback.spec).sql.includes('ORDER BY `count` DESC'), '缺省按第一个指标')
+}
+
+{
+  // 明细模式：列白名单校验、sheetBy 校验、compare 强制丢弃、SQL 形态
+  const { errors, spec } = validateSpec({
+    dataset: 'timesheets',
+    timeRange: { type: 'absolute', from: '2026-08-01', to: '2026-08-31' },
+    detail: ['order_no', 'engineer', 'date', 'work_content', 'source'],
+    sheetBy: 'engineer',
+    compare: { type: 'previous' },
+  })
+  assert.deepEqual(errors, [])
+  assert.deepEqual(spec.detail, ['order_no', 'engineer', 'date', 'work_content', 'source'])
+  assert.equal(spec.sheetBy, 'engineer')
+  assert.equal(spec.compare, null, '明细模式应丢弃 compare')
+
+  const { sql, params, columns } = buildDetailQuery(spec)
+  assert.ok(sql.includes('UNION ALL'), '明细 SQL 应含手工记录 UNION')
+  assert.ok(sql.startsWith('SELECT d.order_no AS'), '明细 SQL 应直接选白名单列（外层不聚合）')
+  assert.ok(!sql.includes('COUNT(*)'), '明细 SQL 外层不应有聚合指标')
+  assert.ok(sql.includes('LIMIT 500'))
+  assert.equal(columns.length, 5)
+  assert.equal(params.timeFrom, '2026-08-01')
+
+  // 明细筛选（工程师 LIKE）
+  const filtered = validateSpec({
+    dataset: 'timesheets',
+    timeRange: { type: 'relative', value: 'last_month' },
+    filters: { engineer: '张' },
+    detail: ['date', 'engineer', 'work_content'],
+  })
+  const fq = buildDetailQuery(filtered.spec)
+  assert.ok(fq.sql.includes('d.engineer LIKE'), '明细筛选应走 detailFilters')
+  assert.equal(fq.params.f_engineer, '%张%')
+
+  // 非法明细列 / 不支持明细的数据集 / 非法 sheetBy
+  const badCol = validateSpec({ dataset: 'timesheets', detail: ['password_hash'] })
+  assert.equal(badCol.spec, null)
+  assert.ok(badCol.errors.some((e) => e.includes('明细列')))
+  const badDs = validateSpec({ dataset: 'mr_orders', detail: ['date'] })
+  assert.equal(badDs.spec, null)
+  assert.ok(badDs.errors.some((e) => e.includes('不支持明细查询')))
+  const badSheetBy = validateSpec({ dataset: 'timesheets', detail: ['date'], sheetBy: 'not_a_col' })
+  assert.equal(badSheetBy.spec, null)
+  assert.ok(badSheetBy.errors.some((e) => e.includes('sheetBy')))
+
+  // specText 标注明细
+  assert.ok(describeSpec(spec, buildDetailQuery(spec).range).includes('工时明细'))
 }
 
 {

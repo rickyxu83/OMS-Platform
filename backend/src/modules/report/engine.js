@@ -224,8 +224,40 @@ function validateSpec(raw) {
     }
   }
 
+  // 明细模式（可选）：detail 为明细列 key 数组；sheetBy 为拆 sheet 的列（导出用，如月报按填表人）
+  let detail = null
+  let sheetBy = null
+  if (raw.detail !== undefined && raw.detail !== null) {
+    if (!dataset.detailColumns) {
+      errors.push(`数据集「${dataset.label}」不支持明细查询`)
+    } else {
+      const cols = Array.isArray(raw.detail) ? raw.detail : []
+      const keys = []
+      for (const k of cols.slice(0, 20)) {
+        const key = String(k)
+        if (!dataset.detailColumns[key]) {
+          errors.push(`数据集「${dataset.label}」不支持明细列 ${key.slice(0, 40)}（可选：${Object.keys(dataset.detailColumns).join('/')}）`)
+        } else if (!keys.includes(key)) {
+          keys.push(key)
+        }
+      }
+      if (!keys.length && !errors.length) errors.push('明细模式至少需要一列')
+      if (keys.length) detail = keys
+      if (raw.sheetBy !== undefined && raw.sheetBy !== null) {
+        const sb = String(raw.sheetBy)
+        if (!dataset.detailColumns[sb]) {
+          errors.push(`sheetBy ${sb.slice(0, 40)} 不是明细列（可选：${Object.keys(dataset.detailColumns).join('/')}）`)
+        } else {
+          sheetBy = sb
+        }
+      }
+    }
+  }
+  // 明细模式下对比无意义，直接丢弃
+  if (detail) compare = null
+
   if (errors.length) return { errors, spec: null }
-  return { errors, spec: { dataset: dataset.key, timeField, timeRange, filters, groupBy: dims, metrics, chartType, compare, limit: topN, sortBy } }
+  return { errors, spec: { dataset: dataset.key, timeField, timeRange, filters, groupBy: dims, metrics, chartType, compare, limit: topN, sortBy, detail, sheetBy } }
 }
 
 /** YYYY-MM-DD 偏移指定天数（UTC 安全） */
@@ -346,10 +378,57 @@ function buildQuery(spec, { limit = 500 } = {}) {
   return { sql, params, columns, range }
 }
 
+/**
+ * 明细查询：不分组不聚合，从数据集 detailSql（统一列子查询）选白名单列。
+ * 时间范围作用于 detailTimeColumn；筛选走 detailFilters（文本 LIKE）。
+ */
+function buildDetailQuery(spec, { limit = 500 } = {}) {
+  const dataset = DATASETS[spec.dataset]
+  const params = {}
+  const where = []
+  let range = null
+  if (spec.timeRange.type === 'relative') {
+    const resolved = resolveRelativeRange(spec.timeRange.value)
+    range = { ...resolved, label: RELATIVE_RANGE_LABELS[spec.timeRange.value] }
+  } else {
+    range = { from: spec.timeRange.from, to: spec.timeRange.to, label: `${spec.timeRange.from} ~ ${spec.timeRange.to}` }
+  }
+  if (range.from && range.to) {
+    where.push(`DATE(${dataset.detailTimeColumn}) >= :timeFrom AND DATE(${dataset.detailTimeColumn}) <= :timeTo`)
+  }
+  params.timeFrom = range.from || null
+  params.timeTo = range.to || null
+
+  const columns = []
+  for (const key of spec.detail) {
+    const def = dataset.detailColumns[key]
+    columns.push({ key, label: def.label, kind: 'dimension', unit: null })
+  }
+  const selectParts = spec.detail.map((key) => `${dataset.detailColumns[key].sql} AS \`${key}\``)
+
+  for (const [key, value] of Object.entries(spec.filters)) {
+    const def = dataset.detailFilters?.[key]
+    if (!def) continue // 明细模式不支持的筛选静默跳过（与统计模式共享 filters 白名单）
+    params[`f_${key}`] = `%${String(Array.isArray(value) ? value[0] : value).slice(0, 60)}%`
+    where.push(`${def.column} LIKE :f_${key}`)
+  }
+
+  const safeLimit = Math.min(Math.max(1, Math.floor(Number(limit) || 500)), 5000)
+  const sql = [
+    `SELECT ${selectParts.join(', ')}`,
+    dataset.detailSql,
+    where.length ? `WHERE ${where.join(' AND ')}` : '',
+    `ORDER BY ${dataset.detailOrder || dataset.detailTimeColumn}`,
+    `LIMIT ${safeLimit}`,
+  ].filter(Boolean).join('\n')
+
+  return { sql, params, columns, range }
+}
+
 /** 报表定义的人类可读描述（展示与导出文件头用） */
 function describeSpec(spec, range) {
   const dataset = DATASETS[spec.dataset]
-  const parts = [dataset.label]
+  const parts = [spec.detail ? `${dataset.label}明细` : dataset.label]
   const timeLabel = range?.from && range?.to
     ? `${range.from} ~ ${range.to}（${spec.timeField ? dataset.timeFields[spec.timeField].label : '统计区间'}）`
     : '全部时间'
@@ -357,7 +436,7 @@ function describeSpec(spec, range) {
   if (spec.groupBy.length) parts.push(`按 ${spec.groupBy.map((k) => dataset.dimensions[k].label).join('、')} 分组`)
   if (spec.limit) parts.push(`前 ${spec.limit} 名`)
   if (spec.sortBy && spec.sortBy !== spec.metrics[0]) parts.push(`按${dataset.metrics[spec.sortBy].label}降序`)
-  parts.push(`指标：${spec.metrics.map((k) => dataset.metrics[k].label).join('、')}`)
+  if (!spec.detail) parts.push(`指标：${spec.metrics.map((k) => dataset.metrics[k].label).join('、')}`)
   const filterTexts = Object.entries(spec.filters).map(([key, value]) => {
     const def = dataset.filters[key]
     const shown = def.type === 'enum' ? value.map((v) => def.options[v] || v).join('/') : value
@@ -396,6 +475,24 @@ async function runSpec(rawSpec, { limit = 500 } = {}) {
     throw unprocessableEntity(`报表定义无效：${errors.join('；')}`, errors)
   }
   const dataset = DATASETS[spec.dataset]
+
+  // 明细模式：不分组不聚合，直接出行级记录
+  if (spec.detail) {
+    const detailTopN = spec.limit || null
+    const detailQuery = buildDetailQuery(spec, { limit: detailTopN ?? limit + 1 })
+    const detailRawRows = await query(detailQuery.sql, detailQuery.params)
+    const detailTruncated = !detailTopN && detailRawRows.length > limit
+    return {
+      spec,
+      columns: detailQuery.columns,
+      rows: detailRawRows.slice(0, detailTopN ?? limit),
+      total: Math.min(detailRawRows.length, detailTopN ?? limit),
+      truncated: detailTruncated,
+      specText: describeSpec(spec, detailQuery.range),
+      range: { ...detailQuery.range },
+      compare: null,
+    }
+  }
   // TopN 时按 TopN 查询（不做截断检测）；否则按预览上限 +1 查询以检测截断
   const topN = spec.limit || null
   const { sql, params, columns, range } = buildQuery(spec, { limit: topN ?? limit + 1 })
@@ -485,4 +582,4 @@ async function runSpec(rawSpec, { limit = 500 } = {}) {
   }
 }
 
-module.exports = { validateSpec, resolveRelativeRange, resolveCompareRange, compareCell, buildQuery, describeSpec, runSpec, RELATIVE_RANGE_LABELS, CHART_TYPES, COMPARE_TYPE_LABELS }
+module.exports = { validateSpec, resolveRelativeRange, resolveCompareRange, compareCell, buildQuery, buildDetailQuery, describeSpec, runSpec, RELATIVE_RANGE_LABELS, CHART_TYPES, COMPARE_TYPE_LABELS }

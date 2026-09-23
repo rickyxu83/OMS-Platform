@@ -169,6 +169,85 @@ const DATASETS = {
       category: { label: '工时类别', type: 'text', column: 'so.timesheet_category' },
       service_type: { label: '服务类型', type: 'enum', column: 'so.service_type', options: SERVICE_TYPE_LABELS },
     },
+    // 明细模式（月报）：工单工时 + 手工记录 UNION，列口径对齐旧「月报导出」页面（service-orders/controller.js 月报列表）
+    detailSql: `FROM (
+      SELECT u.real_name AS engineer,
+             DATE(COALESCE(sr.actual_start_at, so.planned_start_at, so.submitted_at, so.created_at)) AS work_date,
+             so.order_no AS order_no,
+             CASE WHEN so.service_mode = 'office' THEN '内部工作'
+                  WHEN so.service_mode = 'remote' THEN '远程服务'
+                  WHEN so.service_type IN ('install', 'training') THEN '售后服务'
+                  ELSE '维护服务' END AS work_nature,
+             CASE WHEN so.service_mode = 'office' THEN COALESCE(NULLIF(so.timesheet_category, ''), '其他')
+                  WHEN so.service_mode = 'remote' THEN COALESCE(NULLIF(so.timesheet_category, ''), '排障')
+                  WHEN so.service_type = 'install' THEN '安装'
+                  WHEN so.service_type = 'repair' THEN '排障'
+                  WHEN so.service_type = 'maintain' THEN '调优'
+                  WHEN so.service_type = 'inspect' THEN '巡检'
+                  WHEN so.service_type = 'training' THEN '培训'
+                  ELSE '其他' END AS category,
+             c.name AS customer,
+             CASE WHEN so.service_mode = 'office' THEN COALESCE(so.internal_note, '') ELSE COALESCE(dev.name, '') END AS product,
+             CONCAT_WS('\n', NULLIF(we.work_content, ''), NULLIF(so.work_content, ''), NULLIF(sr.result_description, ''), NULLIF(so.issue_description, '')) AS work_content,
+             CASE so.result WHEN 'resolved' THEN '已完成' WHEN 'unresolved' THEN '未完成' WHEN 'follow_up_required' THEN '搁置中' ELSE '已完成' END AS progress,
+             so.order_no AS remark,
+             '工单' AS source
+      FROM service_orders so
+      JOIN (
+        SELECT service_order_id, engineer_id FROM service_order_engineers
+        UNION
+        SELECT id AS service_order_id, assigned_engineer_id AS engineer_id
+        FROM service_orders WHERE assigned_engineer_id IS NOT NULL
+      ) p ON p.service_order_id = so.id
+      JOIN users u ON u.id = p.engineer_id AND u.role IN ('engineer', 'engineering_supervisor')
+      JOIN customers c ON c.id = so.customer_id
+      LEFT JOIN devices dev ON dev.id = so.device_id
+      LEFT JOIN service_reports sr ON sr.service_order_id = so.id
+      LEFT JOIN (
+        SELECT srwe.service_order_id,
+               GROUP_CONCAT(CONCAT(COALESCE(uwe.real_name, uwe.username, '工程师'), '：', srwe.work_content) SEPARATOR '\n') AS work_content
+        FROM service_report_work_entries srwe
+        JOIN users uwe ON uwe.id = srwe.engineer_id
+        GROUP BY srwe.service_order_id
+      ) we ON we.service_order_id = so.id
+      WHERE so.status <> 'cancelled'
+      UNION ALL
+      SELECT u2.real_name AS engineer,
+             tme.entry_date AS work_date,
+             '' AS order_no,
+             '内部工作' AS work_nature,
+             tme.category AS category,
+             COALESCE(tme.customer_project, '') AS customer,
+             COALESCE(tme.customer_project, '') AS product,
+             tme.work_content AS work_content,
+             COALESCE(tme.progress, '已完成') AS progress,
+             COALESCE(tme.remark, '') AS remark,
+             '手工记录' AS source
+      FROM timesheet_manual_entries tme
+      JOIN users u2 ON u2.id = tme.engineer_id AND u2.role IN ('engineer', 'engineering_supervisor')
+    ) d`,
+    detailTimeColumn: 'd.work_date',
+    detailOrder: 'd.work_date, d.engineer, d.order_no',
+    detailColumns: {
+      order_no: { label: '工单编号', sql: 'd.order_no' },
+      engineer: { label: '填表人', sql: 'd.engineer' },
+      date: { label: '日期', sql: "DATE_FORMAT(d.work_date, '%Y-%m-%d')" },
+      weekday: { label: '星期', sql: "ELT(DAYOFWEEK(d.work_date), '星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六')" },
+      work_nature: { label: '工作性质', sql: 'd.work_nature' },
+      category: { label: '工时类别', sql: 'd.category' },
+      customer: { label: '客户名称', sql: 'd.customer' },
+      product: { label: '专案/产品', sql: 'd.product' },
+      work_content: { label: '工作内容', sql: 'd.work_content' },
+      progress: { label: '进度', sql: 'd.progress' },
+      remark: { label: '备注', sql: 'd.remark' },
+      source: { label: '来源', sql: 'd.source' },
+    },
+    detailFilters: {
+      engineer: { label: '工程师', column: 'd.engineer' },
+      customer: { label: '客户', column: 'd.customer' },
+      category: { label: '工时类别', column: 'd.category' },
+      source: { label: '来源', column: 'd.source' },
+    },
   },
 
   attendance: {
