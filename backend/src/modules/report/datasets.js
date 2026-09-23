@@ -188,7 +188,7 @@ const DATASETS = {
                   ELSE '其他' END AS category,
              c.name AS customer,
              CASE WHEN so.service_mode = 'office' THEN COALESCE(so.internal_note, '') ELSE COALESCE(dev.name, '') END AS product,
-             CONCAT_WS('\n', NULLIF(we.work_content, ''), NULLIF(so.work_content, ''), NULLIF(sr.result_description, ''), NULLIF(so.issue_description, '')) AS work_content,
+             CONCAT_WS('\n', NULLIF(we.work_content, ''), NULLIF(sr.work_content, ''), NULLIF(sr.result_description, ''), NULLIF(so.issue_description, '')) AS work_content,
              CASE so.result WHEN 'resolved' THEN '已完成' WHEN 'unresolved' THEN '未完成' WHEN 'follow_up_required' THEN '搁置中' ELSE '已完成' END AS progress,
              so.order_no AS remark,
              '工单' AS source
