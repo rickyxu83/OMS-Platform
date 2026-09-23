@@ -93,8 +93,9 @@ function safeSheetName(value, fallback) {
 /**
  * 明细模式 Excel（月报格式）：公司抬头 + 口径行 +（拆 sheet 时）分组行 + 冻结表头。
  * spec.sheetBy 命中时按该列拆 sheet（如月报按填表人一人一 sheet），否则单一「明细」sheet。
+ * baseUrl 非空时工单编号渲染为超链接（点击跳转 OMS 工单列表按编号过滤）。
  */
-async function buildDetailXlsx({ title, specText, columns, rows, truncated, spec }) {
+async function buildDetailXlsx({ title, specText, columns, rows, truncated, spec, baseUrl = '' }) {
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'OMS 智能报表'
   const HEADER_ROW = 4
@@ -144,10 +145,20 @@ async function buildDetailXlsx({ title, specText, columns, rows, truncated, spec
     })
 
     groupRows.forEach((row) => {
-      sheet.addRow(columns.map((col) => {
+      const excelRow = sheet.addRow(columns.map((col) => {
         const value = row[col.key]
         return value === null || value === undefined || value === '' ? '-' : value
       }))
+      // 工单编号超链接：点击跳转 OMS 对应工单（手工记录无编号，跳过）
+      const orderNoColIndex = columns.findIndex((col) => col.key === 'order_no')
+      if (baseUrl && orderNoColIndex >= 0) {
+        const orderNo = row.order_no
+        if (orderNo) {
+          const cell = excelRow.getCell(orderNoColIndex + 1)
+          cell.value = { text: String(orderNo), hyperlink: `${baseUrl}/service-orders?keyword=${encodeURIComponent(String(orderNo))}` }
+          cell.font = { color: { argb: 'FF2563EB' }, underline: true }
+        }
+      }
     })
   })
 

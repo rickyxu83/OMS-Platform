@@ -94,6 +94,13 @@ async function exportReport(req, res) {
 
   // 明细模式（月报）：专用工作簿（公司抬头 + 按 sheetBy 拆 sheet），不嵌图表
   if (result.spec.detail && format === 'xlsx') {
+    // 工单编号超链接的站点地址（系统设置通知里的管理端地址；读失败则不加链接）
+    let baseUrl = ''
+    try {
+      const { effectiveSettings } = require('../settings/controller')
+      const settings = await effectiveSettings()
+      baseUrl = String(settings.notification?.serviceOrderAdminBaseUrl || '').trim().replace(/\/+$/, '')
+    } catch { /* 无地址则不加链接 */ }
     const buffer = await buildDetailXlsx({
       title,
       specText: result.specText,
@@ -101,6 +108,7 @@ async function exportReport(req, res) {
       rows: result.rows,
       truncated: result.truncated,
       spec: result.spec,
+      baseUrl,
     })
     const filename = exportFileName(`${datasetLabel}明细`, 'xlsx')
     res.setHeader('Content-Type', XLSX_CONTENT_TYPE)
