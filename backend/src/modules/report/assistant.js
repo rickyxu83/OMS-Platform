@@ -93,7 +93,7 @@ const SYSTEM_RULES = [
   '12. 数据集选择注意同义词区分：问巡检的「完成情况/执行/漏检/应巡」用 inspection_completion（不是 inspection_schedules）；问「备件用量」用 service_parts；问「值班」用 duty_records；问「剩余年假/调休余额」用 leave_balance',
   '13. 用户说「前 N 名/top N/最多/最高的前几个」时设置 limit=N；用户改口「改成前 5」时更新 limit；说「不要限制/全部列出」时输出 null',
   '14. 排序：默认按第一个指标降序；用户说「按某指标最大/最高/最多排序」「X 最大的前 N 名」时，sortBy 必须填该指标的 key（且该指标要在 metrics 里）——如「未税金额最大的客户前 3 名」→ metrics 含 amount、sortBy="amount"、limit=3',
-  '15. 明细模式：用户要「明细/清单/逐条记录/月报/工作记录导出」时用 detail 填明细列 key（数据目录里标了 detailColumns 的数据集才支持）。月报默认列：order_no/engineer/date/weekday/work_nature/customer/product/work_content/progress/remark/source；用户对话中增删列 → 调整 detail 数组；导出月报类多 sheet 文件时 sheetBy 填分组列（如 engineer）。明细模式不需要 metrics/groupBy/compare，timeRange 照常作用于工作时间',
+  '15. 明细模式：用户要「明细/清单/逐条记录/月报/工作记录导出」时用 detail 填明细列 key（数据目录里标了 detailColumns 的数据集才支持）。月报默认列：order_no/engineer/date/weekday/work_nature/customer/main_content/progress/remark/source（不含 product 与 work_content，用户要求时可加）；用户对话中增删列 → 调整 detail 数组；导出月报类多 sheet 文件时 sheetBy 填分组列（如 engineer）。明细模式不需要 metrics/groupBy/compare，timeRange 照常作用于工作时间',
   '',
   'final 回复规则：',
   '15. 执行过报表时，reply 基于工具返回的真实数据写 2~4 句总结（总量、分布、值得注意的客观异常）；可以引用真实数字，但严禁编造工具结果里没有的数字、人名、占比；没有执行报表时，reply 不得包含任何具体数字、公司名、名单',

@@ -189,6 +189,7 @@ const DATASETS = {
              c.name AS customer,
              CASE WHEN so.service_mode = 'office' THEN COALESCE(so.internal_note, '') ELSE COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(dev.model, ''), NULLIF(dev.serial_no, '')), ''), dev.name, '') END AS product,
              CONCAT_WS('\n', NULLIF(we.work_content, ''), NULLIF(sr.work_content, ''), NULLIF(sr.result_description, ''), NULLIF(so.issue_description, '')) AS work_content,
+             COALESCE(so.issue_description, '') AS main_content,
              CASE sr.result WHEN 'resolved' THEN '已完成' WHEN 'unresolved' THEN '未完成' WHEN 'follow_up_required' THEN '搁置中' ELSE '已完成' END AS progress,
              so.order_no AS remark,
              '工单' AS source
@@ -220,6 +221,7 @@ const DATASETS = {
              COALESCE(tme.customer_project, '') AS customer,
              COALESCE(tme.customer_project, '') AS product,
              tme.work_content AS work_content,
+             tme.work_content AS main_content,
              COALESCE(tme.progress, '已完成') AS progress,
              COALESCE(tme.remark, '') AS remark,
              '手工记录' AS source
@@ -237,6 +239,7 @@ const DATASETS = {
       category: { label: '工时类别', sql: 'd.category' },
       customer: { label: '客户名称', sql: 'd.customer' },
       product: { label: '专案/产品', sql: 'd.product' },
+      main_content: { label: '主要内容', sql: 'd.main_content' },
       work_content: { label: '工作内容', sql: 'd.work_content' },
       progress: { label: '进度', sql: 'd.progress' },
       remark: { label: '备注', sql: 'd.remark' },
