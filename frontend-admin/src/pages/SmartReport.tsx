@@ -61,6 +61,7 @@ interface ReportTemplate {
 type ChartKind = 'table' | 'bar' | 'line' | 'pie'
 
 const EXAMPLE_PROMPTS = [
+  '导出工程师当月月报',
   '上个月各工程师结了多少单？',
   '本月每位工程师的工时统计',
   '今年各客户的设备维保类型分布',
