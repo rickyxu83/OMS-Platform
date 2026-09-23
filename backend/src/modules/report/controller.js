@@ -4,7 +4,7 @@
  */
 const assistant = require('./assistant')
 const { runSpec, validateSpec } = require('./engine')
-const { buildXlsx, buildDetailXlsx, buildPdf, exportFileName } = require('./export')
+const { buildXlsx, buildDetailXlsx, buildDetailPdf, buildPdf, exportFileName } = require('./export')
 const { DATASETS } = require('./datasets')
 const store = require('./store')
 const { badRequest, notFound } = require('../../utils/http-error')
@@ -86,7 +86,8 @@ async function preview(req, res) {
 async function exportReport(req, res) {
   const format = String(req.body?.format || 'xlsx')
   if (!['xlsx', 'pdf'].includes(format)) throw badRequest('format 仅支持 xlsx / pdf')
-  const limit = format === 'pdf' ? 300 : 1000
+  const isDetail = Boolean(req.body?.spec?.detail)
+  const limit = format === 'pdf' ? (isDetail ? 1000 : 300) : 1000
   const result = await runSpec(req.body?.spec, { limit })
   const datasetLabel = DATASETS[result.spec.dataset].label
   void store.logUsage({ userId: req.user.id, action: 'export', spec: result.spec, rowsCount: result.rows.length })
@@ -113,6 +114,23 @@ async function exportReport(req, res) {
     const filename = exportFileName(`${datasetLabel}明细`, 'xlsx')
     res.setHeader('Content-Type', XLSX_CONTENT_TYPE)
     res.setHeader('Content-Disposition', `attachment; filename="report-${Date.now()}.xlsx"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+    res.setHeader('Content-Length', buffer.length)
+    return res.end(buffer)
+  }
+
+  // 明细模式 PDF（月报）：按 sheetBy 分节（每个工程师一页一节）
+  if (result.spec.detail && format === 'pdf') {
+    const buffer = await buildDetailPdf({
+      title,
+      specText: result.specText,
+      columns: result.columns,
+      rows: result.rows,
+      truncated: result.truncated,
+      spec: result.spec,
+    })
+    const filename = exportFileName(`${datasetLabel}明细`, 'pdf')
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="report-${Date.now()}.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`)
     res.setHeader('Content-Length', buffer.length)
     return res.end(buffer)
   }

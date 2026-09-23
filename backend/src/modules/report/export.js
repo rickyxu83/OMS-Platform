@@ -351,4 +351,103 @@ function buildPdf({ title, specText, summary, columns, rows, truncated, compare,
   })
 }
 
-module.exports = { buildXlsx, buildDetailXlsx, buildPdf, exportFileName }
+/**
+ * 明细模式 PDF（月报格式）：标题区后按 sheetBy 分组（如每个工程师一节），
+ * 每组另起新页：节标题（分组名 + 记录数）+ 该组表格，表格跨页自动重复表头。
+ * 未指定 sheetBy 时单组全量。A4 横版。
+ */
+function buildDetailPdf({ title, specText, columns, rows, truncated, spec }) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 40, bufferPages: true })
+    const chunks = []
+    doc.on('data', (chunk) => chunks.push(chunk))
+    doc.on('end', () => resolve(Buffer.concat(chunks)))
+    doc.on('error', reject)
+
+    const fonts = registerFonts(doc)
+    const pageWidth = doc.page.width - 80
+    const bottom = doc.page.height - 50
+
+    const groups = new Map()
+    if (spec?.sheetBy) {
+      for (const row of rows) {
+        const key = String(row[spec.sheetBy] ?? '') || '未指定'
+        groups.set(key, [...(groups.get(key) || []), row])
+      }
+    } else {
+      groups.set('', rows)
+    }
+    const sortedGroups = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b, 'zh-Hans-CN'))
+
+    // 列宽：主要内容/工作内容类长文本列给双倍权重
+    const weights = columns.map((c) => (['main_content', 'work_content'].includes(c.key) ? 2.2 : 1))
+    const totalWeight = weights.reduce((a, b) => a + b, 0)
+    const colWidths = weights.map((w) => (pageWidth * w) / totalWeight)
+    const rowHeight = 18
+
+    const drawRow = (values, { bold = false, header = false, zebra = false } = {}) => {
+      let y = doc.y
+      if (y + rowHeight > bottom) {
+        doc.addPage()
+        doc.y = 40
+        drawRow(columns.map((c) => c.label), { bold: true, header: true })
+        y = doc.y
+      }
+      if (header) doc.rect(40, y, pageWidth, rowHeight).fill('#4c1d95')
+      else if (zebra) doc.rect(40, y, pageWidth, rowHeight).fill('#f5f3ff')
+      values.forEach((value, i) => {
+        const x = 40 + colWidths.slice(0, i).reduce((a, b) => a + b, 0)
+        const text = value === null || value === undefined || value === '' ? '-' : String(value)
+        doc.font(bold ? fonts.bold : fonts.regular).fontSize(8)
+        doc.fillColor(header ? '#ffffff' : '#111827')
+        doc.text(header ? String(value ?? '') : text, x + 3, y + 4, {
+          width: colWidths[i] - 6,
+          height: rowHeight - 4,
+          lineBreak: false,
+          ellipsis: true,
+        })
+      })
+      doc.moveTo(40, y + rowHeight).lineTo(40 + pageWidth, y + rowHeight).lineWidth(0.25).strokeColor('#e5e7eb').stroke()
+      doc.y = y + rowHeight
+    }
+
+    sortedGroups.forEach(([groupValue, groupRows], groupIndex) => {
+      if (groupIndex > 0) doc.addPage()
+      // 标题区（每组第一页）
+      doc.rect(40, 40, 4, 18).fill('#4c1d95')
+      doc.font(fonts.bold).fontSize(15).fillColor('#111827').text(title, 52, 40)
+      doc.moveDown(0.4)
+      doc.font(fonts.regular).fontSize(9).fillColor('#4b5563').text(`统计口径：${specText}`, 40)
+      if (groupValue) {
+        doc.moveDown(0.3)
+        doc.font(fonts.bold).fontSize(11).fillColor('#4c1d95').text(`填表人：${groupValue}　记录数：${groupRows.length}`)
+      }
+      if (truncated) {
+        doc.font(fonts.regular).fontSize(8).fillColor('#b45309').text('注：数据行数较多，PDF 仅收录前若干行，完整数据请导出 Excel。')
+      }
+      doc.moveDown(0.5)
+
+      drawRow(columns.map((c) => c.label), { bold: true, header: true })
+      groupRows.forEach((row, i) => {
+        drawRow(columns.map((c) => row[c.key]), { zebra: i % 2 === 1 })
+      })
+    })
+
+    // 页脚：品牌 + 导出时间 + 页码（每页）
+    const range = doc.bufferedPageRange()
+    for (let i = range.start; i < range.start + range.count; i++) {
+      doc.switchToPage(i)
+      doc.font(fonts.regular).fontSize(7).fillColor('#9ca3af')
+      doc.text(
+        `OMS 智能报表 · 导出于 ${exportTimeText()} · 第 ${i + 1} / ${range.start + range.count} 页`,
+        40,
+        doc.page.height - 36,
+        { width: pageWidth, align: 'center', lineBreak: false },
+      )
+    }
+
+    doc.end()
+  })
+}
+
+module.exports = { buildXlsx, buildDetailXlsx, buildDetailPdf, buildPdf, exportFileName }
