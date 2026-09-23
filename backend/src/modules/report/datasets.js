@@ -187,9 +187,9 @@ const DATASETS = {
                   WHEN so.service_type = 'training' THEN '培训'
                   ELSE '其他' END AS category,
              c.name AS customer,
-             CASE WHEN so.service_mode = 'office' THEN COALESCE(so.internal_note, '') ELSE COALESCE(dev.name, '') END AS product,
+             CASE WHEN so.service_mode = 'office' THEN COALESCE(so.internal_note, '') ELSE COALESCE(NULLIF(CONCAT_WS(' / ', NULLIF(dev.model, ''), NULLIF(dev.serial_no, '')), ''), dev.name, '') END AS product,
              CONCAT_WS('\n', NULLIF(we.work_content, ''), NULLIF(sr.work_content, ''), NULLIF(sr.result_description, ''), NULLIF(so.issue_description, '')) AS work_content,
-             CASE so.result WHEN 'resolved' THEN '已完成' WHEN 'unresolved' THEN '未完成' WHEN 'follow_up_required' THEN '搁置中' ELSE '已完成' END AS progress,
+             CASE sr.result WHEN 'resolved' THEN '已完成' WHEN 'unresolved' THEN '未完成' WHEN 'follow_up_required' THEN '搁置中' ELSE '已完成' END AS progress,
              so.order_no AS remark,
              '工单' AS source
       FROM service_orders so
