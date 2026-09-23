@@ -82,7 +82,7 @@ function chartImageBuffer(chartImage) {
 }
 
 /** 月报式明细列宽（对齐旧「月报导出」页面） */
-const DETAIL_WIDTHS = { order_no: 20, engineer: 14, date: 13, weekday: 10, work_nature: 13, category: 13, customer: 24, product: 24, work_content: 42, progress: 12, remark: 18, source: 12 }
+const DETAIL_WIDTHS = { order_no: 20, engineer: 14, date: 13, weekday: 10, work_nature: 13, category: 13, customer: 24, product: 24, main_content: 42, work_content: 42, progress: 12, remark: 18, source: 12 }
 const COMPANY_NAME = '敦阳（宁波）科技有限公司'
 
 function safeSheetName(value, fallback) {
