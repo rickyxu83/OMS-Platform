@@ -35,6 +35,8 @@ interface ReportSpec {
   compare?: { type: 'previous' | 'year_ago' } | null
   limit?: number | null
   sortBy?: string | null
+  detail?: string[] | null
+  sheetBy?: string | null
 }
 interface CompareInfo { type: string; label: string; from: string; to: string }
 interface RangeInfo { from: string | null; to: string | null }
@@ -618,10 +620,40 @@ export function SmartReport() {
                           {preview.specText && <div className="mt-1 text-xs">{preview.specText}</div>}
                         </td>
                       </tr>
-                    ) : preview.rows.map((row, i) => {
-                      const drillHref = buildDrillHref(preview, row)
-                      return (
-                      <tr
+                    ) : (() => {
+                      // sheetBy（如月报按填表人）：插入分组标题行，每组一个小节；否则平铺
+                      const sheetBy = preview.spec.sheetBy
+                      type DisplayItem =
+                        | { type: 'group'; value: string; count: number }
+                        | { type: 'row'; row: Record<string, string | number>; i: number }
+                      const displayItems: DisplayItem[] = []
+                      if (sheetBy) {
+                        const groups = new Map<string, Array<{ row: Record<string, string | number>; i: number }>>()
+                        preview.rows.forEach((row, i) => {
+                          const key = String(row[sheetBy] ?? '') || '未指定'
+                          groups.set(key, [...(groups.get(key) || []), { row, i }])
+                        })
+                        for (const [value, items] of groups) {
+                          displayItems.push({ type: 'group', value, count: items.length })
+                          items.forEach((item) => displayItems.push({ type: 'row', row: item.row, i: item.i }))
+                        }
+                      } else {
+                        preview.rows.forEach((row, i) => displayItems.push({ type: 'row', row, i }))
+                      }
+                      return displayItems.map((item, displayIndex) => {
+                        if (item.type === 'group') {
+                          return (
+                            <tr key={`group-${displayIndex}`} className="bg-primary/10">
+                              <td colSpan={preview.columns.length} className="px-3 py-2 text-sm font-medium text-primary">
+                                填表人：{item.value}（{item.count} 条）
+                              </td>
+                            </tr>
+                          )
+                        }
+                        const { row, i } = item
+                        const drillHref = buildDrillHref(preview, row)
+                        return (
+                        <tr
                         key={i}
                         className={`border-b border-border/60 last:border-0 hover:bg-accent/40 ${drillHref ? 'cursor-pointer' : ''}`}
                         onClick={drillHref ? () => window.open(drillHref, '_blank', 'noopener') : undefined}
@@ -654,8 +686,9 @@ export function SmartReport() {
                           )
                         })}
                       </tr>
-                      )
-                    })}
+                        )
+                      })
+                    })()}
                   </tbody>
                 </table>
               </div>
