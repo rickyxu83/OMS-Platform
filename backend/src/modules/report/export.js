@@ -81,6 +81,79 @@ function chartImageBuffer(chartImage) {
   }
 }
 
+/** 月报式明细列宽（对齐旧「月报导出」页面） */
+const DETAIL_WIDTHS = { order_no: 20, engineer: 14, date: 13, weekday: 10, work_nature: 13, category: 13, customer: 24, product: 24, work_content: 42, progress: 12, remark: 18, source: 12 }
+const COMPANY_NAME = '敦阳（宁波）科技有限公司'
+
+function safeSheetName(value, fallback) {
+  const cleaned = String(value || '').replace(/[\\/?*\[\]:]/g, ' ').trim() || fallback
+  return cleaned.slice(0, 31)
+}
+
+/**
+ * 明细模式 Excel（月报格式）：公司抬头 + 口径行 +（拆 sheet 时）分组行 + 冻结表头。
+ * spec.sheetBy 命中时按该列拆 sheet（如月报按填表人一人一 sheet），否则单一「明细」sheet。
+ */
+async function buildDetailXlsx({ title, specText, columns, rows, truncated, spec }) {
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = 'OMS 智能报表'
+  const HEADER_ROW = 4
+
+  const groups = new Map()
+  if (spec?.sheetBy) {
+    for (const row of rows) {
+      const key = String(row[spec.sheetBy] ?? '') || '未指定'
+      groups.set(key, [...(groups.get(key) || []), row])
+    }
+  } else {
+    groups.set('', rows)
+  }
+  const sortedGroups = [...groups.entries()].sort(([a], [b]) => a.localeCompare(b, 'zh-Hans-CN'))
+
+  sortedGroups.forEach(([groupValue, groupRows], index) => {
+    const sheet = workbook.addWorksheet(safeSheetName(groupValue, `明细${index + 1}`), {
+      views: [{ state: 'frozen', ySplit: HEADER_ROW }],
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    })
+    sheet.columns = columns.map((col) => ({
+      header: col.label,
+      key: col.key,
+      width: DETAIL_WIDTHS[col.key] || Math.min(Math.max(col.label.length * 2 + 6, 12), 40),
+    }))
+
+    const span = Math.max(columns.length, 1)
+    sheet.mergeCells(1, 1, 1, span)
+    sheet.getCell(1, 1).value = COMPANY_NAME
+    sheet.getCell(1, 1).font = { bold: true, size: 14, color: { argb: 'FF111827' } }
+    sheet.mergeCells(2, 1, 2, span)
+    sheet.getCell(2, 1).value = `${title} · ${specText}`
+    sheet.getCell(2, 1).font = { size: 9, color: { argb: 'FF4B5563' } }
+    sheet.mergeCells(3, 1, 3, span)
+    sheet.getCell(3, 1).value = groupValue
+      ? `填表人：${groupValue}　记录数：${groupRows.length}`
+      : `记录数：${groupRows.length}${truncated ? '（已达上限，存在截断）' : ''}`
+    sheet.getCell(3, 1).font = { size: 9, color: { argb: truncated ? 'FFB45309' : 'FF9CA3AF' } }
+    sheet.getRow(1).height = 24
+
+    const headerRow = sheet.getRow(HEADER_ROW)
+    headerRow.height = 20
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND } }
+      cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    })
+
+    groupRows.forEach((row) => {
+      sheet.addRow(columns.map((col) => {
+        const value = row[col.key]
+        return value === null || value === undefined || value === '' ? '-' : value
+      }))
+    })
+  })
+
+  return workbook.xlsx.writeBuffer()
+}
+
 /** Excel：标题区 + 样式化数据 sheet + 图表 sheet（可选）+ 说明 sheet */
 async function buildXlsx({ title, specText, summary, columns, rows, truncated, compare, chartImage }) {
   const workbook = new ExcelJS.Workbook()
@@ -267,4 +340,4 @@ function buildPdf({ title, specText, summary, columns, rows, truncated, compare,
   })
 }
 
-module.exports = { buildXlsx, buildPdf, exportFileName }
+module.exports = { buildXlsx, buildDetailXlsx, buildPdf, exportFileName }

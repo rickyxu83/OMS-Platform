@@ -4,7 +4,7 @@
  */
 const assistant = require('./assistant')
 const { runSpec, validateSpec } = require('./engine')
-const { buildXlsx, buildPdf, exportFileName } = require('./export')
+const { buildXlsx, buildDetailXlsx, buildPdf, exportFileName } = require('./export')
 const { DATASETS } = require('./datasets')
 const store = require('./store')
 const { badRequest, notFound } = require('../../utils/http-error')
@@ -91,6 +91,24 @@ async function exportReport(req, res) {
   const datasetLabel = DATASETS[result.spec.dataset].label
   void store.logUsage({ userId: req.user.id, action: 'export', spec: result.spec, rowsCount: result.rows.length })
   const title = String(req.body?.title || '').trim().slice(0, 100) || `${datasetLabel}报表`
+
+  // 明细模式（月报）：专用工作簿（公司抬头 + 按 sheetBy 拆 sheet），不嵌图表
+  if (result.spec.detail && format === 'xlsx') {
+    const buffer = await buildDetailXlsx({
+      title,
+      specText: result.specText,
+      columns: result.columns,
+      rows: result.rows,
+      truncated: result.truncated,
+      spec: result.spec,
+    })
+    const filename = exportFileName(`${datasetLabel}明细`, 'xlsx')
+    res.setHeader('Content-Type', XLSX_CONTENT_TYPE)
+    res.setHeader('Content-Disposition', `attachment; filename="report-${Date.now()}.xlsx"; filename*=UTF-8''${encodeURIComponent(filename)}`)
+    res.setHeader('Content-Length', buffer.length)
+    return res.end(buffer)
+  }
+
   const summary = String(req.body?.summary || '').trim().slice(0, 800)
   // 前端图表截图（PNG dataURL），可选；限制大小防滥用
   const chartImageRaw = String(req.body?.chartImage || '')
