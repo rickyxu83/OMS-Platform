@@ -1,6 +1,6 @@
 /**
  * 智能报表控制器（spec 014）：对话生成 / 预览 / 导出 / 模板 / 订阅。
- * 所有接口由 routes.js 统一加 requirePermission('report.use')（主管及以上）。
+ * 所有接口由 routes.js 统一加 requirePermission('report.use')（主管及以上 + 助理）。
  */
 const assistant = require('./assistant')
 const { runSpec, validateSpec } = require('./engine')
