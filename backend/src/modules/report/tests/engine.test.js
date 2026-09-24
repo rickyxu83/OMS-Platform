@@ -108,9 +108,9 @@ const { HttpError } = require('../../../utils/http-error')
   assert.ok(sql.includes('LIMIT 100')) // runSpec 会以 limit+1 调 buildQuery 做截断检测
   assert.ok(sql.includes('so.reviewed_at')) // timeField 生效
   assert.ok(sql.includes(':f_status_0'))
-  assert.ok(sql.includes(':f_customer'))
+  assert.ok(sql.includes(':f_customer_v0'))
   assert.equal(params.f_status_0, 'approved')
-  assert.equal(params.f_customer, '%联想%')
+  assert.equal(params.f_customer_v0, '%联想%')
   assert.ok(!sql.includes('联想')) // 值不直接拼进 SQL
   assert.equal(columns.length, 4)
   assert.deepEqual(columns.map((c) => c.kind), ['dimension', 'dimension', 'metric', 'metric'])
@@ -336,7 +336,9 @@ const { HttpError } = require('../../../utils/http-error')
   })
   const fq = buildDetailQuery(filtered.spec)
   assert.ok(fq.sql.includes('d.engineer LIKE'), '明细筛选应走 detailFilters')
-  assert.equal(fq.params.f_engineer, '%张%')
+  assert.equal(fq.params.f_engineer_v0, '%张%')
+  // 简繁变体：简体「张」应同时生成繁体「張」变体（加法匹配，解决库内繁体名筛简体不中的问题）
+  assert.ok(Object.values(fq.params).includes('%張%'), '应含繁体变体参数')
 
   // 非法明细列 / 不支持明细的数据集 / 非法 sheetBy
   const badCol = validateSpec({ dataset: 'timesheets', detail: ['password_hash'] })

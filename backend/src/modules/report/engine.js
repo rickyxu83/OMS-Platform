@@ -4,6 +4,7 @@
  */
 const { query } = require('../../config/db')
 const { unprocessableEntity } = require('../../utils/http-error')
+const { buildLikeSearch } = require('../../utils/chinese')
 const { DATASETS } = require('./datasets')
 
 const MAX_GROUP_BY = 3
@@ -345,8 +346,10 @@ function buildQuery(spec, { limit = 500 } = {}) {
       where.push(`${def.column} IN (${names.join(', ')})`)
       value.forEach((v, i) => { params[`f_${key}_${i}`] = v })
     } else {
-      where.push(`${def.column} LIKE :f_${key}`)
-      params[`f_${key}`] = `%${value}%`
+      // 文本模糊筛选：简繁/日文新字体加法变体（生产实测：库内繁体「陳炫輔」，筛简体「陈炫辅」0 命中）
+      const search = buildLikeSearch(String(Array.isArray(value) ? value[0] : value).slice(0, 60), `f_${key}_v`)
+      Object.assign(params, search.params)
+      where.push(`(${search.sql(def.column)})`)
     }
   }
 
@@ -409,8 +412,9 @@ function buildDetailQuery(spec, { limit = 500 } = {}) {
   for (const [key, value] of Object.entries(spec.filters)) {
     const def = dataset.detailFilters?.[key]
     if (!def) continue // 明细模式不支持的筛选静默跳过（与统计模式共享 filters 白名单）
-    params[`f_${key}`] = `%${String(Array.isArray(value) ? value[0] : value).slice(0, 60)}%`
-    where.push(`${def.column} LIKE :f_${key}`)
+    const search = buildLikeSearch(String(Array.isArray(value) ? value[0] : value).slice(0, 60), `f_${key}_v`)
+    Object.assign(params, search.params)
+    where.push(`(${search.sql(def.column)})`)
   }
 
   const safeLimit = Math.min(Math.max(1, Math.floor(Number(limit) || 500)), 5000)
