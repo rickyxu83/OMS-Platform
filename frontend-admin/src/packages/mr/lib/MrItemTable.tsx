@@ -29,6 +29,21 @@ export const itemFullText = (item: { name?: string | null; description?: string 
   return [name, description].filter(Boolean).join('\n')
 }
 
+// 品名单独改名：描述首行恰为旧品名（手工录入惯例）时同步替换首行保持一致；
+// AI 导入的长描述（品名只是前缀、同行还有规格）不动，防止误删规格文本
+export const renameItemName = (
+  item: { name?: string | null; description?: string | null },
+  value: string,
+): { name: string; description: string } => {
+  const description = String(item.description || '')
+  const lines = description.split(/\r?\n/)
+  const firstLineIsName = Boolean(lines[0]?.trim()) && lines[0].trim() === String(item.name || '').trim()
+  return {
+    name: value,
+    description: firstLineIsName ? [value, ...lines.slice(1)].join('\n') : description,
+  }
+}
+
 function numberValue(value?: number | null) {
   return value === null || value === undefined ? '' : String(value)
 }
@@ -382,6 +397,9 @@ function ItemEditorPanel({
       </div>
 
       <div className="space-y-3">
+        <Field label="品名" editable={editable} readonlyText={textValue(item.name)}>
+          <Input value={item.name || ''} placeholder="品名（签核预览的加粗行）" disabled={serviceRow} onChange={(event) => onChange(renameItemName(item, event.target.value))} />
+        </Field>
         <Field label="品名及描述" editable={editable} readonlyText={textValue(itemFullText(item))}>
           <Textarea rows={2} value={itemFullText(item)} placeholder="品名 + 规格型号 / 服务描述" disabled={serviceRow} onChange={(event) => { const value = event.target.value; onChange({ name: value.split(/\r?\n/)[0] || value, description: value }) }} />
         </Field>

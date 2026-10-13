@@ -14,6 +14,7 @@ import { RecognitionProgressPanel, type RecognitionProgress } from './Recognitio
 import type { MrItem, MrOrder, QuotationFile, QuotationImportResult, QuotationSource, VendorOption } from '../types'
 import { calculateForm, quotationDetailItems, salesSubtotal } from './form-logic'
 import { AnimatedInteger, AnimatedMoney } from './mr-ui'
+import { renameItemName } from './MrItemTable'
 
 const ACCEPTED_EXTENSIONS = ['.xls', '.xlsx', '.pdf']
 type UploadRole = 'sales' | 'purchase'
@@ -702,6 +703,7 @@ export function QuotationImportDialog({
                           <span className="text-sm text-muted-foreground">{index + 1}</span>
                         </div>
                         <div className="grid min-w-0 flex-1 gap-2 md:grid-cols-3">
+                          <Input className="md:col-span-3" value={item.name || ''} placeholder="品名（签核预览的加粗行）" aria-label={`第 ${index + 1} 项品名`} onChange={(event) => patchItem(index, renameItemName(item, event.target.value))} />
                           <Textarea className={`md:col-span-3 ${item.reviewFields?.includes('description') ? 'border-amber-500' : ''}`} rows={2} value={item.description || item.name || ''} placeholder="品名 + 规格型号 / 服务描述" aria-label={`第 ${index + 1} 项品名及描述`} onChange={(event) => { const value = event.target.value; patchItem(index, { name: value.split(/\r?\n/)[0] || value, description: value }) }} />
                           <Input className={item.reviewFields?.includes('qty') ? 'border-amber-500' : ''} type="number" min={0} step={0.01} value={item.qty ?? ''} placeholder="数量" aria-label={`第 ${index + 1} 项数量`} onChange={(event) => patchItem(index, { qty: event.target.value === '' ? null : Number(event.target.value) })} />
                           {!item.purchaseOnly ? (
