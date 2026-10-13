@@ -121,13 +121,34 @@ function parseJson(value) {
   try { return JSON.parse(value) } catch { return null }
 }
 
+// 描述以品名开头时（AI 报价识别 / 旧版表单会产生此类重复数据），
+// 剥掉重复前缀及紧随的分隔符；比较时忽略大小写与空白差异。
+// 剥完为空返回 null，由渲染层回退为只显示 name。
+function stripNamePrefix(name, description) {
+  const n = String(name || '').trim()
+  const d = String(description || '').trim()
+  if (!n || !d) return d || null
+  const squash = (value) => value.replace(/\s+/g, '').toLowerCase()
+  const target = squash(n)
+  if (!target || !squash(d).startsWith(target)) return d
+  // 在原文上前进「name 的非空白字符数」个字符，定位剥离点
+  let index = 0
+  let count = 0
+  while (index < d.length && count < target.length) {
+    if (!/\s/.test(d[index])) count += 1
+    index += 1
+  }
+  const rest = d.slice(index).replace(/^[\s:：,，、;；\-—/|]+/, '')
+  return rest || null
+}
+
 function normalizeItem(item = {}, index = 0) {
   return {
     rowNo: index + 1,
     companyPartNo: text(item.companyPartNo ?? item.company_part_no, 100),
     oemSpec: text(item.oemSpec ?? item.oem_spec ?? item.partNo ?? item.part_no, 255),
     name: text(item.name, 255),
-    description: text(item.description, 4000),
+    description: stripNamePrefix(text(item.name, 255), text(item.description, 4000)),
     warrantyService: text(item.warrantyService ?? item.warranty_service, 255),
     installBy: text(item.installBy ?? item.install_by, 64),
     qty: optionalNumber(item.qty),
@@ -418,4 +439,5 @@ module.exports = {
   totals,
   computeApprovalSteps,
   isInternalVendor,
+  stripNamePrefix,
 }

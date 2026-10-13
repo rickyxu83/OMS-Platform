@@ -13,6 +13,22 @@ import { Field, money, percent, textValue } from './mr-ui'
 
 const LOW_MARGIN = 15
 
+// 与后端 stripNamePrefix 同口径：判断 description 是否已以 name 开头（忽略大小写与空白）
+export const descriptionStartsWithName = (name?: string | null, description?: string | null): boolean => {
+  const squash = (value?: string | null) => String(value || '').replace(/\s+/g, '').toLowerCase()
+  const n = squash(name)
+  const d = squash(description)
+  return Boolean(n && d && d.startsWith(n))
+}
+
+// 编辑框/摘要的展示文本：旧数据 description 已含品名行则原样显示；
+// 新数据（入库时已剥前缀）把 name 拼回第一行，保证编辑往返不丢字
+export const itemFullText = (item: { name?: string | null; description?: string | null }): string => {
+  const { name, description } = item
+  if (description && descriptionStartsWithName(name, description)) return description
+  return [name, description].filter(Boolean).join('\n')
+}
+
 function numberValue(value?: number | null) {
   return value === null || value === undefined ? '' : String(value)
 }
@@ -251,7 +267,7 @@ export function MrItemTable({
                           className="block w-full min-w-0 text-left"
                           aria-label={`${editable ? '编辑' : '查看'}第 ${index + 1} 项`}
                         >
-                          <span className="block break-words font-medium">{item.description || item.name || '未填写品名及描述'}</span>
+                          <span className="block break-words font-medium">{itemFullText(item).replace(/\s*\n\s*/g, '　') || '未填写品名及描述'}</span>
                           <span className="mt-0.5 block break-words text-xs text-muted-foreground">{item.oemSpec || '未填写原厂规格'}</span>
                         </div>
                       </td>
@@ -261,7 +277,7 @@ export function MrItemTable({
                       <td className={`px-3 py-3 text-right tabular-nums ${low ? 'font-medium text-red-600' : ''}`}>{percent(item.marginRate)}</td>
                       <td className="w-12 px-2 py-3 text-right">
                         {editable ? (
-                          <Button type="button" variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" title="删除此品项" aria-label={`删除第 ${index + 1} 项`} onClick={(event) => { event.stopPropagation(); if (window.confirm(`确定删除“${item.description || item.name || `第 ${index + 1} 项`}”吗？删除后不可恢复。`)) { remove(index) } }}><Trash2 className="size-4" /></Button>
+                          <Button type="button" variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" title="删除此品项" aria-label={`删除第 ${index + 1} 项`} onClick={(event) => { event.stopPropagation(); if (window.confirm(`确定删除“${itemFullText(item).replace(/\s*\n\s*/g, ' ') || `第 ${index + 1} 项`}”吗？删除后不可恢复。`)) { remove(index) } }}><Trash2 className="size-4" /></Button>
                         ) : null}
                       </td>
                       </tr>
@@ -366,8 +382,8 @@ function ItemEditorPanel({
       </div>
 
       <div className="space-y-3">
-        <Field label="品名及描述" editable={editable} readonlyText={textValue(item.description || item.name)}>
-          <Textarea rows={2} value={item.description || item.name || ''} placeholder="品名 + 规格型号 / 服务描述" disabled={serviceRow} onChange={(event) => { const value = event.target.value; onChange({ name: value.split(/\r?\n/)[0] || value, description: value }) }} />
+        <Field label="品名及描述" editable={editable} readonlyText={textValue(itemFullText(item))}>
+          <Textarea rows={2} value={itemFullText(item)} placeholder="品名 + 规格型号 / 服务描述" disabled={serviceRow} onChange={(event) => { const value = event.target.value; onChange({ name: value.split(/\r?\n/)[0] || value, description: value }) }} />
         </Field>
 
         <div className="grid gap-3 md:grid-cols-2">
