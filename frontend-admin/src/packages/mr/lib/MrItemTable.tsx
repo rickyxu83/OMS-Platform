@@ -29,20 +29,35 @@ export const itemFullText = (item: { name?: string | null; description?: string 
   return [name, description].filter(Boolean).join('\n')
 }
 
-// 品名单独改名：描述首行恰为旧品名（手工录入惯例）时同步替换首行保持一致；
-// AI 导入的长描述（品名只是前缀、同行还有规格）不动，防止误删规格文本
+// 描述编辑框/摘要的展示值：剥掉与品名重复的前缀（与后端 stripNamePrefix 同口径，仅显示层；
+// 未编辑直接保存时原数据不动，后端入库还会再剥一次，无数据丢失风险）
+export const stripNamePrefixDisplay = (name?: string | null, description?: string | null): string => {
+  const n = String(name || '').trim()
+  const d = String(description || '').trim()
+  if (!n || !d) return d
+  const squash = (value: string) => value.replace(/\s+/g, '').toLowerCase()
+  const target = squash(n)
+  if (!target || !squash(d).startsWith(target)) return d
+  let index = 0
+  let count = 0
+  while (index < d.length && count < target.length) {
+    if (!/\s/.test(d[index])) count += 1
+    index += 1
+  }
+  return d.slice(index).replace(/^[\s:：,，、;；\-—/|]+/, '')
+}
+
+// 品名单独改名：描述中的旧品名前缀一并剥除（幂等：已是净描述时不变），
+// 避免「新名加粗 + 描述里还是旧名」的二次重复；品名不以描述为前缀提及的描述不动
 export const renameItemName = (
   item: { name?: string | null; description?: string | null },
   value: string,
-): { name: string; description: string } => {
-  const description = String(item.description || '')
-  const lines = description.split(/\r?\n/)
-  const firstLineIsName = Boolean(lines[0]?.trim()) && lines[0].trim() === String(item.name || '').trim()
-  return {
-    name: value,
-    description: firstLineIsName ? [value, ...lines.slice(1)].join('\n') : description,
-  }
-}
+): { name: string; description: string } => ({
+  name: value,
+  description: stripNamePrefixDisplay(item.name, item.description),
+})
+
+
 
 function numberValue(value?: number | null) {
   return value === null || value === undefined ? '' : String(value)
@@ -282,7 +297,10 @@ export function MrItemTable({
                           className="block w-full min-w-0 text-left"
                           aria-label={`${editable ? '编辑' : '查看'}第 ${index + 1} 项`}
                         >
-                          <span className="block break-words font-medium">{itemFullText(item).replace(/\s*\n\s*/g, '　') || '未填写品名及描述'}</span>
+                          <span className="block break-words font-medium">{item.name || '未填写品名'}</span>
+                          {stripNamePrefixDisplay(item.name, item.description) ? (
+                            <span className="mt-0.5 block break-words text-xs text-muted-foreground">{stripNamePrefixDisplay(item.name, item.description)}</span>
+                          ) : null}
                           <span className="mt-0.5 block break-words text-xs text-muted-foreground">{item.oemSpec || '未填写原厂规格'}</span>
                         </div>
                       </td>
@@ -400,8 +418,8 @@ function ItemEditorPanel({
         <Field label="品名" editable={editable} readonlyText={textValue(item.name)}>
           <Input value={item.name || ''} placeholder="品名（签核预览的加粗行）" disabled={serviceRow} onChange={(event) => onChange(renameItemName(item, event.target.value))} />
         </Field>
-        <Field label="品名及描述" editable={editable} readonlyText={textValue(itemFullText(item))}>
-          <Textarea rows={2} value={itemFullText(item)} placeholder="品名 + 规格型号 / 服务描述" disabled={serviceRow} onChange={(event) => { const value = event.target.value; onChange({ name: value.split(/\r?\n/)[0] || value, description: value }) }} />
+        <Field label="规格 / 描述" editable={editable} readonlyText={textValue(stripNamePrefixDisplay(item.name, item.description))}>
+          <Textarea rows={2} value={stripNamePrefixDisplay(item.name, item.description)} placeholder="规格型号 / 服务描述" disabled={serviceRow} onChange={(event) => onChange({ description: event.target.value })} />
         </Field>
 
         <div className="grid gap-3 md:grid-cols-2">
