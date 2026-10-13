@@ -1,5 +1,5 @@
 const assert = require('assert')
-const { normalizeOrder, validateSubmission, totals, computeApprovalSteps, isInternalVendor } = require('../domain')
+const { normalizeOrder, validateSubmission, totals, computeApprovalSteps, isInternalVendor, stripNamePrefix } = require('../domain')
 
 function validBody(overrides = {}) {
   return {
@@ -342,6 +342,31 @@ function validBody(overrides = {}) {
   assert.equal(isInternalVendor('敦沪'), true)
   assert.equal(isInternalVendor('上海敦沪信息科技有限公司'), true)
   assert.equal(isInternalVendor('dunhu'), true)
+}
+
+// ---- stripNamePrefix：品名重复前缀剥离（AI 报价识别/旧表单产生的重复数据，入库时清洗） ----
+{
+  // 规格用例表
+  assert.equal(stripNamePrefix('Dell PowerEdge R770', 'Dell PowerEdge R770 6517P 3.2G,16C/32T'), '6517P 3.2G,16C/32T')
+  assert.equal(stripNamePrefix('Dell PowerEdge R770', 'dell  poweredge r770\n6517P'), '6517P', '忽略大小写与空白差异')
+  assert.equal(stripNamePrefix('SQL Server', 'SQL Server：含三年SA'), '含三年SA', '剥紧随的分隔符')
+  assert.equal(stripNamePrefix('Proxmox VE', 'Proxmox VE'), null, '完全相同 → null（渲染层回退只显示 name）')
+  assert.equal(stripNamePrefix('Windows Server', '含 Windows Server 授权'), '含 Windows Server 授权', '非前缀不剥')
+  assert.equal(stripNamePrefix(null, '任意描述'), '任意描述', '无 name 原样返回')
+  assert.equal(stripNamePrefix('X', ''), null, '空描述 → null')
+  assert.equal(stripNamePrefix('', ''), null)
+}
+
+{
+  // normalizeItem 集成：description 以 name 开头时入库前剥前缀；无重复不动
+  const body = validBody()
+  body.items = [
+    { name: 'Dell PowerEdge R770', description: 'Dell PowerEdge R770 6517P 3.2G', qty: 1, unitPrice: 100 },
+    { name: 'Windows Server', description: '含 Windows Server 授权', qty: 1, unitPrice: 50 },
+  ]
+  const { items } = normalizeOrder(body)
+  assert.equal(items[0].description, '6517P 3.2G')
+  assert.equal(items[1].description, '含 Windows Server 授权')
 }
 
 console.log('mr domain OK')
