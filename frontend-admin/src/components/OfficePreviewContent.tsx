@@ -73,8 +73,13 @@ export function OfficePreviewContent({ blob, fileName, type, className }: {
           const workbook = XLSX.read(await blob.arrayBuffer(), { type: 'array' })
           if (!workbook.SheetNames.length) throw new Error('文件内没有可显示的工作表')
           workbookRef.current = workbook
-          setSheetNames(workbook.SheetNames)
-          setActiveSheet(workbook.SheetNames[0])
+          // 只显示可见工作表：Excel/WPS 会隐藏 Hidden=1/2 的 sheet（报价模板常见残留空表），
+          // SheetJS 默认全部列出会导致预览出现一堆点不开的隐藏表标签
+          const sheetsMeta = workbook.Workbook?.Sheets ?? []
+          const visible = workbook.SheetNames.filter((_, i) => !sheetsMeta[i]?.Hidden)
+          const sheetList = visible.length ? visible : workbook.SheetNames
+          setSheetNames(sheetList)
+          setActiveSheet(sheetList[0])
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : '附件解析失败')
