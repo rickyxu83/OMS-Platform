@@ -1,7 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
+import { usePenClick } from '@/lib/pen-click'
 
 export type OfficePreviewType = 'docx' | 'xlsx'
+
+/** xlsx 多工作表切换标签：原生 button 需单独接 Apple Pencil 兜底（见 lib/pen-click.ts） */
+function SheetTabButton({ name, active, onSelect }: { name: string; active: boolean; onSelect: (name: string) => void }) {
+  const penHandlers = usePenClick<HTMLButtonElement>({ onClick: () => onSelect(name) })
+  return (
+    <button
+      type="button"
+      {...penHandlers}
+      className={cn(
+        'rounded-md border px-2.5 py-1 text-xs transition-colors',
+        active
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'bg-background text-muted-foreground hover:text-foreground',
+      )}
+    >
+      {name}
+    </button>
+  )
+}
 
 /** 浏览器可在线预览的 Office 扩展名（docx 走 docx-preview；xls/xlsx 都由 SheetJS 解析，BIFF 二进制同样支持） */
 export function officePreviewType(fileName: string): OfficePreviewType | null {
@@ -109,19 +129,7 @@ export function OfficePreviewContent({ blob, fileName, type, className }: {
       {type === 'xlsx' && sheetNames.length > 1 ? (
         <div className="mb-3 flex flex-wrap gap-1.5">
           {sheetNames.map((name) => (
-            <button
-              key={name}
-              type="button"
-              onClick={() => setActiveSheet(name)}
-              className={cn(
-                'rounded-md border px-2.5 py-1 text-xs transition-colors',
-                name === activeSheet
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'bg-background text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {name}
-            </button>
+            <SheetTabButton key={name} name={name} active={name === activeSheet} onSelect={setActiveSheet} />
           ))}
         </div>
       ) : null}
