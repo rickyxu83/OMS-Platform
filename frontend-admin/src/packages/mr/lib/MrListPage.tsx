@@ -13,6 +13,7 @@ import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/compon
 import { ErrorToast } from '@/components/ErrorToast'
 import { useAuth } from '@/contexts/AuthContext'
 import { createMr, listMr, listSalespeople, remindMr } from '../client'
+import type { MrStatusCounts } from '../client'
 import { LayoutRulesDialog } from './LayoutRulesDialog'
 import { HelpTooltip } from '@/components/HelpTooltip'
 import type { MrOrder, MrStatus, UserOption } from '../types'
@@ -216,6 +217,9 @@ export function MrListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { hasPermission, user } = useAuth()
   const [items, setItems] = useState<MrOrder[]>([])
+  // 过滤条计数由后端按「除状态外的全部筛选」返回；老后端无此字段时回退到按当前列表数（会随状态过滤变化）
+  const [statusCounts, setStatusCounts] = useState<MrStatusCounts | null>(null)
+  const [pendingMineCountRemote, setPendingMineCountRemote] = useState<number | null>(null)
   const [remindingId, setRemindingId] = useState<string | number | null>(null)
   const [queryInput, setQueryInput] = useState('')
   const [q, setQ] = useState('')
@@ -258,6 +262,8 @@ export function MrListPage() {
         pendingMine,
       })
       setItems(data.items || [])
+      setStatusCounts(data.statusCounts || null)
+      setPendingMineCountRemote(typeof data.pendingMineCount === 'number' ? data.pendingMineCount : null)
     } catch (err) {
       setError((err as Error).message || '加载失败')
     } finally {
@@ -363,10 +369,7 @@ export function MrListPage() {
     }
   }
 
-  const pendingMineCount = useMemo(
-    () => (pendingMine ? items.length : items.filter((order) => Number(order.approvalParticipant) === 1).length),
-    [items, pendingMine],
-  )
+  const pendingMineCount = pendingMineCountRemote ?? (pendingMine ? items.length : items.filter((order) => Number(order.approvalParticipant) === 1).length)
 
   return (
     <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden p-6">
@@ -422,7 +425,9 @@ export function MrListPage() {
             { key: 'voided', label: '已作废', icon: STATUS_INDICATOR.voided.icon },
           ] as Array<{ key: string; label: string; icon: LucideIcon | null }>
         ).map((item) => {
-          const count = item.key === 'all' ? items.length : item.key === 'voiding' ? items.filter((o) => o.voidRequestStatus === 'pending' && (o.status || 'draft') === 'approved').length : items.filter((o) => (o.status || 'draft') === item.key).length
+          const count = statusCounts
+            ? (statusCounts[item.key as keyof MrStatusCounts] ?? 0)
+            : item.key === 'all' ? items.length : item.key === 'voiding' ? items.filter((o) => o.voidRequestStatus === 'pending' && (o.status || 'draft') === 'approved').length : items.filter((o) => (o.status || 'draft') === item.key).length
           const active = status === item.key
           const Icon = item.icon
           const color = item.key === 'all' ? '' : (STATUS_INDICATOR[item.key]?.color || '')
