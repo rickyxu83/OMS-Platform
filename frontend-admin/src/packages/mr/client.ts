@@ -15,7 +15,18 @@ export async function listMr(params: { q?: string; status?: string; purchaseStat
   if (params.dateFrom) search.set('dateFrom', params.dateFrom)
   if (params.dateTo) search.set('dateTo', params.dateTo)
   if (params.pendingMine) search.set('pendingMine', '1')
-  return api.get(`/mr${search.size ? `?${search}` : ''}`) as Promise<{ items: MrOrder[] }>
+  return api.get(`/mr${search.size ? `?${search}` : ''}`) as Promise<{ items: MrOrder[]; statusCounts?: MrStatusCounts; pendingMineCount?: number }>
+}
+
+// 列表顶部过滤条计数：后端按「除状态外的全部筛选」统计，点状态过滤不会让其他状态数字归零
+export interface MrStatusCounts {
+  all: number
+  draft: number
+  in_review: number
+  approved: number
+  voiding: number
+  rejected: number
+  voided: number
 }
 
 export const getMr = (id: string | number) => api.get(`/mr/${pathId(id)}`) as Promise<MrOrder>

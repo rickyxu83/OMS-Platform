@@ -521,6 +521,9 @@ async function replaceItems(connection, mrId, items) {
 async function list(req, res) {
   await ensureTables()
   const where = []
+  // 状态筛选独立收集：顶部过滤条计数需按「除状态外的全部筛选」统计，
+  // 否则点某个状态后其他状态数字会归零（与服务工单列表 statusCounts 同一口径）
+  const statusWhere = []
   const params = {}
   if (req.user.role === 'sales') {
     where.push('o.sales_owner_id = :userId')
@@ -564,9 +567,9 @@ async function list(req, res) {
   const status = String(req.query.status || '').trim()
   if (status === 'voiding') {
     // 伪状态「作废审批中」：单据仍为 approved，但作废申请待审批、单据锁定（spec 010 审批链中间态）
-    where.push(`o.status = 'approved' AND o.void_request_status = 'pending'`)
+    statusWhere.push(`o.status = 'approved' AND o.void_request_status = 'pending'`)
   } else if (status) {
-    where.push('o.status = :status')
+    statusWhere.push('o.status = :status')
     params.status = status
   }
   const purchaseStatus = String(req.query.purchaseStatus || '').trim()
@@ -610,11 +613,13 @@ async function list(req, res) {
     params.salesOwnerId = salesOwnerId
   }
   // 只看待我处理：当前待签核步骤是我，或有待我审批的作废申请（spec 010）
+  // 独立收集：角标计数需按「除状态/待我签核外的筛选」统计，点状态过滤条时角标数字不应跟着变
+  let pendingMineClause = ''
   if (String(req.query.pendingMine || '').trim() === '1') {
-    where.push(`(pending.assignee_user_id = :permissionUserId OR EXISTS (
+    pendingMineClause = `(pending.assignee_user_id = :permissionUserId OR EXISTS (
       SELECT 1 FROM mr_void_approvals vpending
       WHERE vpending.mr_id = o.id AND vpending.action IS NULL AND vpending.approver_id = :permissionUserId
-    ))`)
+    ))`
   }
   const dateFrom = String(req.query.dateFrom || '').trim()
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
@@ -628,8 +633,26 @@ async function list(req, res) {
   }
   params.permissionUserId = req.user.id
   const assistantIds = await assistantIdsFor(req.user)
-  const rows = await query(
-    `SELECT o.*, creator.real_name AS created_by_name, sales.real_name AS sales_owner_name,
+  // 待我签核条件（角标计数与列表筛选共用同一份 SQL）
+  const pendingMineCondition = `(pending.assignee_user_id = :permissionUserId OR EXISTS (
+      SELECT 1 FROM mr_void_approvals vpending
+      WHERE vpending.mr_id = o.id AND vpending.action IS NULL AND vpending.approver_id = :permissionUserId
+    ))`
+  const listWhere = [...where, ...statusWhere, ...(pendingMineClause ? [pendingMineClause] : [])]
+  // 顶部状态过滤条计数：按除状态外的全部筛选统计（含待我签核开关），点状态不过零其他状态
+  const statusCountWhere = [...where, ...(pendingMineClause ? [pendingMineClause] : [])]
+  // 「待我签核」角标计数：按除状态/待我签核开关外的全部筛选统计
+  const pendingMineCountWhere = [...where, pendingMineCondition]
+  // 聚合查询只用到 where 涉及的表：sales（角色范围）、c（全文搜索）、pending（待我签核）
+  const aggregateFrom = `FROM mr_orders o
+     LEFT JOIN users sales ON sales.id = o.sales_owner_id
+     LEFT JOIN customers c ON c.id = o.customer_id
+     LEFT JOIN mr_approvals pending ON pending.id = (
+       SELECT a.id FROM mr_approvals a WHERE a.mr_id = o.id AND a.action IS NULL ORDER BY a.cycle DESC, a.seq LIMIT 1
+     )`
+  const [rows, statusCountRows, pendingMineCountRows] = await Promise.all([
+    query(
+      `SELECT o.*, creator.real_name AS created_by_name, sales.real_name AS sales_owner_name,
             sales.assistant_user_id, assistant.real_name AS assistant_name,
             purchase_assignee.real_name AS purchase_assignee_name,
             c.code AS customer_code, (SELECT COUNT(*) FROM mr_items i WHERE i.mr_id = o.id) AS item_count,
@@ -651,11 +674,25 @@ async function list(req, res) {
        SELECT a.id FROM mr_approvals a WHERE a.mr_id = o.id AND a.action IS NULL ORDER BY a.cycle DESC, a.seq LIMIT 1
      )
      LEFT JOIN users current_assignee ON current_assignee.id = pending.assignee_user_id
-     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+     ${listWhere.length ? `WHERE ${listWhere.join(' AND ')}` : ''}
      ORDER BY o.updated_at DESC, o.id DESC
      LIMIT 500`,
-    params,
-  )
+      params,
+    ),
+    query(
+      `SELECT COALESCE(o.status, 'draft') AS status, o.void_request_status AS void_request_status, COUNT(*) AS count
+       ${aggregateFrom}
+       ${statusCountWhere.length ? `WHERE ${statusCountWhere.join(' AND ')}` : ''}
+       GROUP BY COALESCE(o.status, 'draft'), o.void_request_status`,
+      params,
+    ),
+    query(
+      `SELECT COUNT(*) AS count
+       ${aggregateFrom}
+       WHERE ${pendingMineCountWhere.join(' AND ')}`,
+      params,
+    ),
+  ])
   // 批量查所有 MR 的签核步骤链（悬浮卡显示完整流转进度）
   const mrIds = rows.map((row) => row.id).filter(Boolean)
   let approvalsByMr = {}
@@ -706,11 +743,24 @@ async function list(req, res) {
       })
     }
   }
-  res.json({ items: rows.map((row) => {
+  // 过滤条计数：all 为各状态总和；voiding 为 approved 且作废申请待审批的伪状态（spec 010）
+  const statusCounts = { all: 0, draft: 0, in_review: 0, approved: 0, voiding: 0, rejected: 0, voided: 0 }
+  for (const row of statusCountRows) {
+    const n = Number(row.count) || 0
+    statusCounts.all += n
+    const key = row.status || 'draft'
+    if (Object.prototype.hasOwnProperty.call(statusCounts, key)) statusCounts[key] += n
+    if (key === 'approved' && row.void_request_status === 'pending') statusCounts.voiding += n
+  }
+  res.json({
+    items: rows.map((row) => {
     const order = orderPayload(row)
     const voidLocked = isVoidLocked(order)
     return { ...order, approvalSteps: approvalsByMr[row.id] || [], voidSteps: voidStepsByMr[row.id] || [], permissions: { canEdit: !voidLocked && canEdit(order, req.user, assistantIds), canDelete: !voidLocked && canDelete(order, req.user, assistantIds), canVoid: canVoidRequest(order, req.user, assistantIds), canVoidApprove: canVoidApprove(order, req.user), canApprove: canApprove(order, req.user, assistantIds), canWithdraw: !voidLocked && canWithdraw(order, req.user), canRemind: canRemind(order, req.user, assistantIds, [], row.assistant_user_id), canPurchase: !voidLocked && canPurchase(order, req.user), canFillContractNo: !voidLocked && canFillContractNo(order, req.user, assistantIds) } }
-  }) })
+    }),
+    statusCounts,
+    pendingMineCount: Number(pendingMineCountRows[0]?.count || 0),
+  })
 }
 
 async function getAssistantSetting(req, res) {
