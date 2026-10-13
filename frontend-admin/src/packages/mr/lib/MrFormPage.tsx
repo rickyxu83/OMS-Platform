@@ -637,8 +637,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
     patch({ invoiceType, items: normalizeCostTaxRates(form?.items || [], invoiceType) })
   }
 
-  // iPad Apple Pencil 点 Radix 弹层内按钮可能不派发 click（2026-09-11 iPad 用户反馈：确认签核笔点不动、手指正常）。
-  // pen 指针在 pointerup 同帧兜底触发；guard 防随后 click 同帧重复提交。
+  // guard 防重复提交；Apple Pencil 点按不派发 click 的问题已由共享 Button 统一兜底（lib/pen-click.ts）
   const decisionGuardRef = useRef(false)
   const runDecision = () => {
     if (decisionGuardRef.current) return
@@ -1897,8 +1896,8 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
             </Field>
           ) : null}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDecision(null)} onPointerUp={(event) => { if (event.pointerType === 'pen') setDecision(null) }}>取消</Button>
-            <Button variant={decision === 'void' || decision === 'voidReject' ? 'destructive' : 'default'} disabled={busy || Boolean(decision && !['approve', 'voidApprove'].includes(decision) && !reason.trim())} onClick={() => runDecision()} onPointerUp={(event) => { if (event.pointerType === 'pen') runDecision() }}>
+            <Button variant="outline" onClick={() => setDecision(null)}>取消</Button>
+            <Button variant={decision === 'void' || decision === 'voidReject' ? 'destructive' : 'default'} disabled={busy || Boolean(decision && !['approve', 'voidApprove'].includes(decision) && !reason.trim())} onClick={() => runDecision()}>
               {decision === 'approve' ? '确认签核' : decision === 'reject' ? '确认驳回' : decision === 'withdraw' ? '确认撤回' : decision === 'voidApprove' ? '确认同意' : decision === 'voidReject' ? '确认驳回' : '提交作废申请'}
             </Button>
           </DialogFooter>

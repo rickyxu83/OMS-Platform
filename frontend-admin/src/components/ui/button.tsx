@@ -3,6 +3,7 @@ import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
+import { usePenClick } from "@/lib/pen-click";
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
@@ -40,15 +41,19 @@ const Button = React.forwardRef<
     VariantProps<typeof buttonVariants> & {
       asChild?: boolean;
     }
->(({ className, variant, size, asChild = false, ...props }, ref) => {
+>(({ className, variant, size, asChild = false, onClick, onPointerUp, disabled, ...props }, ref) => {
   const Comp = asChild ? Slot : "button";
+  // Apple Pencil 兜底：pen 点按不派发 click 时由 pointerup 合成一次（见 lib/pen-click.ts）
+  const penHandlers = usePenClick<HTMLButtonElement>({ onClick, onPointerUp, disabled });
 
   return (
     <Comp
       data-slot="button"
       ref={ref}
       className={cn(buttonVariants({ variant, size, className }))}
+      disabled={disabled}
       {...props}
+      {...penHandlers}
     />
   );
 });
