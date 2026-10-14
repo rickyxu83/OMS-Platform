@@ -484,6 +484,8 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
   const canApproveStep = Boolean(form?.permissions?.canApprove)
   const editable = Boolean(canEdit && (!assistantReview || editing))
   const documentMode = Boolean(form?.status === 'in_review' && !editing)
+  // 助理步且本人可签核时，合约卡片可交互（传盖章件/填编号）；其余查看者只读
+  const contractCardEditable = documentMode && calculated?.currentStepKey === 'assistant' && canApproveStep
   const approvedDocumentReady = Boolean(form?.archivedDocumentTypes?.includes('approved'))
   const voidedDocumentReady = Boolean(form?.archivedDocumentTypes?.includes('voided'))
 
@@ -1364,10 +1366,10 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                 </div>
               </details>
             ) : null}
-            {documentMode && calculated.currentStepKey === 'assistant' && contractFlowOrder ? (
+            {documentMode && contractFlowOrder ? (
               <div className="rounded-xl border bg-card p-4 shadow-sm">
-                <h2 className="font-semibold">合约用印回填</h2>
-                <p className="mt-1 text-xs text-muted-foreground">销售已提交未盖章合约；请走合约用印流程，完成后在此上传盖章合约（未盖章件将自动删除）并填写合同编号，再点「同意」。</p>
+                <h2 className="font-semibold">{contractCardEditable ? '合约用印回填' : '合约'}</h2>
+                {contractCardEditable ? <p className="mt-1 text-xs text-muted-foreground">销售已提交未盖章合约；请走合约用印流程，完成后在此上传盖章合约（未盖章件将自动删除）并填写合同编号，再点「同意」。</p> : null}
                 {contractFiles.length > 0 ? (
                   <div className="mt-3 text-sm">
                     <div className="mb-1 text-muted-foreground">未盖章合约（销售上传）：</div>
@@ -1376,11 +1378,11 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                 ) : null}
                 <div className="mt-3 text-sm">
                   <div className="mb-1 text-muted-foreground">盖章合约（用印后上传）：</div>
-                  <MrAttachments files={contractSignedFiles} editable={canApproveStep} singleColumn busy={busy} uploadLabel="上传盖章合约" onUpload={(list) => void uploadAttachments(list, 'contract_signed')} onDelete={(file) => void deleteAttachment(file)} onOpen={(file) => void openAttachment(file)} />
+                  <MrAttachments files={contractSignedFiles} editable={contractCardEditable} singleColumn busy={busy} uploadLabel="上传盖章合约" onUpload={(list) => void uploadAttachments(list, 'contract_signed')} onDelete={(file) => void deleteAttachment(file)} onOpen={(file) => void openAttachment(file)} />
                 </div>
                 <div className="mt-3">
                   <div className="mb-1 text-sm text-muted-foreground">合同编号：</div>
-                  {canApproveStep ? (
+                  {contractCardEditable ? (
                     <div className="flex items-center gap-2">
                       <Input value={contractNoInput} placeholder="用印完成后填写合同编号" onChange={(event) => setContractNoInput(event.target.value)} />
                       <Button type="button" variant="outline" disabled={busy || contractNoInput.trim() === (calculated.contractNo || '')} onClick={() => void saveContractNo()}>保存</Button>
@@ -1389,7 +1391,7 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                     <div className="text-sm">{calculated.contractNo || <span className="text-muted-foreground">待助理回填</span>}</div>
                   )}
                 </div>
-                {canApproveStep && (contractSignedFiles.length === 0 || !calculated.contractNo) ? (
+                {contractCardEditable && (contractSignedFiles.length === 0 || !calculated.contractNo) ? (
                   <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
                     签核通过前需完成：{[!calculated.contractNo ? '填写合同编号' : '', contractSignedFiles.length === 0 ? '上传盖章合约' : ''].filter(Boolean).join('、')}（缺项时系统将拒绝通过）
                   </div>
