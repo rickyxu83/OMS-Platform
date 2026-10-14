@@ -1353,19 +1353,6 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
               {calculated.assignmentError ? <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-700">{calculated.assignmentError}</div> : null}
               {assistantReview ? <p className="mt-3 text-xs text-muted-foreground">如需补充字段，请选择顶部“编辑申请单”；保存后将返回本页，再继续签核。</p> : null}
             </div>
-            {calculated.currentVersion && calculated.currentStepKey !== 'assistant' ? (
-              <details className="rounded-xl border bg-card p-4 shadow-sm" open>
-                <summary className="cursor-pointer font-semibold">助理修改摘要 · V{calculated.currentVersion.versionNo}（{calculated.currentVersion.changes.length} 项变更）</summary>
-                <div className="mt-3 max-h-64 space-y-2 overflow-auto">
-                  {calculated.currentVersion.changes.length ? calculated.currentVersion.changes.map((change, index) => (
-                    <div key={`${change.field}-${index}`} className="rounded-md bg-muted/40 p-2 text-xs">
-                      <div className="font-medium">{changeLabel(change.field)}</div>
-                      <div className="mt-1 grid gap-1 text-muted-foreground"><span>变更前：{changeValue(change.before)}</span><span>变更后：{changeValue(change.after)}</span></div>
-                    </div>
-                  )) : <div className="text-sm text-muted-foreground">助理未修改提交内容。</div>}
-                </div>
-              </details>
-            ) : null}
             {documentMode && contractFlowOrder ? (
               <div className="rounded-xl border bg-card p-4 shadow-sm">
                 <h2 className="font-semibold">{contractCardEditable ? '合约用印回填' : '合约'}</h2>
@@ -1398,12 +1385,25 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                 ) : null}
               </div>
             ) : null}
+            {calculated.currentVersion && calculated.currentStepKey !== 'assistant' ? (
+              <details className="rounded-xl border bg-card p-4 shadow-sm" open>
+                <summary className="cursor-pointer font-semibold">助理修改摘要 · V{calculated.currentVersion.versionNo}（{calculated.currentVersion.changes.length} 项变更）</summary>
+                <div className="mt-3 max-h-64 space-y-2 overflow-auto">
+                  {calculated.currentVersion.changes.length ? calculated.currentVersion.changes.map((change, index) => (
+                    <div key={`${change.field}-${index}`} className="rounded-md bg-muted/40 p-2 text-xs">
+                      <div className="font-medium">{changeLabel(change.field)}</div>
+                      <div className="mt-1 grid gap-1 text-muted-foreground"><span>变更前：{changeValue(change.before)}</span><span>变更后：{changeValue(change.after)}</span></div>
+                    </div>
+                  )) : <div className="text-sm text-muted-foreground">助理未修改提交内容。</div>}
+                </div>
+              </details>
+            ) : null}
+            <div className="overflow-hidden rounded-xl border bg-card shadow-sm">{summary('rail')}</div>
             <div className="rounded-xl border bg-card p-4 shadow-sm"><ApprovalPanel order={calculated} /></div>
             <div className="rounded-xl border bg-card p-4 shadow-sm">
-              <h2 className="font-semibold">附件（{calculated.quotationFiles?.length || 0}）</h2>
+              <h2 className="font-semibold">附件（{genericFiles.length}）</h2>
               <div className="mt-3"><MrAttachments files={genericFiles} editable={false} singleColumn busy={busy} onUpload={() => {}} onDelete={() => {}} onOpen={(file) => void openAttachment(file)} /></div>
             </div>
-            <div className="overflow-hidden rounded-xl border bg-card shadow-sm">{summary('rail')}</div>
           </aside>
         </div>
       ) : (
