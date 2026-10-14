@@ -92,9 +92,11 @@ export async function persistQuotations(id: string | number, files: File[], role
 }
 
 /** MR 通用附件上传（底部附件区）：不做报价识别，直接留存。 */
-export async function uploadMrAttachments(id: string | number, files: File[]) {
+export async function uploadMrAttachments(id: string | number, files: File[], role?: 'contract' | 'contract_signed') {
   const body = new FormData()
   for (const file of files) body.append('files', file)
+  // spec 019：合约附件专用角色（contract=未盖章 / contract_signed=盖章），普通附件不传
+  if (role) body.append('role', role)
   return api.postForm(`/mr/${pathId(id)}/attachments`, body) as Promise<{ files: QuotationFile[] }>
 }
 

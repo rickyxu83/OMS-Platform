@@ -1251,6 +1251,10 @@ async function sendMrApprovalMail(order, recipient, event = 'task') {
   const voidNote = event === 'void_rejected'
     ? `驳回原因：${order.void_reject_reason || '-'}`
     : (event === 'void' || String(event).startsWith('void_request') ? `作废原因：${order.void_reason || '-'}` : null)
+  // spec 019：用印流程通知邮件提示助理后续动作（附件带未盖章合约）
+  const contractSealNote = event === 'contract_seal'
+    ? '该 MR 有合同：附件为销售上传的未盖章合约，请走合约用印流程；完成后打开 MR 单，在「合同与罚则」栏位上传盖章合约并填写合同编号，方可继续签核。'
+    : null
   const currentStepKey = order.currentStepKey || order.current_step_key
   const rawCurrentStepLabel = order.currentStepLabel || order.current_step_label
   const currentStepLabel = currentStepKey === 'sales' ? '业务负责人' : currentStepKey === 'engineering' ? '工程会签' : rawCurrentStepLabel || '-'
@@ -1307,6 +1311,7 @@ async function sendMrApprovalMail(order, recipient, event = 'task') {
         <tr><td style="padding:5px 0;color:#64748b">合同编号 / 罚则说明</td><td>${htmlEscape(order.contractNo || order.contract_no || '-')} / ${htmlEscape(order.penaltyContent || order.penalty_content || '-')}</td></tr>
         <tr><td style="padding:5px 0;color:#64748b">备注</td><td>${htmlEscape(order.remark || '-')}</td></tr>
         ${voidNote ? `<tr><td style="padding:5px 0;color:#b91c1c">作废/驳回说明</td><td style="color:#b91c1c;font-weight:bold">${htmlEscape(voidNote)}</td></tr>` : ''}
+        ${contractSealNote ? `<tr><td style="padding:5px 0;color:#1d4ed8">合约用印</td><td style="color:#1d4ed8;font-weight:bold">${htmlEscape(contractSealNote)}</td></tr>` : ''}
       </table>
       <h3 style="margin:14px 0 4px">报价原始附件</h3>
       ${quotationList}
@@ -1328,7 +1333,7 @@ async function sendMrApprovalMail(order, recipient, event = 'task') {
       <p style="margin-top:16px;color:#b91c1c;font-size:12px">本邮件包含采购价和毛利等内部商业信息，请勿转发给无关人员。</p>
       ${mailFooter()}
     </div>`
-  await mailTransporter(mail).sendMail({ from: mail.from, to, subject, html })
+  await mailTransporter(mail).sendMail({ from: mail.from, to, subject, html, attachments: extras.attachments || [] })
   return { sent: true, to }
 }
 

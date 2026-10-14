@@ -426,6 +426,24 @@ async function loadDetail(id, user) {
   }
 }
 
+// spec 019：删除合约附件（DB 行 + 磁盘文件）。返回被删文件名供审计。
+// 用途：①助理上传盖章合约后清除未盖章件；②改为「无合同」时清除全部合约附件
+async function removeContractFiles(connection, mrId, roles) {
+  const placeholders = roles.map(() => '?').join(',')
+  const [rows] = await connection.execute(
+    `SELECT id, storage_path, original_name FROM files
+     WHERE owner_type = 'mr_order' AND owner_id = ? AND quote_role IN (${placeholders}) FOR UPDATE`,
+    [mrId, ...roles],
+  )
+  if (!rows.length) return []
+  await connection.execute(
+    `DELETE FROM files WHERE id IN (${rows.map(() => '?').join(',')})`,
+    rows.map((row) => row.id),
+  )
+  await Promise.allSettled(rows.map((row) => fs.promises.rm(row.storage_path, { force: true })))
+  return rows.map((row) => row.original_name)
+}
+
 async function resolveReferences(order, user) {
   if (SALES_ROLES.has(user.role)) order.salesOwnerId = Number(user.id)
   if (order.customerId) {
@@ -815,6 +833,10 @@ async function update(req, res) {
       { ...params, userId: req.user.id, id: req.params.id },
     )
     await replaceItems(connection, req.params.id, normalized.items)
+    // spec 019：改为「无合同」时自动删除合约附件（未盖章/盖章一并清除，单据只保留盖章合约的口径）
+    if (Number(normalized.order.hasContract) !== 1) {
+      await removeContractFiles(connection, req.params.id, ['contract', 'contract_signed'])
+    }
   })
   res.json(await loadDetail(req.params.id, req.user))
 }
@@ -877,9 +899,17 @@ async function submit(req, res) {
     const detailValue = await loadCalculatedOrder(connection, locked)
     await resolveSubmissionCustomer(connection, detailValue, req.user)
     const errors = validateSubmission(detailValue, detailValue.items)
+    // spec 019：选了「有合同」则必须已上传未盖章合约（quote_role='contract'）
+    if (Number(detailValue.hasContract) === 1) {
+      const [contractFiles] = await connection.execute(
+        `SELECT id FROM files WHERE owner_type = 'mr_order' AND owner_id = :id AND quote_role = 'contract' LIMIT 1`,
+        { id: req.params.id },
+      )
+      if (!contractFiles[0]) errors.push({ field: 'contractFile', message: '选择了「有合同」，请在「合同与罚则」栏位上传未盖章合约' })
+    }
     if (errors.length) throw badRequest('规范检查未通过', errors)
     await recordSalesUsage(connection, detailValue, detailValue.items)
-    await resolveStepAssignee(connection, detailValue, 'assistant', { required: true })
+    const assistantAssignee = await resolveStepAssignee(connection, detailValue, 'assistant', { required: true })
     await resolveStepAssignee(connection, detailValue, 'sales', { required: true })
     const steps = computeApprovalSteps(detailValue, detailValue.items)
     const [cycleRows] = await connection.execute('SELECT COALESCE(MAX(cycle), 0) + 1 AS next_cycle FROM mr_approvals WHERE mr_id = :id', { id: req.params.id })
@@ -902,6 +932,14 @@ async function submit(req, res) {
     const snapshot = { ...detailValue, totals: totals(detailValue, detailValue.items), approvalSteps: steps }
     await saveSubmissionBaseline(connection, detailValue, cycle, snapshot, req.user.id)
     await activateCurrentStep(connection, detailValue, cycle, detailValue.createdBy || req.user.id)
+    // spec 019：有合同的 MR 提交后邮件通知助理走用印流程（邮件附未盖章合约）
+    if (Number(detailValue.hasContract) === 1) {
+      await connection.execute(
+        `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
+         VALUES (:mrId, :recipientId, 'contract_seal')`,
+        { mrId: req.params.id, recipientId: assistantAssignee.id },
+      )
+    }
   })
   res.json(await loadDetail(req.params.id, req.user))
 }
@@ -951,6 +989,18 @@ async function decide(req, res, action) {
     if (action === 'approve' && current.step_key === 'assistant') {
       const detailValue = await loadCalculatedOrder(connection, order)
       const errors = validateSubmission(detailValue, detailValue.items)
+      // spec 019：新流程单（有任一合约附件）助理步门禁——盖章合约 + 合同编号双齐才放行；
+      // 无任何合约附件的为功能上线前的在途单，跳过门禁继续走老流程（缺编号签核后 waiting_contract 补填）
+      if (Number(detailValue.hasContract) === 1) {
+        const [contractGateFiles] = await connection.execute(
+          `SELECT quote_role FROM files WHERE owner_type = 'mr_order' AND owner_id = :id AND quote_role IN ('contract', 'contract_signed')`,
+          { id: req.params.id },
+        )
+        if (contractGateFiles.length) {
+          if (!detailValue.contractNo) errors.push({ field: 'contractNo', message: '请填写合同编号（用印完成后回填）' })
+          if (!contractGateFiles.some((file) => file.quote_role === 'contract_signed')) errors.push({ field: 'contractSignedFile', message: '请上传盖章合约（用印完成后回填）' })
+        }
+      }
       if (errors.length) throw badRequest('助理补充后仍有未完成内容', errors)
       await recordSalesUsage(connection, detailValue, detailValue.items)
       await resolveStepAssignee(connection, detailValue, 'sales', { required: true })
@@ -1668,7 +1718,7 @@ function originalNameUtf8(file) {
 function uploadedFiles(req) {
   return Object.values(req.files || {}).flat()
 }
-async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting, roles = []) {
+async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting, roles = [], options = {}) {
   const written = []
   let oldFiles = []
   try {
@@ -1677,19 +1727,32 @@ async function persistQuotationFiles(ownerId, uploads, user, cleanupExisting, ro
       const extension = path.extname(name).toLowerCase()
       const storagePath = path.join(quotationRoot, `${ownerId}-${Date.now()}-${index}-${Math.round(Math.random() * 1e9)}${extension}`)
       await fs.promises.writeFile(storagePath, file.buffer)
-      const quoteRole = ['sales', 'purchase'].includes(roles[index]) ? `quote_${roles[index]}` : null
+      // 报价来源角色映射为 quote_sales/quote_purchase；合约附件（spec 019）直接落 contract/contract_signed
+      const quoteRole = ['sales', 'purchase'].includes(roles[index])
+        ? `quote_${roles[index]}`
+        : (['contract', 'contract_signed'].includes(roles[index]) ? roles[index] : null)
       written.push({ name, storagePath, mimeType: file.mimetype || 'application/octet-stream', size: file.size, quoteRole })
     }
     await transaction(async (connection) => {
       const locked = await loadLockedOrder(connection, ownerId)
-      if (!canEdit(locked, user, await assistantIdsFor(user))) throw forbidden('当前状态或身份不允许保存报价原始附件')
+      // 盖章合约上传由 uploadAttachments 单独鉴权（admin 在签核态无 canEdit），此处跳过重复检查
+      if (!options.skipEditCheck && !canEdit(locked, user, await assistantIdsFor(user))) throw forbidden('当前状态或身份不允许保存报价原始附件')
       if (cleanupExisting) {
+        // spec 019：重导入清理留存报价文件时保留合约附件（contract/contract_signed 不属于报价来源文件）
         ;[oldFiles] = await connection.execute(
-          `SELECT storage_path FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId FOR UPDATE`,
+          `SELECT storage_path FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId
+             AND (quote_role IS NULL OR quote_role IN ('quote_sales', 'quote_purchase')) FOR UPDATE`,
           { ownerId },
         )
-        await connection.execute("DELETE FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId", { ownerId })
-        await connection.execute('UPDATE mr_orders SET quotation_file_id = NULL WHERE id = :ownerId', { ownerId })
+        await connection.execute(
+          "DELETE FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId AND (quote_role IS NULL OR quote_role IN ('quote_sales', 'quote_purchase'))",
+          { ownerId },
+        )
+        await connection.execute(
+          `UPDATE mr_orders o SET quotation_file_id = NULL
+           WHERE o.id = :ownerId AND NOT EXISTS (SELECT 1 FROM files f WHERE f.id = o.quotation_file_id)`,
+          { ownerId },
+        )
       }
       let primaryFileId = null
       for (const file of written) {
@@ -2637,10 +2700,41 @@ async function uploadAttachments(req, res) {
   await ensureTables()
   const order = await loadRawOrder(req.params.id)
   const assistantIds = await assistantIdsFor(req.user)
-  if (!canEdit(order, req.user, assistantIds)) throw forbidden('当前状态或身份不允许上传附件')
+  // spec 019：role=contract 销售传未盖章合约（canEdit 口径）；role=contract_signed 助理签核步传盖章合约（canApprove 助理步口径 + admin）
+  const role = String(req.body?.role ?? req.query?.role ?? '').trim()
+  if (role && !['contract', 'contract_signed'].includes(role)) throw badRequest('附件类型无效')
+  let skipEditCheck = false
+  if (role === 'contract_signed') {
+    const atAssistantStep = order.status === 'in_review' && String(order.currentStepKey || '') === 'assistant'
+    const allowed = req.user.role === 'admin' || (atAssistantStep && canApprove(order, req.user, assistantIds))
+    if (!allowed) throw forbidden('盖章合约由助理在签核时上传')
+    skipEditCheck = req.user.role === 'admin' // admin 在签核态无 canEdit，持久层检查跳过（上面已鉴权）
+  } else if (!canEdit(order, req.user, assistantIds)) {
+    throw forbidden('当前状态或身份不允许上传附件')
+  }
   const uploads = uploadedFiles(req)
   if (!uploads.length) throw badRequest('请选择要上传的附件')
-  const files = await persistQuotationFiles(req.params.id, uploads, req.user, false)
+  let files = await persistQuotationFiles(req.params.id, uploads, req.user, false, uploads.map(() => role || undefined), { skipEditCheck })
+  if (role === 'contract_signed') {
+    // spec 019：盖章合约上传后，未盖章合约不再需要保留，自动删除
+    const removedUnsigned = await transaction(async (connection) => removeContractFiles(connection, req.params.id, ['contract']))
+    if (removedUnsigned.length) {
+      files = await query(
+        `SELECT id, original_name AS name, size, created_at AS createdAt, quote_role AS quoteRole
+         FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId ORDER BY id`,
+        { ownerId: req.params.id },
+      )
+    }
+    await query(
+      `INSERT INTO audit_logs (actor_id, target_type, target_id, action, detail_json)
+       VALUES (:actorId, 'mr', :targetId, 'contract_signed_upload', :detailJson)`,
+      {
+        actorId: req.user.id,
+        targetId: Number(req.params.id),
+        detailJson: JSON.stringify({ files: uploads.map((file) => originalNameUtf8(file)), removedUnsigned }),
+      },
+    )
+  }
   res.json({ files })
 }
 

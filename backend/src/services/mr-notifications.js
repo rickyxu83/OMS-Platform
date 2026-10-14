@@ -1,4 +1,5 @@
 const { query } = require('../config/db')
+const fs = require('fs')
 const { ensureWorkflowTables, reconcilePendingMrAssignments, reconcilePendingPurchaseAssignments } = require('../modules/mr/workflow')
 const { sendMrApprovalMail } = require('./mail')
 
@@ -22,7 +23,7 @@ async function notificationContext(mrId, recipientUserId) {
       { userId: recipientUserId },
     ),
     query(
-      `SELECT original_name AS name, size FROM files
+      `SELECT original_name AS name, size, storage_path AS storagePath, mime_type AS mimeType, quote_role AS quoteRole FROM files
        WHERE owner_type = 'mr_order' AND owner_id = :mrId ORDER BY id`,
       { mrId },
     ),
@@ -60,7 +61,17 @@ async function processMrNotifications(limit = 20) {
     if (!claimed.affectedRows) continue
     try {
       const context = await notificationContext(row.mr_id, row.recipient_user_id)
-      const result = await sendMrApprovalMail(context.order, context.recipient, row.event)
+      // spec 019：用印流程通知邮件附未盖章合约（quote_role='contract'），助理凭附件走内部用印
+      const extras = {}
+      if (row.event === 'contract_seal') {
+        const contractFiles = (context.order.quotationFiles || []).filter((file) => file.quoteRole === 'contract' && file.storagePath)
+        extras.attachments = await Promise.all(contractFiles.map(async (file) => ({
+          filename: file.name,
+          content: await fs.promises.readFile(file.storagePath),
+          contentType: file.mimeType || undefined,
+        })))
+      }
+      const result = await sendMrApprovalMail(context.order, context.recipient, row.event, extras)
       if (!result?.sent) throw new Error(result?.reason || '邮件发送已跳过')
       await query(
         `UPDATE mr_notification_outbox
