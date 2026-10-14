@@ -426,6 +426,24 @@ async function loadDetail(id, user) {
   }
 }
 
+// spec 019：删除合约附件（DB 行 + 磁盘文件）。返回被删文件名供审计。
+// 用途：①助理上传盖章合约后清除未盖章件；②改为「无合同」时清除全部合约附件
+async function removeContractFiles(connection, mrId, roles) {
+  const placeholders = roles.map(() => '?').join(',')
+  const [rows] = await connection.execute(
+    `SELECT id, storage_path, original_name FROM files
+     WHERE owner_type = 'mr_order' AND owner_id = ? AND quote_role IN (${placeholders}) FOR UPDATE`,
+    [mrId, ...roles],
+  )
+  if (!rows.length) return []
+  await connection.execute(
+    `DELETE FROM files WHERE id IN (${rows.map(() => '?').join(',')})`,
+    rows.map((row) => row.id),
+  )
+  await Promise.allSettled(rows.map((row) => fs.promises.rm(row.storage_path, { force: true })))
+  return rows.map((row) => row.original_name)
+}
+
 async function resolveReferences(order, user) {
   if (SALES_ROLES.has(user.role)) order.salesOwnerId = Number(user.id)
   if (order.customerId) {
@@ -815,6 +833,10 @@ async function update(req, res) {
       { ...params, userId: req.user.id, id: req.params.id },
     )
     await replaceItems(connection, req.params.id, normalized.items)
+    // spec 019：改为「无合同」时自动删除合约附件（未盖章/盖章一并清除，单据只保留盖章合约的口径）
+    if (Number(normalized.order.hasContract) !== 1) {
+      await removeContractFiles(connection, req.params.id, ['contract', 'contract_signed'])
+    }
   })
   res.json(await loadDetail(req.params.id, req.user))
 }
@@ -967,14 +989,14 @@ async function decide(req, res, action) {
     if (action === 'approve' && current.step_key === 'assistant') {
       const detailValue = await loadCalculatedOrder(connection, order)
       const errors = validateSubmission(detailValue, detailValue.items)
-      // spec 019：新流程单（已有未盖章合约附件）助理步门禁——盖章合约 + 合同编号双齐才放行；
-      // 无 contract 附件的为功能上线前的在途单，跳过门禁继续走老流程（缺编号签核后 waiting_contract 补填）
+      // spec 019：新流程单（有任一合约附件）助理步门禁——盖章合约 + 合同编号双齐才放行；
+      // 无任何合约附件的为功能上线前的在途单，跳过门禁继续走老流程（缺编号签核后 waiting_contract 补填）
       if (Number(detailValue.hasContract) === 1) {
         const [contractGateFiles] = await connection.execute(
           `SELECT quote_role FROM files WHERE owner_type = 'mr_order' AND owner_id = :id AND quote_role IN ('contract', 'contract_signed')`,
           { id: req.params.id },
         )
-        if (contractGateFiles.some((file) => file.quote_role === 'contract')) {
+        if (contractGateFiles.length) {
           if (!detailValue.contractNo) errors.push({ field: 'contractNo', message: '请填写合同编号（用印完成后回填）' })
           if (!contractGateFiles.some((file) => file.quote_role === 'contract_signed')) errors.push({ field: 'contractSignedFile', message: '请上传盖章合约（用印完成后回填）' })
         }
@@ -2692,15 +2714,24 @@ async function uploadAttachments(req, res) {
   }
   const uploads = uploadedFiles(req)
   if (!uploads.length) throw badRequest('请选择要上传的附件')
-  const files = await persistQuotationFiles(req.params.id, uploads, req.user, false, uploads.map(() => role || undefined), { skipEditCheck })
+  let files = await persistQuotationFiles(req.params.id, uploads, req.user, false, uploads.map(() => role || undefined), { skipEditCheck })
   if (role === 'contract_signed') {
+    // spec 019：盖章合约上传后，未盖章合约不再需要保留，自动删除
+    const removedUnsigned = await transaction(async (connection) => removeContractFiles(connection, req.params.id, ['contract']))
+    if (removedUnsigned.length) {
+      files = await query(
+        `SELECT id, original_name AS name, size, created_at AS createdAt, quote_role AS quoteRole
+         FROM files WHERE owner_type = 'mr_order' AND owner_id = :ownerId ORDER BY id`,
+        { ownerId: req.params.id },
+      )
+    }
     await query(
       `INSERT INTO audit_logs (actor_id, target_type, target_id, action, detail_json)
        VALUES (:actorId, 'mr', :targetId, 'contract_signed_upload', :detailJson)`,
       {
         actorId: req.user.id,
         targetId: Number(req.params.id),
-        detailJson: JSON.stringify({ files: uploads.map((file) => originalNameUtf8(file)) }),
+        detailJson: JSON.stringify({ files: uploads.map((file) => originalNameUtf8(file)), removedUnsigned }),
       },
     )
   }

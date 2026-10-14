@@ -479,8 +479,8 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
   const contractFiles = useMemo(() => (calculated?.quotationFiles || []).filter((file) => file.quoteRole === 'contract'), [calculated])
   const contractSignedFiles = useMemo(() => (calculated?.quotationFiles || []).filter((file) => file.quoteRole === 'contract_signed'), [calculated])
   const genericFiles = useMemo(() => (calculated?.quotationFiles || []).filter((file) => file.quoteRole !== 'contract' && file.quoteRole !== 'contract_signed'), [calculated])
-  // 新流程单（已有未盖章合约附件）才启用助理步门禁与回填卡片；无 contract 附件的是功能上线前的在途单
-  const contractFlowOrder = Number(calculated?.hasContract) === 1 && contractFiles.length > 0
+  // 新流程单（有任一合约附件）才启用助理步门禁与回填卡片；无合约附件的是功能上线前的在途单
+  const contractFlowOrder = Number(calculated?.hasContract) === 1 && (contractFiles.length > 0 || contractSignedFiles.length > 0)
   const canApproveStep = Boolean(form?.permissions?.canApprove)
   const editable = Boolean(canEdit && (!assistantReview || editing))
   const documentMode = Boolean(form?.status === 'in_review' && !editing)
@@ -1367,11 +1367,13 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
             {documentMode && calculated.currentStepKey === 'assistant' && contractFlowOrder ? (
               <div className="rounded-xl border bg-card p-4 shadow-sm">
                 <h2 className="font-semibold">合约用印回填</h2>
-                <p className="mt-1 text-xs text-muted-foreground">销售已提交未盖章合约；请走合约用印流程，完成后在此上传盖章合约并填写合同编号，再点「同意」。</p>
-                <div className="mt-3 text-sm">
-                  <div className="mb-1 text-muted-foreground">未盖章合约（销售上传）：</div>
-                  <MrAttachments files={contractFiles} editable={false} singleColumn busy={busy} onUpload={() => {}} onDelete={() => {}} onOpen={(file) => void openAttachment(file)} />
-                </div>
+                <p className="mt-1 text-xs text-muted-foreground">销售已提交未盖章合约；请走合约用印流程，完成后在此上传盖章合约（未盖章件将自动删除）并填写合同编号，再点「同意」。</p>
+                {contractFiles.length > 0 ? (
+                  <div className="mt-3 text-sm">
+                    <div className="mb-1 text-muted-foreground">未盖章合约（销售上传）：</div>
+                    <MrAttachments files={contractFiles} editable={false} singleColumn busy={busy} onUpload={() => {}} onDelete={() => {}} onOpen={(file) => void openAttachment(file)} />
+                  </div>
+                ) : null}
                 <div className="mt-3 text-sm">
                   <div className="mb-1 text-muted-foreground">盖章合约（用印后上传）：</div>
                   <MrAttachments files={contractSignedFiles} editable={canApproveStep} singleColumn busy={busy} uploadLabel="上传盖章合约" onUpload={(list) => void uploadAttachments(list, 'contract_signed')} onDelete={(file) => void deleteAttachment(file)} onOpen={(file) => void openAttachment(file)} />
@@ -1562,7 +1564,12 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
               <SubPanel title="合同与罚则">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field required label="是否有合同" editable={editable} readonlyText={choiceValue(calculated.hasContract, '有合同', '无合同')} className="sm:col-span-2">
-                    <BinaryChoice value={calculated.hasContract} yes="有合同" no="无合同" onChange={(value) => patch(Number(value) === 1 ? { hasContract: 1 } : { hasContract: 0, contractNo: '', penaltyContent: '' })} />
+                    <BinaryChoice value={calculated.hasContract} yes="有合同" no="无合同" onChange={(value) => {
+                      // spec 019：改为「无合同」保存时会自动删除合约附件（含盖章件），先让填单人确认
+                      if (Number(value) !== 1 && (contractFiles.length > 0 || contractSignedFiles.length > 0)
+                        && !window.confirm('切换为「无合同」后，已上传的合约附件（含盖章件）将在保存时自动删除，确定吗？')) return
+                      patch(Number(value) === 1 ? { hasContract: 1 } : { hasContract: 0, contractNo: '', penaltyContent: '' })
+                    }} />
                   </Field>
                   <Field label="合同编号（有合同时选填）" editable={editable && Number(calculated.hasContract) === 1} readonlyText={calculated.contractNo ? textValue(calculated.contractNo) : (Number(calculated.hasContract) === 1 ? '合同流程中，待助理签核时补填' : '-')} className="sm:col-span-2">
                     <Input value={calculated.contractNo || ''} placeholder="合同流程未走完可暂空；助理签核时补填" onChange={(e) => patch({ contractNo: e.target.value })} />
@@ -1574,7 +1581,7 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                     <div className="sm:col-span-2">
                       <div className="mb-1.5 flex items-baseline gap-2 text-sm">
                         <span className="font-medium">合约附件</span>
-                        {editable ? <span className="text-xs text-muted-foreground">提交签核前必传未盖章合约；盖章合约由助理用印后回填</span> : null}
+                        {editable ? <span className="text-xs text-muted-foreground">提交签核前必传未盖章合约；助理用印后回填盖章件，未盖章件自动删除</span> : null}
                       </div>
                       {editable ? (
                         <MrAttachments files={contractFiles} editable busy={busy} uploadLabel="上传未盖章合约" onUpload={(list) => void uploadAttachments(list, 'contract')} onDelete={(file) => void deleteAttachment(file)} onOpen={(file) => void openAttachment(file)} />
