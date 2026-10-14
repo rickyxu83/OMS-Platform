@@ -899,13 +899,20 @@ async function submit(req, res) {
     const detailValue = await loadCalculatedOrder(connection, locked)
     await resolveSubmissionCustomer(connection, detailValue, req.user)
     const errors = validateSubmission(detailValue, detailValue.items)
-    // spec 019：选了「有合同」则必须已上传未盖章合约（quote_role='contract'）
+    // spec 019：选了「有合同」则必须有合约附件（未盖章 contract 或已盖章 contract_signed 均可——
+    // 撤回重提场景可能只剩盖章件，未盖章件在助理上传盖章件时已自动删除）
+    let hasContractFile = false
+    let hasUnsignedContract = false
+    let hasSignedContract = false
     if (Number(detailValue.hasContract) === 1) {
       const [contractFiles] = await connection.execute(
-        `SELECT id FROM files WHERE owner_type = 'mr_order' AND owner_id = :id AND quote_role = 'contract' LIMIT 1`,
+        `SELECT quote_role FROM files WHERE owner_type = 'mr_order' AND owner_id = :id AND quote_role IN ('contract', 'contract_signed')`,
         { id: req.params.id },
       )
-      if (!contractFiles[0]) errors.push({ field: 'contractFile', message: '选择了「有合同」，请在「合同与罚则」栏位上传未盖章合约' })
+      hasContractFile = contractFiles.length > 0
+      hasUnsignedContract = contractFiles.some((file) => file.quote_role === 'contract')
+      hasSignedContract = contractFiles.some((file) => file.quote_role === 'contract_signed')
+      if (!hasContractFile) errors.push({ field: 'contractFile', message: '选择了「有合同」，请在「合同与罚则」栏位上传合约附件' })
     }
     if (errors.length) throw badRequest('规范检查未通过', errors)
     await recordSalesUsage(connection, detailValue, detailValue.items)
@@ -932,8 +939,9 @@ async function submit(req, res) {
     const snapshot = { ...detailValue, totals: totals(detailValue, detailValue.items), approvalSteps: steps }
     await saveSubmissionBaseline(connection, detailValue, cycle, snapshot, req.user.id)
     await activateCurrentStep(connection, detailValue, cycle, detailValue.createdBy || req.user.id)
-    // spec 019：有合同的 MR 提交后邮件通知助理走用印流程（邮件附未盖章合约）
-    if (Number(detailValue.hasContract) === 1) {
+    // spec 019：有合同的 MR 提交后邮件通知助理走用印流程（邮件附未盖章合约）；
+    // 已有盖章件的（撤回重提且合约未更换）不再重复发用印通知
+    if (Number(detailValue.hasContract) === 1 && hasUnsignedContract && !hasSignedContract) {
       await connection.execute(
         `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
          VALUES (:mrId, :recipientId, 'contract_seal')`,

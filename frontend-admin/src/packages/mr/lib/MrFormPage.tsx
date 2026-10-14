@@ -1583,16 +1583,9 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                     <div className="sm:col-span-2">
                       <div className="mb-1.5 flex items-baseline gap-2 text-sm">
                         <span className="font-medium">合约附件</span>
-                        {editable ? <span className="text-xs text-muted-foreground">提交签核前必传未盖章合约；助理用印后回填盖章件，未盖章件自动删除</span> : null}
+                        {editable ? <span className="text-xs text-muted-foreground">提交签核前必传合约；助理用印后回填盖章件（未盖章件自动删除）；盖章件可删除后重新走用印</span> : null}
                       </div>
-                      {editable ? (
-                        <MrAttachments files={contractFiles} editable busy={busy} uploadLabel="上传未盖章合约" onUpload={(list) => void uploadAttachments(list, 'contract')} onDelete={(file) => void deleteAttachment(file)} onOpen={(file) => void openAttachment(file)} />
-                      ) : null}
-                      {contractSignedFiles.length || !editable ? (
-                        <div className={editable && contractFiles.length ? 'mt-2' : ''}>
-                          <MrAttachments files={[...(editable ? [] : contractFiles), ...contractSignedFiles]} editable={false} busy={busy} onUpload={() => {}} onDelete={() => {}} onOpen={(file) => void openAttachment(file)} />
-                        </div>
-                      ) : null}
+                      <MrAttachments files={[...contractFiles, ...contractSignedFiles]} editable={editable} busy={busy} uploadLabel="上传未盖章合约" onUpload={(list) => void uploadAttachments(list, 'contract')} onDelete={(file) => void deleteAttachment(file)} onOpen={(file) => void openAttachment(file)} />
                     </div>
                   ) : null}
                 </div>
