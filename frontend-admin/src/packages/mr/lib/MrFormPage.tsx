@@ -171,12 +171,19 @@ function fileSizeText(size?: number) {
   return `${Math.max(1, Math.round(size / 1024))} KB`
 }
 
+/** 合约附件角色徽标（spec 019）：未盖章（销售传）/ 盖章（助理用印后传） */
+const CONTRACT_ROLE_BADGES: Record<string, { label: string; className: string }> = {
+  contract: { label: '未盖章合约', className: 'bg-sky-100 text-sky-800' },
+  contract_signed: { label: '盖章合约', className: 'bg-emerald-100 text-emerald-800' },
+}
+
 /** MR 附件列表（文件名+图标展示）；PDF 当前页弹窗预览，Word/Excel 弹窗预览，图片/文本新标签页预览，其余类型点击下载。singleColumn 用于签核侧窄卡片：单列排列且文件名换行完整显示。 */
 function MrAttachments({
   files,
   editable,
   busy,
   singleColumn = false,
+  uploadLabel = '上传附件',
   onUpload,
   onDelete,
   onOpen,
@@ -185,6 +192,7 @@ function MrAttachments({
   editable: boolean
   busy: boolean
   singleColumn?: boolean
+  uploadLabel?: string
   onUpload: (fileList: FileList | null) => void
   onDelete: (file: QuotationFile) => void
   onOpen: (file: QuotationFile) => void
@@ -201,6 +209,9 @@ function MrAttachments({
                 <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => onOpen(file)} title="点击预览或下载">
                   <Icon className="size-4 shrink-0 text-muted-foreground" />
                   <span className={`min-w-0 flex-1 text-sm hover:underline ${singleColumn ? 'break-all leading-snug' : 'truncate'}`} title={file.name}>{file.name}</span>
+                  {file.quoteRole && CONTRACT_ROLE_BADGES[file.quoteRole] ? (
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${CONTRACT_ROLE_BADGES[file.quoteRole].className}`}>{CONTRACT_ROLE_BADGES[file.quoteRole].label}</span>
+                  ) : null}
                   {fileSizeText(file.size) ? <span className="shrink-0 text-xs text-muted-foreground">{fileSizeText(file.size)}</span> : null}
                 </button>
                 {editable ? (
@@ -216,7 +227,7 @@ function MrAttachments({
       {editable ? (
         <div>
           <input ref={inputRef} type="file" multiple className="hidden" accept={ATTACHMENT_ACCEPT} onChange={(event) => { onUpload(event.target.files); event.target.value = '' }} />
-          <Button type="button" variant="outline" disabled={busy} onClick={() => inputRef.current?.click()}><Upload className="mr-2 size-4" />上传附件</Button>
+          <Button type="button" variant="outline" disabled={busy} onClick={() => inputRef.current?.click()}><Upload className="mr-2 size-4" />{uploadLabel}</Button>
         </div>
       ) : null}
     </div>
@@ -418,6 +429,8 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
   const [activeSection, setActiveSection] = useState(WORKBENCH_SECTIONS[0].id)
   const [flashSection, setFlashSection] = useState('')
   const [focusItemIndex, setFocusItemIndex] = useState<number | null>(null)
+  // spec 019：助理步合约回填卡片的合同编号输入（与表单编辑隔离，保存即提交后端）
+  const [contractNoInput, setContractNoInput] = useState('')
   const loadSequence = useRef(0)
   const customerLoadSequence = useRef(0)
   const ignoreNextPop = useRef(false)
@@ -462,6 +475,13 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
     [customers, frequentCustomerIds, customerKeyword, lang])
   const canEdit = Boolean(form?.permissions?.canEdit)
   const assistantReview = Boolean(canEdit && form?.status === 'in_review' && form?.currentStepKey === 'assistant')
+  // spec 019：合约附件按角色分组——未盖章（contract，销售传）/ 盖章（contract_signed，助理传）/ 其它附件
+  const contractFiles = useMemo(() => (calculated?.quotationFiles || []).filter((file) => file.quoteRole === 'contract'), [calculated])
+  const contractSignedFiles = useMemo(() => (calculated?.quotationFiles || []).filter((file) => file.quoteRole === 'contract_signed'), [calculated])
+  const genericFiles = useMemo(() => (calculated?.quotationFiles || []).filter((file) => file.quoteRole !== 'contract' && file.quoteRole !== 'contract_signed'), [calculated])
+  // 新流程单（已有未盖章合约附件）才启用助理步门禁与回填卡片；无 contract 附件的是功能上线前的在途单
+  const contractFlowOrder = Number(calculated?.hasContract) === 1 && contractFiles.length > 0
+  const canApproveStep = Boolean(form?.permissions?.canApprove)
   const editable = Boolean(canEdit && (!assistantReview || editing))
   const documentMode = Boolean(form?.status === 'in_review' && !editing)
   const approvedDocumentReady = Boolean(form?.archivedDocumentTypes?.includes('approved'))
@@ -502,6 +522,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
       } : order
       if (sequence !== loadSequence.current) return
       setForm(hydratedOrder)
+      setContractNoInput(hydratedOrder.contractNo || '')
       setEditing(false)
       setConstants(optionData)
       setCustomers(references.customers)
@@ -1033,13 +1054,31 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
     setForm((current) => current ? { ...current, quotationFiles: files } : current)
   }
 
-  const uploadAttachments = async (fileList: FileList | null) => {
+  // spec 019：助理步回填合同编号（不走全表编辑，直接保存）
+  const saveContractNo = async () => {
+    if (!id || !form) return
+    setBusy(true)
+    setError('')
+    try {
+      const saved = await updateMr(id, calculateForm({ ...form, contractNo: contractNoInput.trim() }))
+      setForm(saved)
+      setDirty(false)
+      toast.success('合同编号已保存')
+    } catch (err) {
+      setError((err as Error).message || '合同编号保存失败')
+      setErrors(validationDetails(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const uploadAttachments = async (fileList: FileList | null, role?: 'contract' | 'contract_signed') => {
     const files = fileList ? Array.from(fileList) : []
     if (!files.length || !id) return
     setBusy(true)
     setError('')
     try {
-      const result = await uploadMrAttachments(id, files)
+      const result = await uploadMrAttachments(id, files, role)
       refreshAttachments(result.files)
       toast.success(`已上传 ${files.length} 个附件`)
     } catch (err) {
@@ -1325,10 +1364,40 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                 </div>
               </details>
             ) : null}
+            {documentMode && calculated.currentStepKey === 'assistant' && contractFlowOrder ? (
+              <div className="rounded-xl border bg-card p-4 shadow-sm">
+                <h2 className="font-semibold">合约用印回填</h2>
+                <p className="mt-1 text-xs text-muted-foreground">销售已提交未盖章合约；请走合约用印流程，完成后在此上传盖章合约并填写合同编号，再点「同意」。</p>
+                <div className="mt-3 text-sm">
+                  <div className="mb-1 text-muted-foreground">未盖章合约（销售上传）：</div>
+                  <MrAttachments files={contractFiles} editable={false} singleColumn busy={busy} onUpload={() => {}} onDelete={() => {}} onOpen={(file) => void openAttachment(file)} />
+                </div>
+                <div className="mt-3 text-sm">
+                  <div className="mb-1 text-muted-foreground">盖章合约（用印后上传）：</div>
+                  <MrAttachments files={contractSignedFiles} editable={canApproveStep} singleColumn busy={busy} uploadLabel="上传盖章合约" onUpload={(list) => void uploadAttachments(list, 'contract_signed')} onDelete={(file) => void deleteAttachment(file)} onOpen={(file) => void openAttachment(file)} />
+                </div>
+                <div className="mt-3">
+                  <div className="mb-1 text-sm text-muted-foreground">合同编号：</div>
+                  {canApproveStep ? (
+                    <div className="flex items-center gap-2">
+                      <Input value={contractNoInput} placeholder="用印完成后填写合同编号" onChange={(event) => setContractNoInput(event.target.value)} />
+                      <Button type="button" variant="outline" disabled={busy || contractNoInput.trim() === (calculated.contractNo || '')} onClick={() => void saveContractNo()}>保存</Button>
+                    </div>
+                  ) : (
+                    <div className="text-sm">{calculated.contractNo || <span className="text-muted-foreground">待助理回填</span>}</div>
+                  )}
+                </div>
+                {canApproveStep && (contractSignedFiles.length === 0 || !calculated.contractNo) ? (
+                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                    签核通过前需完成：{[!calculated.contractNo ? '填写合同编号' : '', contractSignedFiles.length === 0 ? '上传盖章合约' : ''].filter(Boolean).join('、')}（缺项时系统将拒绝通过）
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <div className="rounded-xl border bg-card p-4 shadow-sm"><ApprovalPanel order={calculated} /></div>
             <div className="rounded-xl border bg-card p-4 shadow-sm">
               <h2 className="font-semibold">附件（{calculated.quotationFiles?.length || 0}）</h2>
-              <div className="mt-3"><MrAttachments files={calculated.quotationFiles || []} editable={false} singleColumn busy={busy} onUpload={() => {}} onDelete={() => {}} onOpen={(file) => void openAttachment(file)} /></div>
+              <div className="mt-3"><MrAttachments files={genericFiles} editable={false} singleColumn busy={busy} onUpload={() => {}} onDelete={() => {}} onOpen={(file) => void openAttachment(file)} /></div>
             </div>
             <div className="overflow-hidden rounded-xl border bg-card shadow-sm">{summary('rail')}</div>
           </aside>
@@ -1495,12 +1564,28 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                   <Field required label="是否有合同" editable={editable} readonlyText={choiceValue(calculated.hasContract, '有合同', '无合同')} className="sm:col-span-2">
                     <BinaryChoice value={calculated.hasContract} yes="有合同" no="无合同" onChange={(value) => patch(Number(value) === 1 ? { hasContract: 1 } : { hasContract: 0, contractNo: '', penaltyContent: '' })} />
                   </Field>
-                  <Field label="合同编号（有合同时选填）" editable={editable && Number(calculated.hasContract) === 1} readonlyText={calculated.contractNo ? textValue(calculated.contractNo) : (Number(calculated.hasContract) === 1 ? '合同流程中，待补编号' : '-')} className="sm:col-span-2">
-                    <Input value={calculated.contractNo || ''} placeholder="合同流程未走完可暂空；签核通过后、流转采购前由助理补填" onChange={(e) => patch({ contractNo: e.target.value })} />
+                  <Field label="合同编号（有合同时选填）" editable={editable && Number(calculated.hasContract) === 1} readonlyText={calculated.contractNo ? textValue(calculated.contractNo) : (Number(calculated.hasContract) === 1 ? '合同流程中，待助理签核时补填' : '-')} className="sm:col-span-2">
+                    <Input value={calculated.contractNo || ''} placeholder="合同流程未走完可暂空；助理签核时补填" onChange={(e) => patch({ contractNo: e.target.value })} />
                   </Field>
                   <Field label="罚则说明（选填）" editable={editable && Number(calculated.hasContract) === 1} readonlyText={textValue(calculated.penaltyContent)} className="sm:col-span-2">
                     <Textarea rows={2} value={calculated.penaltyContent || ''} placeholder="无罚则时可留空" onChange={(e) => patch({ penaltyContent: e.target.value })} />
                   </Field>
+                  {Number(calculated.hasContract) === 1 ? (
+                    <div className="sm:col-span-2">
+                      <div className="mb-1.5 flex items-baseline gap-2 text-sm">
+                        <span className="font-medium">合约附件</span>
+                        {editable ? <span className="text-xs text-muted-foreground">提交签核前必传未盖章合约；盖章合约由助理用印后回填</span> : null}
+                      </div>
+                      {editable ? (
+                        <MrAttachments files={contractFiles} editable busy={busy} uploadLabel="上传未盖章合约" onUpload={(list) => void uploadAttachments(list, 'contract')} onDelete={(file) => void deleteAttachment(file)} onOpen={(file) => void openAttachment(file)} />
+                      ) : null}
+                      {contractSignedFiles.length || !editable ? (
+                        <div className={editable && contractFiles.length ? 'mt-2' : ''}>
+                          <MrAttachments files={[...(editable ? [] : contractFiles), ...contractSignedFiles]} editable={false} busy={busy} onUpload={() => {}} onDelete={() => {}} onOpen={(file) => void openAttachment(file)} />
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </SubPanel>
             </div>
@@ -1758,7 +1843,7 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
           ) : null}
 
           <SectionCard id="attachments" title="附件" icon={Paperclip} description="报价、合同等附件随 MR 单一并留存；签核流转时签核人可在右侧查看。PDF/Word/Excel 点击弹窗预览，图片/文本新标签页预览，其他类型点击下载。" flash={flashSection === 'attachments'}>
-            <MrAttachments files={calculated.quotationFiles || []} editable={editable} busy={busy} onUpload={(list) => void uploadAttachments(list)} onDelete={(file) => void deleteAttachment(file)} onOpen={(file) => void openAttachment(file)} />
+            <MrAttachments files={genericFiles} editable={editable} busy={busy} onUpload={(list) => void uploadAttachments(list)} onDelete={(file) => void deleteAttachment(file)} onOpen={(file) => void openAttachment(file)} />
           </SectionCard>
         </div>
       </div>
@@ -1776,13 +1861,13 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
           editable={editable}
           invoiceType={calculated.invoiceType}
           pricingMode={calculated.pricingMode}
-          existingFiles={calculated.quotationFiles || []}
+          existingFiles={genericFiles}
           vendors={vendors}
           initialItems={calculated.items || []}
           onOpenChange={setImportOpen}
           initialEngine={importEngine}
           onApply={(result, selectedMode) => void applyQuotationImport(result, selectedMode)}
-          onStoredFilesChange={(files) => patch({ quotationFiles: files })}
+          onStoredFilesChange={(files) => patch({ quotationFiles: [...files, ...contractFiles, ...contractSignedFiles] })}
           onLinkedItemsRemoved={handleLinkedItemsRemoved}
         />
       ) : null}
