@@ -1247,7 +1247,7 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
 
   const approvalDocumentToolbar = (
     <div className="mr-print-toolbar">
-      <div><strong className="block text-sm text-foreground">签核文件预览</strong><span>未填写的选填字段会标记为“未填写”；正式归档文件将隐藏空白字段。</span></div>
+      <div><strong className="block text-sm text-foreground">签核文件预览</strong><span>未填写的选填字段会标记为“未填写”；助理复核通过后及正式归档文件将隐藏空白字段。</span></div>
       <Button onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: form || calculated } })}>
         <Eye className="mr-2 size-4" />全屏预览
       </Button>
@@ -1385,6 +1385,11 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                 ) : null}
               </div>
             ) : null}
+            <div className="rounded-xl border bg-card p-4 shadow-sm">
+              <h2 className="font-semibold">附件（{genericFiles.length}）</h2>
+              <div className="mt-3"><MrAttachments files={genericFiles} editable={false} singleColumn busy={busy} onUpload={() => {}} onDelete={() => {}} onOpen={(file) => void openAttachment(file)} /></div>
+            </div>
+            <div className="overflow-hidden rounded-xl border bg-card shadow-sm">{summary('rail')}</div>
             {calculated.currentVersion && calculated.currentStepKey !== 'assistant' ? (
               <details className="rounded-xl border bg-card p-4 shadow-sm" open>
                 <summary className="cursor-pointer font-semibold">助理修改摘要 · V{calculated.currentVersion.versionNo}（{calculated.currentVersion.changes.length} 项变更）</summary>
@@ -1398,11 +1403,6 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                 </div>
               </details>
             ) : null}
-            <div className="rounded-xl border bg-card p-4 shadow-sm">
-              <h2 className="font-semibold">附件（{genericFiles.length}）</h2>
-              <div className="mt-3"><MrAttachments files={genericFiles} editable={false} singleColumn busy={busy} onUpload={() => {}} onDelete={() => {}} onOpen={(file) => void openAttachment(file)} /></div>
-            </div>
-            <div className="overflow-hidden rounded-xl border bg-card shadow-sm">{summary('rail')}</div>
             <div className="rounded-xl border bg-card p-4 shadow-sm"><ApprovalPanel order={calculated} /></div>
           </aside>
         </div>
