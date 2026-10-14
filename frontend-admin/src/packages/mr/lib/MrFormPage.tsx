@@ -1398,12 +1398,12 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                 </div>
               </details>
             ) : null}
-            <div className="overflow-hidden rounded-xl border bg-card shadow-sm">{summary('rail')}</div>
-            <div className="rounded-xl border bg-card p-4 shadow-sm"><ApprovalPanel order={calculated} /></div>
             <div className="rounded-xl border bg-card p-4 shadow-sm">
               <h2 className="font-semibold">附件（{genericFiles.length}）</h2>
               <div className="mt-3"><MrAttachments files={genericFiles} editable={false} singleColumn busy={busy} onUpload={() => {}} onDelete={() => {}} onOpen={(file) => void openAttachment(file)} /></div>
             </div>
+            <div className="overflow-hidden rounded-xl border bg-card shadow-sm">{summary('rail')}</div>
+            <div className="rounded-xl border bg-card p-4 shadow-sm"><ApprovalPanel order={calculated} /></div>
           </aside>
         </div>
       ) : (
