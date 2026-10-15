@@ -1198,7 +1198,7 @@ function mrOptionText(value) {
   }
 }
 
-async function sendMrApprovalMail(order, recipient, event = 'task') {
+async function sendMrApprovalMail(order, recipient, event = 'task', extras = {}) {
   const settings = await effectiveSettings()
   const mail = settings.mail
   if (mail.enabled !== 'true') return { skipped: true, reason: 'mail_disabled' }
