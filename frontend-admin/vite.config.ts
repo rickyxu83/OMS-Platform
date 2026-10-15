@@ -5,7 +5,19 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   base: process.env.VITE_BASE_PATH || '/',
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    // 测试服在浏览器 tab 标题加标记（部署时注入 VITE_APP_ENVIRONMENT=test）
+    {
+      name: 'html-title-env',
+      transformIndexHtml(html) {
+        const isTest = String(process.env.VITE_APP_ENVIRONMENT || '').toLowerCase() === 'test'
+        if (isTest) return html.replace('<title>OMS Platform 运维智管</title>', '<title>OMS Platform 运维智管（测试服）</title>')
+        return html
+      },
+    },
+  ],
   build: {
     // Known async vendor payloads are large but intentionally isolated and cached.
     chunkSizeWarningLimit: 1500,
