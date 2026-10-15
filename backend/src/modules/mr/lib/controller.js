@@ -902,21 +902,17 @@ async function submit(req, res) {
     // spec 019：选了「有合同」则必须有合约附件（未盖章 contract 或已盖章 contract_signed 均可——
     // 撤回重提场景可能只剩盖章件，未盖章件在助理上传盖章件时已自动删除）
     let hasContractFile = false
-    let hasUnsignedContract = false
-    let hasSignedContract = false
     if (Number(detailValue.hasContract) === 1) {
       const [contractFiles] = await connection.execute(
         `SELECT quote_role FROM files WHERE owner_type = 'mr_order' AND owner_id = :id AND quote_role IN ('contract', 'contract_signed')`,
         { id: req.params.id },
       )
       hasContractFile = contractFiles.length > 0
-      hasUnsignedContract = contractFiles.some((file) => file.quote_role === 'contract')
-      hasSignedContract = contractFiles.some((file) => file.quote_role === 'contract_signed')
       if (!hasContractFile) errors.push({ field: 'contractFile', message: '选择了「有合同」，请在「合同与罚则」栏位上传合约附件' })
     }
     if (errors.length) throw badRequest('规范检查未通过', errors)
     await recordSalesUsage(connection, detailValue, detailValue.items)
-    const assistantAssignee = await resolveStepAssignee(connection, detailValue, 'assistant', { required: true })
+    await resolveStepAssignee(connection, detailValue, 'assistant', { required: true })
     await resolveStepAssignee(connection, detailValue, 'sales', { required: true })
     const steps = computeApprovalSteps(detailValue, detailValue.items)
     const [cycleRows] = await connection.execute('SELECT COALESCE(MAX(cycle), 0) + 1 AS next_cycle FROM mr_approvals WHERE mr_id = :id', { id: req.params.id })
@@ -939,15 +935,8 @@ async function submit(req, res) {
     const snapshot = { ...detailValue, totals: totals(detailValue, detailValue.items), approvalSteps: steps }
     await saveSubmissionBaseline(connection, detailValue, cycle, snapshot, req.user.id)
     await activateCurrentStep(connection, detailValue, cycle, detailValue.createdBy || req.user.id)
-    // spec 019：有合同的 MR 提交后邮件通知助理走用印流程（邮件附未盖章合约）；
-    // 已有盖章件的（撤回重提且合约未更换）不再重复发用印通知
-    if (Number(detailValue.hasContract) === 1 && hasUnsignedContract && !hasSignedContract) {
-      await connection.execute(
-        `INSERT INTO mr_notification_outbox (mr_id, recipient_user_id, event)
-         VALUES (:mrId, :recipientId, 'contract_seal')`,
-        { mrId: req.params.id, recipientId: assistantAssignee.id },
-      )
-    }
+    // spec 019：有合同的 MR 提交后，邮件通知与签核待办合并为一封（附件带未盖章合约），
+    // 不再单独发 contract_seal 邮件；盖章件已有的（撤回重提）不重复通知
   })
   res.json(await loadDetail(req.params.id, req.user))
 }

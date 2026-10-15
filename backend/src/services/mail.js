@@ -2,8 +2,10 @@ const nodemailer = require('nodemailer')
 const env = require('../config/env')
 const { effectiveSettings } = require('../modules/settings/controller')
 
-const MAIL_ACTION_COLOR = '#7c3aed'
-const MAIL_BUTTON_STYLE = `display:inline-block;background:${MAIL_ACTION_COLOR};color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px`
+// 品牌紫：与公司 logo/打印文件一致（深紫主色 + 浅紫 accent）
+const MAIL_ACTION_COLOR = '#4e386e'
+const MAIL_ACCENT_COLOR = '#73529b'
+const MAIL_BUTTON_STYLE = `display:inline-block;background:${MAIL_ACTION_COLOR};color:#fff;text-decoration:none;border-radius:6px;padding:9px 14px;font-weight:600`
 const MAIL_LINK_STYLE = `color:${MAIL_ACTION_COLOR};text-decoration:none`
 
 function htmlEscape(value) {
@@ -1222,6 +1224,8 @@ async function sendMrApprovalMail(order, recipient, event = 'task', extras = {})
   const cost = costValues.every((value) => value !== null) ? costValues.reduce((sum, value) => sum + value, 0) : null
   const grossProfit = sales !== null && cost !== null ? sales - cost : null
   const margin = sales > 0 && grossProfit !== null ? grossProfit / sales * 100 : null
+
+  // 事件标签与主题标签
   const eventLabels = {
     task: '待你签核',
     transfer: '签核待办已转交给你',
@@ -1236,7 +1240,7 @@ async function sendMrApprovalMail(order, recipient, event = 'task', extras = {})
     purchase_assignment_error: 'MR 采购人配置异常，采购环节已暂停',
     purchase_done: '采购信息（料号/采购单号）已填写',
     withdraw: '业务负责人已撤回 MR',
-    remind_manual: 'MR 签核待办催办提醒（手动催办）',
+    remind_manual: 'MR 签核待办催办提醒',
     remind_auto: 'MR 签核停留超 24 小时，请尽快处理',
     void: 'MR 已作废',
     void_request_supervisor: 'MR 作废申请待你审批',
@@ -1246,25 +1250,92 @@ async function sendMrApprovalMail(order, recipient, event = 'task', extras = {})
     void_rejected: 'MR 作废申请已被驳回',
     assignment_error: 'MR 签核人配置异常，签核流程已暂停',
   }
+  // 主题行标签：让用户一眼知道这封邮件要干嘛
+  const subjectTags = {
+    task: '待签核',
+    transfer: '转交',
+    owner_transfer: '负责人变更',
+    reject: '已驳回',
+    approved: '已通过',
+    purchase_task: '待采购',
+    purchase_transfer: '采购转交',
+    contract_no_task: '待补编号',
+    contract_no_transfer: '补编号转交',
+    contract_no_filled: '编号已补',
+    purchase_assignment_error: '采购异常',
+    purchase_done: '采购完成',
+    withdraw: '已撤回',
+    remind_manual: '催办',
+    remind_auto: '催办',
+    void: '已作废',
+    void_request_supervisor: '作废审批',
+    void_request_purchaser: '作废审批',
+    void_request_admin: '作废审批',
+    void_request_supervisor2: '作废审批',
+    void_rejected: '作废被拒',
+    assignment_error: '签核异常',
+  }
+  // 按钮文案按事件类型区分
+  const buttonLabels = {
+    task: '去签核',
+    transfer: '去签核',
+    remind_manual: '去签核',
+    remind_auto: '去签核',
+    reject: '查看驳回详情',
+    approved: '查看 MR 详情',
+    purchase_task: '去填写采购信息',
+    purchase_transfer: '去填写采购信息',
+    contract_no_task: '去补填合同编号',
+    contract_no_transfer: '去补填合同编号',
+    contract_no_filled: '查看 MR 详情',
+    purchase_assignment_error: '查看详情',
+    purchase_done: '查看 MR 详情',
+    withdraw: '查看详情',
+    void: '查看详情',
+    void_request_supervisor: '去审批作废申请',
+    void_request_purchaser: '查看详情',
+    void_request_admin: '去审批作废申请',
+    void_request_supervisor2: '去审批作废申请',
+    void_rejected: '查看详情',
+    assignment_error: '去配置签核人',
+  }
+  // 通知类事件（不需要完整品项明细，摘要即可）
+  const NOTIFY_ONLY_EVENTS = new Set([
+    'approved', 'withdraw', 'void', 'void_request_supervisor', 'void_request_purchaser',
+    'void_request_admin', 'void_request_supervisor2', 'void_rejected',
+    'contract_no_filled', 'purchase_done', 'purchase_assignment_error', 'assignment_error',
+  ])
+  const isNotifyOnly = NOTIFY_ONLY_EVENTS.has(event)
+
   const action = eventLabels[event] || 'MR 状态已更新'
-  // spec 010：作废相关邮件带出原因；驳回邮件带驳回原因，便于采购判断后续动作
+  const subjectTag = subjectTags[event] || '通知'
+  const buttonLabel = buttonLabels[event] || '查看 MR 详情'
+  // spec 019：有合同的 task 邮件主题加用印标记
+  const subjectTagFinal = extras.contractSeal ? `${subjectTag}·需用印` : subjectTag
+
+  // 驳回原因独立显示（不与作废混用）
+  const rejectNote = event === 'reject' ? (order.rejectReason || order.reject_reason || '-') : null
+  // 作废相关邮件带出原因
   const voidNote = event === 'void_rejected'
     ? `驳回原因：${order.void_reject_reason || '-'}`
     : (event === 'void' || String(event).startsWith('void_request') ? `作废原因：${order.void_reason || '-'}` : null)
-  // spec 019：用印流程通知邮件提示助理后续动作（附件带未盖章合约）
-  const contractSealNote = event === 'contract_seal'
+  // spec 019：用印流程提示——合并进 task 邮件（extras.contractSeal）或兼容旧 contract_seal 事件
+  const contractSealNote = (extras.contractSeal || event === 'contract_seal')
     ? '该 MR 有合同：附件为销售上传的未盖章合约，请走合约用印流程；完成后打开 MR 单，在「合同与罚则」栏位上传盖章合约并填写合同编号，方可继续签核。'
     : null
+
   const currentStepKey = order.currentStepKey || order.current_step_key
   const rawCurrentStepLabel = order.currentStepLabel || order.current_step_label
   const currentStepLabel = currentStepKey === 'sales' ? '业务负责人' : currentStepKey === 'engineering' ? '工程会签' : rawCurrentStepLabel || '-'
   const detailBaseUrl = settings.notification?.serviceOrderAdminBaseUrl || env.corsAllowedOrigins?.[0] || ''
   const detailUrl = adminLink(detailBaseUrl, `/mr/${encodeURIComponent(order.id)}`)
   if (!detailUrl) return { skipped: true, reason: 'admin_base_url_missing' }
+
+  // 品项明细行
   const rows = items.map((item, index) => {
     const rawCostIncludingTax = item.costInclTax ?? item.cost_incl_tax
     const rawTaxRate = item.taxRate ?? item.tax_rate
-    const costIncludingTax = rawCostIncludingTax === null || rawCostIncludingTax === undefined ? null : Number(rawCostIncludingTax)
+    const costIncludingTax = rawCostIncludingTax === null || rawCostIncludingTax === undefined || rawTaxRate === null || rawTaxRate === undefined ? null : Number(rawCostIncludingTax)
     const taxRate = rawTaxRate === null || rawTaxRate === undefined ? null : Number(rawTaxRate)
     const costExcludingTax = Number.isFinite(costIncludingTax) && Number.isFinite(taxRate) ? costIncludingTax / (1 + taxRate / 100) : null
     return `
@@ -1279,58 +1350,109 @@ async function sendMrApprovalMail(order, recipient, event = 'task', extras = {})
       <td style="border:1px solid #cbd5e1;padding:6px">${htmlEscape(item.purchaseOrderNo || item.purchase_order_no || '-')}<br><small>${htmlEscape(item.costSource || item.cost_source || '-')}</small></td>
     </tr>`
   }).join('')
+
+  // 附件列表：标记合约件
   const quotationFiles = Array.isArray(order.quotationFiles) ? order.quotationFiles : []
+  const fileRoleBadge = (file) => {
+    if (file.quoteRole === 'contract') return '<span style="display:inline-block;background:#dbeafe;color:#1e40af;font-size:11px;padding:1px 6px;border-radius:3px;margin-left:6px">未盖章合约</span>'
+    if (file.quoteRole === 'contract_signed') return '<span style="display:inline-block;background:#d1fae5;color:#065f46;font-size:11px;padding:1px 6px;border-radius:3px;margin-left:6px">盖章合约</span>'
+    return ''
+  }
   const quotationList = quotationFiles.length
-    ? `<ul style="margin:6px 0 14px;padding-left:20px">${quotationFiles.map((file) => `<li>${htmlEscape(file.name || '-')}（${mrMoney(Number(file.size || 0) / 1024)} KB）</li>`).join('')}</ul>`
-    : '<p style="color:#64748b">无报价原始附件</p>'
-  const subject = `[MR] ${action}：${order.ctrlNo || `#${order.id}`} / ${order.customerName || order.customer_name || '未选客户'}`
+    ? `<ul style="margin:6px 0 14px;padding-left:20px">${quotationFiles.map((file) => `<li>${htmlEscape(file.name || '-')}（${mrMoney(Number(file.size || 0) / 1024)} KB）${fileRoleBadge(file)}</li>`).join('')}</ul>`
+    : '<p style="color:#64748b">无附件</p>'
+
+  const subject = `[MR] 【${subjectTagFinal}】${order.customerName || order.customer_name || '未选客户'} - ${order.ctrlNo || `#${order.id}`}`
   const linkBlock = detailUrl
-    ? `<p style="margin:18px 0"><a href="${htmlEscape(detailUrl)}" style="${MAIL_BUTTON_STYLE}">查看完整 MR 并签核</a></p>`
+    ? `<p style="margin:18px 0"><a href="${htmlEscape(detailUrl)}" style="${MAIL_BUTTON_STYLE}">${htmlEscape(buttonLabel)}</a></p>`
     : '<p style="color:#64748b">请登录 OMS 管理端，在待办中心打开该 MR。</p>'
-  const html = `
-    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.6;color:#1f2937">
-      <h2 style="margin:0 0 8px">${htmlEscape(action)}</h2>
-      <p>${htmlEscape(recipient.realName || recipient.real_name || recipient.username || '')}，请核对以下完整 MR 内容。邮件按钮只打开网页，签核必须在登录后的 OMS 页面完成。</p>
-      ${linkBlock}
-      <table style="border-collapse:collapse;width:100%;max-width:980px;margin-bottom:14px">
-        <tr><td style="padding:5px 0;color:#64748b;width:100px">客户</td><td>${htmlEscape(order.customerName || order.customer_name || '-')}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">Ctrl.NO</td><td>${htmlEscape(order.ctrlNo || order.ctrl_no || '-')}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">业务负责人</td><td>${htmlEscape(order.salesOwnerName || order.sales_owner_name || '-')}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">当前签核步骤</td><td>${htmlEscape(currentStepLabel)}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">签核版本</td><td>${currentStepKey === 'assistant' ? `待签核确认 V${Number(order.versionNo || order.version_no || 0) + 1}` : `V${Number(order.versionNo || order.version_no || 0)}`}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">填表日期 / 项目分类</td><td>${htmlEscape(order.fillDate || order.fill_date || '-')} / ${htmlEscape(order.caseCategory || order.case_category || '-')}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">客户联系人 / 客户 P/O</td><td>${htmlEscape(order.contactName || order.contact_name || '-')} / ${htmlEscape(order.customerPo || order.customer_po || '-')}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">发票类型 / 开票方式 / 开票内容</td><td>${htmlEscape(order.invoiceType || order.invoice_type || '-')}；${htmlEscape(order.invoiceProcess || order.invoice_process || '-')}；${htmlEscape(order.billingContent || order.billing_content || '-')}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">发票收件人 / 开票或收款时间</td><td>${htmlEscape(order.invoiceRecipient || order.invoice_recipient || '-')} / ${htmlEscape(order.billingTiming || order.billing_timing || '-')}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">采购联系人</td><td>${htmlEscape(order.purchaser || '-')} / ${htmlEscape(order.purchaserTel || order.purchaser_tel || '-')}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">收货人</td><td>${htmlEscape(order.recipient || '-')} / ${htmlEscape(order.recipientTel || order.recipient_tel || '-')} / ${htmlEscape(order.recipientMail || order.recipient_mail || '-')}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">交付</td><td>${htmlEscape(order.latestDeliveryDate || order.latest_delivery_date || '-')}；${htmlEscape(order.deliveryLocation || order.delivery_location || '-')}；${htmlEscape(order.deliveryTerms || order.delivery_terms || '-')}；出货单编号 ${htmlEscape(order.shipmentNo || order.shipment_no || '-')}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">付款条件 / 分批交付</td><td>${htmlEscape(order.paymentTerms || order.payment_terms || '-')}${order.paymentOther || order.payment_other ? `（${htmlEscape(order.paymentOther || order.payment_other)}）` : ''} / ${Number(order.splitDelivery ?? order.split_delivery) ? '是' : '否'}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">验收条件</td><td>${htmlEscape(order.acceptance || '-')}${order.acceptanceOther || order.acceptance_other ? `（${htmlEscape(order.acceptanceOther || order.acceptance_other)}）` : ''}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">装机承担方 / 维护承担方</td><td>${htmlEscape(mrOptionText(order.installOptions || order.install_options))} / ${htmlEscape(mrOptionText(order.maintenanceOptions || order.maintenance_options))}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">合同编号 / 罚则说明</td><td>${htmlEscape(order.contractNo || order.contract_no || '-')} / ${htmlEscape(order.penaltyContent || order.penalty_content || '-')}</td></tr>
-        <tr><td style="padding:5px 0;color:#64748b">备注</td><td>${htmlEscape(order.remark || '-')}</td></tr>
-        ${voidNote ? `<tr><td style="padding:5px 0;color:#b91c1c">作废/驳回说明</td><td style="color:#b91c1c;font-weight:bold">${htmlEscape(voidNote)}</td></tr>` : ''}
-        ${contractSealNote ? `<tr><td style="padding:5px 0;color:#1d4ed8">合约用印</td><td style="color:#1d4ed8;font-weight:bold">${htmlEscape(contractSealNote)}</td></tr>` : ''}
-      </table>
-      <h3 style="margin:14px 0 4px">报价原始附件</h3>
-      ${quotationList}
+
+  // 合约用印说明：醒目提示块（放按钮旁边）
+  const contractSealBlock = contractSealNote
+    ? `<div style="margin:14px 0;padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:13px;color:#1e40af;line-height:1.6">${htmlEscape(contractSealNote)}</div>`
+    : ''
+
+  // 品项明细：通知类邮件省略，操作类邮件完整显示
+  const itemsSection = isNotifyOnly ? '' : `
+      <h3 style="margin:18px 0 6px;color:${MAIL_ACTION_COLOR};font-size:14px;border-bottom:1px solid #e5e7eb;padding-bottom:4px">品项明细</h3>
       <div style="overflow-x:auto">
         <table style="border-collapse:collapse;width:100%;min-width:860px;font-size:13px">
-          <thead><tr style="background:#4e386e;color:#fff">
+          <thead><tr style="background:${MAIL_ACTION_COLOR};color:#fff">
             <th style="padding:7px">#</th><th style="padding:7px">品名及描述 / 履约信息</th><th style="padding:7px">公司料号 / 原厂规格</th>
             <th style="padding:7px">数量</th><th style="padding:7px">未税单价 / 未税小计</th><th style="padding:7px">供应商</th>
             <th style="padding:7px">采购价 / 采购税率</th><th style="padding:7px">采购单号 / 采购价来源</th>
           </tr></thead><tbody>${rows || '<tr><td colspan="8" style="padding:12px;text-align:center">暂无品项</td></tr>'}</tbody>
         </table>
+      </div>`
+
+  const html = `
+    <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.6;color:#1f2937;max-width:720px;margin:0 auto">
+      <!-- 头部 -->
+      <div style="border-bottom:3px solid ${MAIL_ACTION_COLOR};padding-bottom:12px;margin-bottom:16px">
+        <h2 style="margin:0;color:${MAIL_ACTION_COLOR};font-size:20px">${htmlEscape(action)}</h2>
       </div>
-      <table style="border-collapse:collapse;margin-top:14px;width:100%;max-width:680px">
-        <tr><td style="padding:6px;background:#f1f5f9">未税总计</td><td style="padding:6px;text-align:right">¥ ${mrMoney(sales)}</td></tr>
-        <tr><td style="padding:6px;background:#f1f5f9">采购价（未税）</td><td style="padding:6px;text-align:right">¥ ${mrMoney(cost)}</td></tr>
-        <tr><td style="padding:6px;background:#f1f5f9">毛利额</td><td style="padding:6px;text-align:right">¥ ${mrMoney(grossProfit)}</td></tr>
-        <tr><td style="padding:6px;background:#f1f5f9">整单毛利率</td><td style="padding:6px;text-align:right">${margin === null ? '-' : `${margin.toFixed(2)}%`}</td></tr>
+
+      <!-- 问候语 -->
+      <p style="margin:0 0 4px">${htmlEscape(recipient.realName || recipient.real_name || recipient.username || '')}，你好。</p>
+      <p style="margin:0 0 14px;color:#64748b;font-size:13px">${isNotifyOnly ? '以下为 MR 状态变更通知。' : '请核对以下 MR 内容，点击下方按钮进入系统处理。'}</p>
+
+      ${linkBlock}
+      ${contractSealBlock}
+
+      <!-- 基本信息 -->
+      <h3 style="margin:18px 0 6px;color:${MAIL_ACTION_COLOR};font-size:14px;border-bottom:1px solid #e5e7eb;padding-bottom:4px">基本信息</h3>
+      <table style="border-collapse:collapse;width:100%;font-size:13px">
+        <tr><td style="padding:5px 0;color:#64748b;width:90px;vertical-align:top">客户</td><td style="padding:5px 0">${htmlEscape(order.customerName || order.customer_name || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">Ctrl.NO</td><td style="padding:5px 0">${htmlEscape(order.ctrlNo || order.ctrl_no || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">业务负责人</td><td style="padding:5px 0">${htmlEscape(order.salesOwnerName || order.sales_owner_name || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">当前签核步骤</td><td style="padding:5px 0">${htmlEscape(currentStepLabel)}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">填表日期</td><td style="padding:5px 0">${htmlEscape(order.fillDate || order.fill_date || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">项目分类</td><td style="padding:5px 0">${htmlEscape(order.caseCategory || order.case_category || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">客户联系人</td><td style="padding:5px 0">${htmlEscape(order.contactName || order.contact_name || '-')}${order.customerPo || order.customer_po ? `（P/O：${htmlEscape(order.customerPo || order.customer_po)}）` : ''}</td></tr>
+        ${rejectNote ? `<tr><td style="padding:5px 0;color:#b91c1c;vertical-align:top">驳回原因</td><td style="padding:5px 0;color:#b91c1c;font-weight:600">${htmlEscape(rejectNote)}</td></tr>` : ''}
+        ${voidNote ? `<tr><td style="padding:5px 0;color:#b91c1c;vertical-align:top">作废说明</td><td style="padding:5px 0;color:#b91c1c;font-weight:600">${htmlEscape(voidNote)}</td></tr>` : ''}
       </table>
-      <p style="margin-top:16px;color:#b91c1c;font-size:12px">本邮件包含采购价和毛利等内部商业信息，请勿转发给无关人员。</p>
+
+      <!-- 开票与交付 -->
+      <h3 style="margin:18px 0 6px;color:${MAIL_ACTION_COLOR};font-size:14px;border-bottom:1px solid #e5e7eb;padding-bottom:4px">开票与交付</h3>
+      <table style="border-collapse:collapse;width:100%;font-size:13px">
+        <tr><td style="padding:5px 0;color:#64748b;width:90px;vertical-align:top">发票类型</td><td style="padding:5px 0">${htmlEscape(order.invoiceType || order.invoice_type || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">开票方式</td><td style="padding:5px 0">${htmlEscape(order.invoiceProcess || order.invoice_process || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">开票内容</td><td style="padding:5px 0">${htmlEscape(order.billingContent || order.billing_content || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">发票收件人</td><td style="padding:5px 0">${htmlEscape(order.invoiceRecipient || order.invoice_recipient || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">付款条件</td><td style="padding:5px 0">${htmlEscape(order.paymentTerms || order.payment_terms || '-')}${order.paymentOther || order.payment_other ? `（${htmlEscape(order.paymentOther || order.payment_other)}）` : ''}${Number(order.splitDelivery ?? order.split_delivery) ? '；允许分批交付' : ''}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">验收条件</td><td style="padding:5px 0">${htmlEscape(order.acceptance || '-')}${order.acceptanceOther || order.acceptance_other ? `（${htmlEscape(order.acceptanceOther || order.acceptance_other)}）` : ''}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">交付日期</td><td style="padding:5px 0">${htmlEscape(order.latestDeliveryDate || order.latest_delivery_date || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">交付地点</td><td style="padding:5px 0">${htmlEscape(order.deliveryLocation || order.delivery_location || '-')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">装机/维护方</td><td style="padding:5px 0">${htmlEscape(mrOptionText(order.installOptions || order.install_options))} / ${htmlEscape(mrOptionText(order.maintenanceOptions || order.maintenance_options))}</td></tr>
+        ${order.contractNo || order.contract_no ? `<tr><td style="padding:5px 0;color:#64748b;vertical-align:top">合同编号</td><td style="padding:5px 0">${htmlEscape(order.contractNo || order.contract_no)}</td></tr>` : ''}
+        ${order.remark ? `<tr><td style="padding:5px 0;color:#64748b;vertical-align:top">备注</td><td style="padding:5px 0">${htmlEscape(order.remark)}</td></tr>` : ''}
+      </table>
+
+      <!-- 联系人 -->
+      <h3 style="margin:18px 0 6px;color:${MAIL_ACTION_COLOR};font-size:14px;border-bottom:1px solid #e5e7eb;padding-bottom:4px">联系人</h3>
+      <table style="border-collapse:collapse;width:100%;font-size:13px">
+        <tr><td style="padding:5px 0;color:#64748b;width:90px;vertical-align:top">采购联系人</td><td style="padding:5px 0">${htmlEscape(order.purchaser || '-')} ${htmlEscape(order.purchaserTel || order.purchaser_tel || '')}</td></tr>
+        <tr><td style="padding:5px 0;color:#64748b;vertical-align:top">收货人</td><td style="padding:5px 0">${htmlEscape(order.recipient || '-')} ${htmlEscape(order.recipientTel || order.recipient_tel || '')} ${htmlEscape(order.recipientMail || order.recipient_mail || '')}</td></tr>
+      </table>
+
+      <!-- 附件 -->
+      <h3 style="margin:18px 0 6px;color:${MAIL_ACTION_COLOR};font-size:14px;border-bottom:1px solid #e5e7eb;padding-bottom:4px">附件</h3>
+      ${quotationList}
+
+      <!-- 品项明细（通知类邮件省略） -->
+      ${itemsSection}
+
+      <!-- 金额汇总 -->
+      <h3 style="margin:18px 0 6px;color:${MAIL_ACTION_COLOR};font-size:14px;border-bottom:1px solid #e5e7eb;padding-bottom:4px">金额汇总</h3>
+      <table style="border-collapse:collapse;width:100%;max-width:400px;font-size:13px">
+        <tr><td style="padding:6px;background:#f8fafc;color:#64748b">未税总计</td><td style="padding:6px;text-align:right;font-weight:600">¥ ${mrMoney(sales)}</td></tr>
+        <tr><td style="padding:6px;background:#f8fafc;color:#64748b">采购价（未税）</td><td style="padding:6px;text-align:right">¥ ${mrMoney(cost)}</td></tr>
+        <tr><td style="padding:6px;background:#f8fafc;color:#64748b">毛利额</td><td style="padding:6px;text-align:right">¥ ${mrMoney(grossProfit)}</td></tr>
+        <tr><td style="padding:6px;background:#f8fafc;color:#64748b">整单毛利率</td><td style="padding:6px;text-align:right;font-weight:600;color:${margin !== null && margin < 15 ? '#b91c1c' : '#1f2937'}">${margin === null ? '-' : `${margin.toFixed(2)}%`}</td></tr>
+      </table>
+
+      <p style="margin-top:20px;color:#b91c1c;font-size:12px">本邮件包含采购价和毛利等内部商业信息，请勿转发给无关人员。</p>
       ${mailFooter()}
     </div>`
   await mailTransporter(mail).sendMail({ from: mail.from, to, subject, html, attachments: extras.attachments || [] })
