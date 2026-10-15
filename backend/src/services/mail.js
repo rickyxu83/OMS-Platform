@@ -1251,8 +1251,8 @@ async function sendMrApprovalMail(order, recipient, event = 'task', extras = {})
   const voidNote = event === 'void_rejected'
     ? `驳回原因：${order.void_reject_reason || '-'}`
     : (event === 'void' || String(event).startsWith('void_request') ? `作废原因：${order.void_reason || '-'}` : null)
-  // spec 019：用印流程通知邮件提示助理后续动作（附件带未盖章合约）
-  const contractSealNote = event === 'contract_seal'
+  // spec 019：用印流程提示——合并进 task 邮件（extras.contractSeal）或兼容旧 contract_seal 事件
+  const contractSealNote = (extras.contractSeal || event === 'contract_seal')
     ? '该 MR 有合同：附件为销售上传的未盖章合约，请走合约用印流程；完成后打开 MR 单，在「合同与罚则」栏位上传盖章合约并填写合同编号，方可继续签核。'
     : null
   const currentStepKey = order.currentStepKey || order.current_step_key

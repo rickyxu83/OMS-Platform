@@ -61,15 +61,18 @@ async function processMrNotifications(limit = 20) {
     if (!claimed.affectedRows) continue
     try {
       const context = await notificationContext(row.mr_id, row.recipient_user_id)
-      // spec 019：用印流程通知邮件附未盖章合约（quote_role='contract'），助理凭附件走内部用印
+      // spec 019：task 邮件合并用印通知——有未盖章合约且无盖章件时，附件带合约文件 + 正文加用印说明
+      // （原 contract_seal 独立事件已废弃，合并进 task 邮件）
       const extras = {}
-      if (row.event === 'contract_seal') {
-        const contractFiles = (context.order.quotationFiles || []).filter((file) => file.quoteRole === 'contract' && file.storagePath)
-        extras.attachments = await Promise.all(contractFiles.map(async (file) => ({
+      const unsignedContractFiles = (context.order.quotationFiles || []).filter((file) => file.quoteRole === 'contract' && file.storagePath)
+      const hasSignedContract = (context.order.quotationFiles || []).some((file) => file.quoteRole === 'contract_signed')
+      if (row.event === 'task' && unsignedContractFiles.length && !hasSignedContract) {
+        extras.attachments = await Promise.all(unsignedContractFiles.map(async (file) => ({
           filename: file.name,
           content: await fs.promises.readFile(file.storagePath),
           contentType: file.mimeType || undefined,
         })))
+        extras.contractSeal = true
       }
       const result = await sendMrApprovalMail(context.order, context.recipient, row.event, extras)
       if (!result?.sent) throw new Error(result?.reason || '邮件发送已跳过')
