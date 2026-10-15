@@ -1331,24 +1331,25 @@ async function sendMrApprovalMail(order, recipient, event = 'task', extras = {})
   const detailUrl = adminLink(detailBaseUrl, `/mr/${encodeURIComponent(order.id)}`)
   if (!detailUrl) return { skipped: true, reason: 'admin_base_url_missing' }
 
-  // 品项明细行
+  // 品项明细行：卡片式布局，每个品项一个块，不需要表格不横向滚动
   const rows = items.map((item, index) => {
     const rawCostIncludingTax = item.costInclTax ?? item.cost_incl_tax
-    const rawTaxRate = item.taxRate ?? item.tax_rate
-    const costIncludingTax = rawCostIncludingTax === null || rawCostIncludingTax === undefined || rawTaxRate === null || rawTaxRate === undefined ? null : Number(rawCostIncludingTax)
-    const taxRate = rawTaxRate === null || rawTaxRate === undefined ? null : Number(rawTaxRate)
-    const costExcludingTax = Number.isFinite(costIncludingTax) && Number.isFinite(taxRate) ? costIncludingTax / (1 + taxRate / 100) : null
+    const costIncludingTax = rawCostIncludingTax === null || rawCostIncludingTax === undefined ? null : Number(rawCostIncludingTax)
     return `
-    <tr>
-      <td style="border:1px solid #cbd5e1;padding:6px;text-align:center">${index + 1}</td>
-      <td style="border:1px solid #cbd5e1;padding:6px"><strong>${htmlEscape(item.name || '-')}</strong><br>${htmlEscape(item.description || '-')}<br><small>保固与服务：${htmlEscape(item.warrantyService || item.warranty_service || '-')}；装机方：${htmlEscape(item.installBy || item.install_by || '-')}</small></td>
-      <td style="border:1px solid #cbd5e1;padding:6px">${htmlEscape(item.companyPartNo || item.company_part_no || '-')}<br><small>${htmlEscape(item.oemSpec || item.oem_spec || '-')}</small></td>
-      <td style="border:1px solid #cbd5e1;padding:6px;text-align:right">${htmlEscape(item.qty ?? '-')}</td>
-      <td style="border:1px solid #cbd5e1;padding:6px;text-align:right">¥ ${mrMoney(item.unitPrice ?? item.unit_price)}<br><strong>¥ ${mrMoney(item.subtotal)}</strong></td>
-      <td style="border:1px solid #cbd5e1;padding:6px">${htmlEscape(item.vendor || '-')}</td>
-      <td style="border:1px solid #cbd5e1;padding:6px;text-align:right">含税 ¥ ${mrMoney(costIncludingTax)}<br>不含税 ¥ ${mrMoney(costExcludingTax)}<br><small>采购税率 ${htmlEscape(item.taxRate ?? item.tax_rate ?? '-')}%</small></td>
-      <td style="border:1px solid #cbd5e1;padding:6px">${htmlEscape(item.purchaseOrderNo || item.purchase_order_no || '-')}<br><small>${htmlEscape(item.costSource || item.cost_source || '-')}</small></td>
-    </tr>`
+    <div style="margin-bottom:10px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff">
+      <div style="font-size:13px"><strong>${index + 1}. ${htmlEscape(item.name || '-')}</strong></div>
+      <div style="font-size:12px;color:#374151;margin-top:2px">${htmlEscape(item.description || '-')}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px">${htmlEscape(item.companyPartNo || item.company_part_no || '-')}${item.oemSpec || item.oem_spec ? ` / ${htmlEscape(item.oemSpec || item.oem_spec)}` : ''} · 保固：${htmlEscape(item.warrantyService || item.warranty_service || '-')} · 装机：${htmlEscape(item.installBy || item.install_by || '-')}</div>
+      <div style="margin-top:6px;font-size:12px;display:flex;flex-wrap:wrap;gap:4px 16px">
+        <span>数量 <strong>${htmlEscape(item.qty ?? '-')}</strong></span>
+        <span>未税单价 ¥ ${mrMoney(item.unitPrice ?? item.unit_price)}</span>
+        <span>小计 <strong>¥ ${mrMoney(item.subtotal)}</strong></span>
+      </div>
+      <div style="margin-top:2px;font-size:12px;color:#374151">
+        <span>${htmlEscape(item.vendor || '-')}</span>
+        <span style="color:#64748b;margin-left:12px">采购价（含税）¥ ${mrMoney(costIncludingTax)} · 税率 ${htmlEscape(item.taxRate ?? item.tax_rate ?? '-')}%</span>
+      </div>
+    </div>`
   }).join('')
 
   // 附件列表：标记合约件
@@ -1372,18 +1373,10 @@ async function sendMrApprovalMail(order, recipient, event = 'task', extras = {})
     ? `<div style="margin:14px 0;padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:13px;color:#1e40af;line-height:1.6">${htmlEscape(contractSealNote)}</div>`
     : ''
 
-  // 品项明细：通知类邮件省略，操作类邮件完整显示
+  // 品项明细：通知类邮件省略，操作类邮件卡片式展示（不用表格，不横向滚动不挤压）
   const itemsSection = isNotifyOnly ? '' : `
       <h3 style="margin:18px 0 6px;color:${MAIL_ACTION_COLOR};font-size:14px;border-bottom:1px solid #e5e7eb;padding-bottom:4px">品项明细</h3>
-      <div style="overflow-x:auto">
-        <table style="border-collapse:collapse;width:100%;min-width:860px;font-size:13px">
-          <thead><tr style="background:${MAIL_ACTION_COLOR};color:#fff">
-            <th style="padding:7px">#</th><th style="padding:7px">品名及描述 / 履约信息</th><th style="padding:7px">公司料号 / 原厂规格</th>
-            <th style="padding:7px">数量</th><th style="padding:7px">未税单价 / 未税小计</th><th style="padding:7px">供应商</th>
-            <th style="padding:7px">采购价 / 采购税率</th><th style="padding:7px">采购单号 / 采购价来源</th>
-          </tr></thead><tbody>${rows || '<tr><td colspan="8" style="padding:12px;text-align:center">暂无品项</td></tr>'}</tbody>
-        </table>
-      </div>`
+      ${rows || '<p style="color:#64748b">暂无品项</p>'}`
 
   const html = `
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.6;color:#1f2937;max-width:720px;margin:0 auto">
