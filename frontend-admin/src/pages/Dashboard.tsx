@@ -763,6 +763,9 @@ export function Dashboard() {
     summary: string | null; publishedAt: string | null;
   }>>([]);
   const [newsLoading, setNewsLoading] = useState(false);
+  const [newsOnlyMine, setNewsOnlyMine] = useState(false);
+  // 当前用户的客户名列表（用于「只看我的客户」过滤）
+  const [myCustomerNames, setMyCustomerNames] = useState<Set<string>>(new Set());
   const [trend, setTrend] = useState<Array<{ date: string; total: number }>>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [mapPoints, setMapPoints] = useState<any[]>([]);
@@ -810,7 +813,7 @@ export function Dashboard() {
         ]);
         // 客户动态（独立加载，不阻塞主数据）
         setNewsLoading(true)
-        api.get("/customers/news?days=30&limit=20").then((newsRes: any) => {
+        api.get("/customers/news?days=90&limit=30").then((newsRes: any) => {
           if (!cancelled) setCustomerNews(newsRes?.items || [])
         }).catch(() => {}).finally(() => { if (!cancelled) setNewsLoading(false) })
         if (cancelled) return;
@@ -820,6 +823,15 @@ export function Dashboard() {
         setOrders(items);
         const rawCustomers = customerRes?.items || customerRes?.data?.items || customerRes?.data || [];
         setReportCustomers((Array.isArray(rawCustomers) ? rawCustomers : []) as CustomerOption[]);
+        // 「只看我的客户」：按当前用户的销售身份匹配客户名
+        if (user?.role === 'sales' || user?.role === 'sales_supervisor') {
+          const myName = String(user?.realName || user?.real_name || user?.username || '');
+          setMyCustomerNames(new Set(
+            (Array.isArray(rawCustomers) ? rawCustomers : [])
+              .filter((c: any) => String(c.salesperson || '').trim() === myName)
+              .map((c: any) => String(c.name || ''))
+          ));
+        }
         setMapPoints(
           (Array.isArray(rawCustomers) ? rawCustomers : [])
             .map((c: any) => ({
@@ -1205,16 +1217,31 @@ export function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-lg">客户动态</CardTitle>
-                <CardDescription>近 30 天客户相关新闻与公告</CardDescription>
+                <CardDescription>近 3 个月客户相关新闻与公告</CardDescription>
               </div>
+              {(user?.role === 'sales' || user?.role === 'sales_supervisor') && myCustomerNames.size > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setNewsOnlyMine(!newsOnlyMine)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                    newsOnlyMine ? 'bg-primary text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  }`}
+                >
+                  {newsOnlyMine ? '✓ 只看我的客户' : '只看我的客户'}
+                </button>
+              ) : null}
             </div>
           </CardHeader>
           <CardContent className="px-4 pb-4 sm:px-6">
             <div className="space-y-2.5">
-              {customerNews.map((item) => (
+              {(newsOnlyMine ? customerNews.filter((item) => myCustomerNames.has(item.customerName)) : customerNews).map((item) => {
+                // 3 天内的新闻标 NEW
+                const isNew = item.publishedAt && (Date.now() - new Date(String(item.publishedAt).replace(' ', 'T')).getTime()) < 3 * 24 * 3600 * 1000
+                return (
                 <div key={item.id} className="flex items-start gap-3 rounded-lg border bg-background px-3 py-2.5 text-sm">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
+                      {isNew ? <span className="shrink-0 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">NEW</span> : null}
                       <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${item.customerLevel === 'vip' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
                         {item.customerName}
                       </span>
@@ -1231,7 +1258,8 @@ export function Dashboard() {
                     {item.summary ? <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.summary}</div> : null}
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </CardContent>
         </Card>

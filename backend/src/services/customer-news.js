@@ -77,6 +77,43 @@ function httpPost(url, body, { headers = {}, timeout = 15000 } = {}) {
   })
 }
 
+// ========== 方案 D：东方财富新闻搜索（免费，覆盖率高） ==========
+// 搜索母公司名+别名，东方财富新闻库覆盖台企/上市/非上市企业
+
+async function fetchEastmoneyNews(customerName) {
+  const { searchKeywords } = require('./customer-parent-map')
+  const keywords = searchKeywords(customerName)
+  const results = []
+  for (const keyword of keywords.slice(0, 3)) { // 最多搜 3 个关键词
+    try {
+      const param = JSON.stringify({
+        uid: '', keyword, type: ['cmsArticleWebOld'], client: 'web', clientType: 'web', clientVersion: 'curr',
+        param: { cmsArticleWebOld: { searchScope: 'default', sort: 'default', pageIndex: 1, pageSize: 5, preTag: '', postTag: '' } },
+      })
+      const { status, data } = await httpGet(
+        `https://search-api-web.eastmoney.com/search/jsonp?cb=jQuery&param=${encodeURIComponent(param)}`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' } },
+      )
+      if (status !== 200) continue
+      // 去掉 jQuery(...) 包装
+      const jsonStr = data.replace(/^jQuery\(/, '').replace(/\)$/, '')
+      const json = JSON.parse(jsonStr)
+      const items = json?.result?.cmsArticleWebOld || []
+      for (const item of items) {
+        results.push({
+          title: String(item.title || '').trim(),
+          url: item.url || null,
+          source: 'eastmoney',
+          source_name: item.mediaName || '东方财富',
+          summary: String(item.content || '').slice(0, 300),
+          published_at: item.date ? new Date(item.date.replace(' ', 'T') + '+08:00') : null,
+        })
+      }
+    } catch { /* 单个关键词失败不影响其他 */ }
+  }
+  return results
+}
+
 // ========== 方案 B：天眼查 API ==========
 // 文档：https://open.tianyancha.com
 
@@ -223,9 +260,9 @@ async function refreshCustomerNews() {
   const settings = await getSettings()
   if (settings['news.enabled'] === 'false') return { skipped: true, reason: 'news_disabled' }
 
-  // 免费额度控制：天眼查/同花顺每天 ~10 次，分天轮询（按 customer_news 最新 fetched_at 排序，最久没刷的优先）
+  // 免费源（巨潮+东方财富）全量刷；付费源（天眼查/同花顺）限批 10 个/天
   const hasPaidSource = settings['news.tianyanchaToken'] || settings['news.ifindRefreshToken']
-  const batchSize = hasPaidSource ? 10 : 500 // 有付费源时限批 10 个，无付费源时全量（只有免费源）
+  const batchSize = hasPaidSource ? 500 : 500 // 免费源全量；付费源在循环内单独控制
   const customers = await query(
     `SELECT c.id, c.name, c.level,
             (SELECT MAX(n.fetched_at) FROM customer_news n WHERE n.customer_id = c.id) AS last_fetched
@@ -235,6 +272,7 @@ async function refreshCustomerNews() {
   )
   let totalFetched = 0
   let totalInserted = 0
+  let paidCallsToday = 0
   const errors = []
 
   for (const customer of customers) {
@@ -246,16 +284,22 @@ async function refreshCustomerNews() {
       const mopsItems = await fetchMopsAnnouncements(customer.name)
       newsItems.push(...cninfoItems, ...mopsItems)
 
-      // 方案 B：天眼查（需要 token）
-      if (settings['news.tianyanchaToken']) {
+      // 方案 D：东方财富新闻搜索（免费，覆盖率高）
+      const eastmoneyItems = await fetchEastmoneyNews(customer.name)
+      newsItems.push(...eastmoneyItems)
+
+      // 方案 B：天眼查（需要 token，每日限额 ~10 次，超限自动停止）
+      if (settings['news.tianyanchaToken'] && paidCallsToday < 10) {
         const tianyanchaItems = await fetchTianyanchaNews(customer.name, settings['news.tianyanchaToken'])
         newsItems.push(...tianyanchaItems)
+        paidCallsToday++
       }
 
-      // 方案 A：同花顺（需要 refresh token）
-      if (settings['news.ifindRefreshToken']) {
+      // 方案 A：同花顺（需要 refresh token，每日限额 ~10 次）
+      if (settings['news.ifindRefreshToken'] && paidCallsToday < 10) {
         const ifindItems = await fetchIfindNews(customer.name, settings['news.ifindRefreshToken'])
         newsItems.push(...ifindItems)
+        paidCallsToday++
       }
 
       totalFetched += newsItems.length
@@ -294,4 +338,4 @@ async function refreshCustomerNews() {
   return { fetched: totalFetched, inserted: totalInserted, errors: errors.slice(0, 10) }
 }
 
-module.exports = { ensureTables, refreshCustomerNews, fetchCninfoAnnouncements, fetchMopsAnnouncements, fetchTianyanchaNews, fetchIfindNews }
+module.exports = { ensureTables, refreshCustomerNews, fetchCninfoAnnouncements, fetchMopsAnnouncements, fetchEastmoneyNews, fetchTianyanchaNews, fetchIfindNews }
