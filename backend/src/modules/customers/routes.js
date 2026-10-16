@@ -7,6 +7,9 @@ const router = express.Router()
 // 客户动态（新闻/公告）
 router.get('/news', requirePermission('customer.view'), controller.newsList)
 router.post('/news/refresh', requirePermission('customer.edit'), controller.newsRefresh)
+// 客户资讯（公司基本资料）
+router.get('/:id/profile', requirePermission('customer.view'), controller.profileDetail)
+router.post('/:id/profile/refresh', requirePermission('customer.edit'), controller.profileRefresh)
 
 router.get('/', requirePermission('customer.view', 'order.engineer.own'), controller.list)
 router.post('/', requirePermission('customer.create'), controller.create)

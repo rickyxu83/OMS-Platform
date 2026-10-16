@@ -1548,6 +1548,27 @@ async function newsRefresh(req, res) {
   res.json(result)
 }
 
+// 客户资讯详情
+async function profileDetail(req, res) {
+  const { getProfile } = require('../../services/customer-profiles')
+  const profile = await getProfile(Number(req.params.id))
+  res.json({ profile })
+}
+
+// 刷新客户资讯
+async function profileRefresh(req, res) {
+  const { getTycToken } = require('../../services/tyc-mcp')
+  const { refreshCustomerProfile } = require('../../services/customer-profiles')
+  const token = await getTycToken()
+  if (!token) return res.status(400).json({ error: { message: '天眼查 API token 未配置（系统设置 → news.tianyanchaToken）' } })
+  try {
+    const profile = await refreshCustomerProfile(Number(req.params.id), token)
+    res.json({ ok: true, profile })
+  } catch (err) {
+    res.status(500).json({ error: { message: err.message || '刷新失败' } })
+  }
+}
+
 module.exports = {
   list,
   create,
@@ -1561,5 +1582,7 @@ module.exports = {
   createContact,
   newsList,
   newsRefresh,
+  profileDetail,
+  profileRefresh,
   _test: { canAccessSalesDeliveryAddress, customerPayload, salesDeliveryAddressInput },
 }
