@@ -42,35 +42,34 @@ async function fetchProfile(customerName, token) {
     tyc.getKeyPersonnel(customerName, token).catch(() => null),
   ])
 
-  // 解析工商登记信息
-  const reg = regInfo?.result || regInfo || {}
-  const baseInfo = reg.baseInfo || reg
-  const contactInfo = reg.contactInfo || {}
+  // 解析工商登记信息：天眼查 MCP 返回 { sources: { base: {...}, type: {...} } }
+  const baseInfo = regInfo?.sources?.base || regInfo?.result?.baseInfo || regInfo?.result || {}
+  const contactInfo = regInfo?.sources?.contact || regInfo?.result?.contactInfo || {}
 
-  // 解析主要人员
+  // 解析主要人员：天眼查返回 { sources: { staff: { items: [...] } } } 或 { result: [...] }
   const personnelList = []
-  const staffList = personnel?.result?.staffList || personnel?.result || []
-  if (Array.isArray(staffList)) {
-    for (const person of staffList.slice(0, 10)) {
+  const staffItems = personnel?.sources?.staff?.items || personnel?.result?.staffList || personnel?.result || []
+  if (Array.isArray(staffItems)) {
+    for (const person of staffItems.slice(0, 10)) {
       personnelList.push({
-        name: person.name || '',
-        title: person.title || person.position || '',
+        name: person.name || person.personName || '',
+        title: person.title || person.position || person.positionName || '',
       })
     }
   }
 
   return {
     companyName: baseInfo.name || baseInfo.companyName || null,
-    industry: baseInfo.industry || baseInfo.industryAll || null,
+    industry: baseInfo.industryAll?.categoryBig || baseInfo.industry || baseInfo.industryAll || null,
     legalPerson: baseInfo.legalPersonName || baseInfo.legalPerson || null,
     registeredCapital: baseInfo.regCapital || baseInfo.registeredCapital || null,
     foundDate: baseInfo.estiblishTime || baseInfo.foundDate || baseInfo.establishDate || null,
     regStatus: baseInfo.regStatus || baseInfo.status || null,
     companyType: baseInfo.companyOrgType || baseInfo.companyType || null,
     address: baseInfo.regLocation || baseInfo.address || null,
-    website: contactInfo.website || baseInfo.website || null,
-    phone: contactInfo.phoneNumber || contactInfo.phone || baseInfo.phoneNumber || null,
-    email: contactInfo.email || baseInfo.email || null,
+    website: baseInfo.website || contactInfo.website || null,
+    phone: baseInfo.phoneNumber || contactInfo.phoneNumber || contactInfo.phone || null,
+    email: baseInfo.email || contactInfo.email || null,
     profileText: typeof profileText === 'string' ? profileText : (profileText?.result?.profile || profileText?.result || null),
     personnel: personnelList,
     raw: { regInfo, profileText, personnel },
