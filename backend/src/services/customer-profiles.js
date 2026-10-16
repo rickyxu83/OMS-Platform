@@ -34,14 +34,12 @@ async function ensureTables() {
 }
 
 // 从天眼查抓取客户资讯
+// 注意：必须用大陆子公司全名搜（天眼查是大陆企业库，台湾母公司名搜不到）
 async function fetchProfile(customerName, token) {
-  const parent = resolveParent(customerName)
-  const searchName = parent?.name || customerName
-
   const [regInfo, profileText, personnel] = await Promise.all([
-    tyc.getRegistrationInfo(searchName, token).catch(() => null),
-    tyc.getCompanyProfile(searchName, token).catch(() => null),
-    tyc.getKeyPersonnel(searchName, token).catch(() => null),
+    tyc.getRegistrationInfo(customerName, token).catch(() => null),
+    tyc.getCompanyProfile(customerName, token).catch(() => null),
+    tyc.getKeyPersonnel(customerName, token).catch(() => null),
   ])
 
   // 解析工商登记信息
@@ -124,11 +122,19 @@ async function refreshCustomerProfile(customerId, token) {
   return profile
 }
 
-// 批量刷新所有客户资讯（调度器用）
-async function refreshAllProfiles(token) {
+// 批量刷新客户资讯（调度器用，分天轮询控制免费额度）
+// 免费 token 每天 ~10 次，83 客户分 9 天轮询，每天刷 ~10 个
+async function refreshAllProfiles(token, batchSize = 10) {
   if (!token) return { skipped: true, reason: 'no_token' }
   await ensureTables()
-  const customers = await query('SELECT id, name FROM customers ORDER BY id')
+  // 按 fetched_at 升序（最久没刷的优先），取前 batchSize 个
+  const customers = await query(
+    `SELECT c.id, c.name, p.fetched_at
+     FROM customers c
+     LEFT JOIN customer_profiles p ON p.customer_id = c.id
+     ORDER BY COALESCE(p.fetched_at, '1970-01-01') ASC, c.id
+     LIMIT ${Math.max(1, Math.min(50, batchSize))}`,
+  )
   let updated = 0
   let failed = 0
   for (const customer of customers) {
@@ -138,12 +144,16 @@ async function refreshAllProfiles(token) {
     } catch (err) {
       failed++
       console.warn(`[customer-profiles] ${customer.name}: ${err.message}`)
+      // 402 额度用完立即停止
+      if (String(err.message).includes('402')) {
+        console.warn('[customer-profiles] 天眼查每日额度已用完，停止本批刷新')
+        break
+      }
     }
-    // 控制调用频率
     await new Promise((r) => setTimeout(r, 500))
   }
-  console.log(`[customer-profiles] 刷新完成：${updated} 成功, ${failed} 失败`)
-  return { updated, failed }
+  console.log(`[customer-profiles] 本批刷新完成：${updated} 成功, ${failed} 失败`)
+  return { updated, failed, batchSize: customers.length }
 }
 
 // 获取客户资讯

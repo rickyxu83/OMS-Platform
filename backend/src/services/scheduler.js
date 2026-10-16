@@ -568,6 +568,21 @@ function startScheduler() {
     })
   }
 
+  // 客户资讯（天眼查公司基本资料）：每天 09:00 批量轮询（免费额度 ~10 次/天，分 9 天一轮）
+  scheduleCron('0 9 * * *', async () => {
+    try {
+      const { getTycToken } = require('./tyc-mcp')
+      const { refreshAllProfiles } = require('./customer-profiles')
+      const token = await getTycToken()
+      if (token) {
+        const result = await refreshAllProfiles(token, 10)
+        console.log(`[scheduler] Customer profiles: updated=${result.updated}, failed=${result.failed}`)
+      }
+    } catch (error) {
+      console.error('[scheduler] Customer profiles refresh failed', error?.message)
+    }
+  })
+
   scheduleCron('0 8 * * *', async () => {
     console.log('[scheduler] Running maintenance expiry check...')
     try {
@@ -1259,7 +1274,7 @@ function startScheduler() {
   if (!env.featureModulesDisabled.has('attendance')) startedTasks.push('attendance notifications (every minute)', 'attendance stale reminders (hourly :17)', 'holiday auto-sync (09:15, Nov-Dec)', 'duty monthly auto-submit (08:21 on day 1)', 'annual leave carryover & comp-time expiry (23:50 daily check)')
   if (!env.featureModulesDisabled.has('mr')) startedTasks.push('MR approval notifications (1m)', 'MR stale reminders (hourly :23)', 'MR PDF archive retry (2m)')
   if (!env.featureModulesDisabled.has('report')) startedTasks.push('report subscriptions (09:07)')
-  startedTasks.push('customer news refresh (08:00, 16:00)')
+  startedTasks.push('customer news refresh (08:00, 16:00)', 'customer profiles refresh (09:00, batch 10/day)')
   console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): ${startedTasks.join(', ')}`)}
 
 module.exports = { startScheduler }

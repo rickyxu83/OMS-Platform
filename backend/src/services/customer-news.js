@@ -82,30 +82,23 @@ function httpPost(url, body, { headers = {}, timeout = 15000 } = {}) {
 
 async function fetchTianyanchaNews(customerName, token) {
   if (!token) return []
-  const parent = resolveParent(customerName)
-  const keywords = searchKeywords(customerName)
+  const tyc = require('./tyc-mcp')
   const results = []
-  for (const keyword of keywords.slice(0, 2)) { // 最多搜 2 个关键词控制调用量
-    try {
-      const { status, data } = await httpGet(
-        `https://open.api.tianyancha.com/services/open/news/2.0?word=${encodeURIComponent(keyword)}&pageSize=5&pageNum=1`,
-        { headers: { 'Authorization': token } },
-      )
-      if (status !== 200) continue
-      const json = JSON.parse(data)
-      const items = json?.result?.items || []
-      for (const item of items) {
-        results.push({
-          title: String(item.title || '').trim(),
-          url: item.url || null,
-          source: 'tianyancha',
-          source_name: item.source || '天眼查',
-          summary: String(item.content || '').slice(0, 300),
-          published_at: item.time ? new Date(Number(item.time)) : null,
-        })
-      }
-    } catch { /* 单个关键词失败不影响其他 */ }
-  }
+  try {
+    // 用天眼查 MCP 新闻舆情接口（覆盖大陆注册企业，含台企子公司）
+    const data = await tyc.getNewsSentiment(customerName, token)
+    const items = data?.result?.items || data?.items || (Array.isArray(data) ? data : [])
+    for (const item of (Array.isArray(items) ? items : []).slice(0, 5)) {
+      results.push({
+        title: String(item.title || '').trim(),
+        url: item.url || item.link || null,
+        source: 'tianyancha',
+        source_name: item.source || item.media || '天眼查',
+        summary: String(item.content || item.summary || '').slice(0, 300),
+        published_at: item.time || item.date || item.publishTime ? new Date(item.time || item.date || item.publishTime) : null,
+      })
+    }
+  } catch { /* 天眼查失败不影响其他源 */ }
   return results
 }
 
@@ -230,7 +223,16 @@ async function refreshCustomerNews() {
   const settings = await getSettings()
   if (settings['news.enabled'] === 'false') return { skipped: true, reason: 'news_disabled' }
 
-  const customers = await query('SELECT id, name, level FROM customers ORDER BY level DESC, id')
+  // 免费额度控制：天眼查/同花顺每天 ~10 次，分天轮询（按 customer_news 最新 fetched_at 排序，最久没刷的优先）
+  const hasPaidSource = settings['news.tianyanchaToken'] || settings['news.ifindRefreshToken']
+  const batchSize = hasPaidSource ? 10 : 500 // 有付费源时限批 10 个，无付费源时全量（只有免费源）
+  const customers = await query(
+    `SELECT c.id, c.name, c.level,
+            (SELECT MAX(n.fetched_at) FROM customer_news n WHERE n.customer_id = c.id) AS last_fetched
+     FROM customers c
+     ORDER BY COALESCE(last_fetched, '1970-01-01') ASC, c.level DESC, c.id
+     LIMIT ${batchSize}`,
+  )
   let totalFetched = 0
   let totalInserted = 0
   const errors = []
