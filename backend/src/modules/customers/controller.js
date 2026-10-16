@@ -1528,13 +1528,18 @@ async function newsList(req, res) {
     where += ' AND n.customer_id = :customerId'
     params.customerId = customerId
   }
+  // 按 URL 去重（同篇文章在多个子公司下只显示一次，合并关联客户名）
   const rows = await query(
-    `SELECT n.id, n.customer_id AS customerId, c.name AS customerName, c.level AS customerLevel,
-            n.title, n.url, n.source, n.source_name AS sourceName, n.summary, n.published_at AS publishedAt
+    `SELECT MIN(n.id) AS id, MIN(n.customer_id) AS customerId,
+            GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR '、') AS customerNames,
+            MIN(c.name) AS customerName, MIN(c.level) AS customerLevel,
+            n.title, n.url, n.source, MIN(n.source_name) AS sourceName,
+            MIN(n.summary) AS summary, MAX(n.published_at) AS publishedAt
      FROM customer_news n
      LEFT JOIN customers c ON c.id = n.customer_id
      WHERE ${where}
-     ORDER BY n.published_at DESC, n.id DESC
+     GROUP BY COALESCE(n.url, n.title)
+     ORDER BY publishedAt DESC, id DESC
      LIMIT ${limit}`,
     params,
   )

@@ -758,7 +758,7 @@ export function Dashboard() {
   const canSelectReportEngineer = canUseWorkSummary && !useOwnScope;
   const [summary, setSummary] = useState<Summary>({});
   const [customerNews, setCustomerNews] = useState<Array<{
-    id: number; customerId: number; customerName: string; customerLevel: string;
+    id: number; customerId: number; customerName: string; customerNames: string | null; customerLevel: string;
     title: string; url: string | null; source: string; sourceName: string | null;
     summary: string | null; publishedAt: string | null;
   }>>([]);
@@ -1234,7 +1234,10 @@ export function Dashboard() {
           </CardHeader>
           <CardContent className="px-4 pb-4 sm:px-6">
             <div className="space-y-2.5">
-              {(newsOnlyMine ? customerNews.filter((item) => myCustomerNames.has(item.customerName)) : customerNews).map((item) => {
+              {(newsOnlyMine ? customerNews.filter((item) => {
+                const names = String(item.customerNames || item.customerName || '').split('、')
+                return names.some((n) => myCustomerNames.has(n))
+              }) : customerNews).map((item) => {
                 // 3 天内的新闻标 NEW
                 const isNew = item.publishedAt && (Date.now() - new Date(String(item.publishedAt).replace(' ', 'T')).getTime()) < 3 * 24 * 3600 * 1000
                 return (
@@ -1243,7 +1246,7 @@ export function Dashboard() {
                     <div className="flex items-center gap-2">
                       {isNew ? <span className="shrink-0 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">NEW</span> : null}
                       <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${item.customerLevel === 'vip' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
-                        {item.customerName}
+                        {item.customerNames || item.customerName}
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground">{item.sourceName || item.source}</span>
                       <span className="shrink-0 text-xs text-muted-foreground">{item.publishedAt ? formatDate(item.publishedAt) : ''}</span>

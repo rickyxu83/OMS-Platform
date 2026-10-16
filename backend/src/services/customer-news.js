@@ -84,6 +84,7 @@ async function fetchEastmoneyNews(customerName) {
   const { searchKeywords } = require('./customer-parent-map')
   const keywords = searchKeywords(customerName)
   const results = []
+  const seenUrls = new Set()
   for (const keyword of keywords.slice(0, 3)) { // 最多搜 3 个关键词
     try {
       const param = JSON.stringify({
@@ -100,12 +101,23 @@ async function fetchEastmoneyNews(customerName) {
       const json = JSON.parse(jsonStr)
       const items = json?.result?.cmsArticleWebOld || []
       for (const item of items) {
+        const title = String(item.title || '').trim()
+        const url = item.url || null
+        const content = String(item.content || '')
+        // 去重：同一 URL 只保留一次（多关键词搜索会命中同篇文章）
+        if (url && seenUrls.has(url)) continue
+        // 相关性过滤：关键词必须在标题或内容前 150 字出现，否则是顺带提及（误判）
+        const isRelevant = keywords.some((kw) =>
+          title.includes(kw) || content.slice(0, 150).includes(kw),
+        )
+        if (!isRelevant) continue
+        if (url) seenUrls.add(url)
         results.push({
-          title: String(item.title || '').trim(),
-          url: item.url || null,
+          title,
+          url,
           source: 'eastmoney',
           source_name: item.mediaName || '东方财富',
-          summary: String(item.content || '').slice(0, 300),
+          summary: content.slice(0, 300),
           published_at: item.date ? new Date(item.date.replace(' ', 'T') + '+08:00') : null,
         })
       }
