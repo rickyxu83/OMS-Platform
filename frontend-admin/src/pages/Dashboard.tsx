@@ -757,6 +757,12 @@ export function Dashboard() {
   const canSelectReportSalesperson = canUseWorkSummary && userRole !== "sales" && !useOwnScope;
   const canSelectReportEngineer = canUseWorkSummary && !useOwnScope;
   const [summary, setSummary] = useState<Summary>({});
+  const [customerNews, setCustomerNews] = useState<Array<{
+    id: number; customerId: number; customerName: string; customerLevel: string;
+    title: string; url: string | null; source: string; sourceName: string | null;
+    summary: string | null; publishedAt: string | null;
+  }>>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
   const [trend, setTrend] = useState<Array<{ date: string; total: number }>>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [mapPoints, setMapPoints] = useState<any[]>([]);
@@ -802,6 +808,11 @@ export function Dashboard() {
           api.get(`/service-orders?pageSize=20&sortBy=createdAt&sortDir=desc${useOwnScope ? "&mine=1" : ""}`),
           api.get("/customers?pageSize=200").catch(() => null),
         ]);
+        // 客户动态（独立加载，不阻塞主数据）
+        setNewsLoading(true)
+        api.get("/customers/news?days=30&limit=20").then((newsRes: any) => {
+          if (!cancelled) setCustomerNews(newsRes?.items || [])
+        }).catch(() => {}).finally(() => { if (!cancelled) setNewsLoading(false) })
         if (cancelled) return;
         setSummary(stats?.summary || {});
         setTrend(Array.isArray(stats?.trend) ? stats.trend : []);
@@ -1183,6 +1194,45 @@ export function Dashboard() {
                 </>
               )
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 客户动态（有新闻时才显示卡片） */}
+      {customerNews.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg">客户动态</CardTitle>
+                <CardDescription>近 30 天客户相关新闻与公告</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 sm:px-6">
+            <div className="space-y-2.5">
+              {customerNews.map((item) => (
+                <div key={item.id} className="flex items-start gap-3 rounded-lg border bg-background px-3 py-2.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${item.customerLevel === 'vip' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
+                        {item.customerName}
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{item.sourceName || item.source}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{item.publishedAt ? formatDate(item.publishedAt) : ''}</span>
+                    </div>
+                    {item.url ? (
+                      <a href={item.url} target="_blank" rel="noopener noreferrer" className="mt-1 block truncate font-medium text-foreground hover:text-primary hover:underline">
+                        {item.title}
+                      </a>
+                    ) : (
+                      <div className="mt-1 truncate font-medium text-foreground">{item.title}</div>
+                    )}
+                    {item.summary ? <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.summary}</div> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}

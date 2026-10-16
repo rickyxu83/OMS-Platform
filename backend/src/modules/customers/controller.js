@@ -1515,6 +1515,39 @@ async function createContact(req, res) {
   res.status(201).json({ id: contact.id, name: contact.name, phone: contact.phone || null, email: contact.email || null })
 }
 
+// 客户动态（新闻/公告）列表：首页卡片用
+async function newsList(req, res) {
+  const { ensureTables } = require('../../services/customer-news')
+  await ensureTables()
+  const days = Math.min(90, Math.max(1, Number(req.query.days) || 30))
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20))
+  const customerId = Number(req.query.customerId) || null
+  const params = { days }
+  let where = 'n.published_at >= DATE_SUB(NOW(), INTERVAL :days DAY)'
+  if (customerId) {
+    where += ' AND n.customer_id = :customerId'
+    params.customerId = customerId
+  }
+  const rows = await query(
+    `SELECT n.id, n.customer_id AS customerId, c.name AS customerName, c.level AS customerLevel,
+            n.title, n.url, n.source, n.source_name AS sourceName, n.summary, n.published_at AS publishedAt
+     FROM customer_news n
+     LEFT JOIN customers c ON c.id = n.customer_id
+     WHERE ${where}
+     ORDER BY n.published_at DESC, n.id DESC
+     LIMIT ${limit}`,
+    params,
+  )
+  res.json({ items: rows })
+}
+
+// 手动触发刷新（管理员/编辑权限）
+async function newsRefresh(req, res) {
+  const { refreshCustomerNews } = require('../../services/customer-news')
+  const result = await refreshCustomerNews()
+  res.json(result)
+}
+
 module.exports = {
   list,
   create,
@@ -1526,5 +1559,7 @@ module.exports = {
   devices,
   nextCustomerCode,
   createContact,
+  newsList,
+  newsRefresh,
   _test: { canAccessSalesDeliveryAddress, customerPayload, salesDeliveryAddressInput },
 }

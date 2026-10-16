@@ -555,6 +555,19 @@ async function sendMonthlyEngineerSummaries(report, nSettings) {
 }
 
 function startScheduler() {
+  // 客户新闻/公告刷新：每天 08:00 和 16:00 各一次
+  for (const cronExpr of ['0 8 * * *', '0 16 * * *']) {
+    scheduleCron(cronExpr, async () => {
+      try {
+        const { refreshCustomerNews } = require('./customer-news')
+        const result = await refreshCustomerNews()
+        if (result?.inserted) console.log(`[scheduler] Customer news: fetched=${result.fetched}, inserted=${result.inserted}`)
+      } catch (error) {
+        console.error('[scheduler] Customer news refresh failed', error?.message)
+      }
+    })
+  }
+
   scheduleCron('0 8 * * *', async () => {
     console.log('[scheduler] Running maintenance expiry check...')
     try {
@@ -1246,6 +1259,7 @@ function startScheduler() {
   if (!env.featureModulesDisabled.has('attendance')) startedTasks.push('attendance notifications (every minute)', 'attendance stale reminders (hourly :17)', 'holiday auto-sync (09:15, Nov-Dec)', 'duty monthly auto-submit (08:21 on day 1)', 'annual leave carryover & comp-time expiry (23:50 daily check)')
   if (!env.featureModulesDisabled.has('mr')) startedTasks.push('MR approval notifications (1m)', 'MR stale reminders (hourly :23)', 'MR PDF archive retry (2m)')
   if (!env.featureModulesDisabled.has('report')) startedTasks.push('report subscriptions (09:07)')
+  startedTasks.push('customer news refresh (08:00, 16:00)')
   console.log(`[scheduler] Started (${SCHEDULER_TIMEZONE}): ${startedTasks.join(', ')}`)}
 
 module.exports = { startScheduler }

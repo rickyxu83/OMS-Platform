@@ -4,6 +4,10 @@ const { requirePermission } = require('../../middleware/auth')
 
 const router = express.Router()
 
+// 客户动态（新闻/公告）
+router.get('/news', requirePermission('customer.view'), controller.newsList)
+router.post('/news/refresh', requirePermission('customer.edit'), controller.newsRefresh)
+
 router.get('/', requirePermission('customer.view', 'order.engineer.own'), controller.list)
 router.post('/', requirePermission('customer.create'), controller.create)
 router.get('/:id/delete-preview', requirePermission('customer.delete'), controller.deletePreview)
