@@ -106,10 +106,12 @@ async function fetchEastmoneyNews(customerName) {
         const content = String(item.content || '')
         // 去重：同一 URL 只保留一次（多关键词搜索会命中同篇文章）
         if (url && seenUrls.has(url)) continue
-        // 相关性过滤：关键词必须在标题或内容前 150 字出现，否则是顺带提及（误判）
-        const isRelevant = keywords.some((kw) =>
-          title.includes(kw) || content.slice(0, 150).includes(kw),
-        )
+        // 相关性过滤：关键词必须在标题或内容前 150 字出现；
+        // 短关键词（≤3 字）容易误判，必须在标题出现才算相关
+        const isRelevant = keywords.some((kw) => {
+          if (kw.length <= 3) return title.includes(kw)
+          return title.includes(kw) || content.slice(0, 150).includes(kw)
+        })
         if (!isRelevant) continue
         if (url) seenUrls.add(url)
         results.push({

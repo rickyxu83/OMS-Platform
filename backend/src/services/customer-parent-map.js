@@ -29,7 +29,7 @@ const PARENT_MAP = {
   '捷安特': { name: '捷安特', stockCode: '9921', stockExchange: TW_STOCK, aliases: ['Giant', '巨大集团'] },
 
   // === 颀中科技 ChipMOS ===
-  '颀中科技': { name: '颀中科技', stockCode: '688352', stockExchange: CN_STOCK, aliases: ['ChipMOS', '颀中'] },
+  '颀中科技': { name: '颀中科技', stockCode: '688352', stockExchange: CN_STOCK, aliases: ['ChipMOS'] },
 
   // === 矽品科技 SPIL (日月光投控) ===
   '矽品科技': { name: '矽品科技', stockCode: '2325', stockExchange: TW_STOCK, aliases: ['SPIL', '日月光', 'ASE'] },
@@ -47,23 +47,23 @@ const PARENT_MAP = {
   '中国信托商业银行': { name: '中国信托', stockCode: '2891', stockExchange: TW_STOCK, aliases: ['中国信托金融控股', '中信金', 'CTBC'] },
 
   // === 精元电脑 ===
-  '精元电脑': { name: '精元电脑', aliases: ['精元'] },
+  '精元电脑': { name: '精元电脑', aliases: [] },
 
   // === 启佳通讯 / 启新通讯（启基科技 WNC）===
   '启佳通讯': { name: '启基科技', stockCode: '6285', stockExchange: TW_STOCK, aliases: ['WNC', '启基'] },
   '启新通讯': { name: '启基科技', stockCode: '6285', stockExchange: TW_STOCK, aliases: ['WNC', '启基'] },
 
   // === 达方电子 Darfon ===
-  '达方电子': { name: '达方电子', stockCode: '8163', stockExchange: TW_STOCK, aliases: ['Darfon', '达方'] },
+  '达方电子': { name: '达方电子', stockCode: '8163', stockExchange: TW_STOCK, aliases: ['Darfon'] },
 
   // === 联茂电子 ITEQ ===
-  '联茂电子': { name: '联茂电子', stockCode: '6213', stockExchange: TW_STOCK, aliases: ['ITEQ', '联茂'] },
+  '联茂电子': { name: '联茂电子', stockCode: '6213', stockExchange: TW_STOCK, aliases: ['ITEQ'] },
 
   // === 兴勤电子 Thinking ===
-  '兴勤': { name: '兴勤电子', stockCode: '2428', stockExchange: TW_STOCK, aliases: ['Thinking', '兴勤'] },
+  '兴勤': { name: '兴勤电子', stockCode: '2428', stockExchange: TW_STOCK, aliases: ['Thinking'] },
 
   // === 正新橡胶 Maxxis ===
-  '正新橡胶': { name: '正新橡胶', stockCode: '2105', stockExchange: TW_STOCK, aliases: ['Maxxis', '正新', '玛吉斯'] },
+  '正新橡胶': { name: '正新橡胶', stockCode: '2105', stockExchange: TW_STOCK, aliases: ['Maxxis', '玛吉斯'] },
 
   // === 李长荣化工 LCY ===
   '李长荣': { name: '李长荣化工', stockCode: '1704', stockExchange: TW_STOCK, aliases: ['LCY', '李长荣'] },
@@ -84,37 +84,37 @@ const PARENT_MAP = {
   '京隆科技': { name: '京隆科技', aliases: ['京隆'] },
 
   // === 世巨科技 ===
-  '世巨科技': { name: '世巨科技', aliases: ['世巨'] },
+  '世巨科技': { name: '世巨科技', aliases: [] },
 
   // === 华仪电子 ===
-  '华仪电子': { name: '华仪电子', aliases: ['华仪'] },
+  '华仪电子': { name: '华仪电子', aliases: [] },
 
   // === 太普动力 ===
-  '太普动力': { name: '太普动力', aliases: ['太普'] },
+  '太普动力': { name: '太普动力', aliases: [] },
 
   // === 全讯射频 ===
-  '全讯射频': { name: '全讯射频', aliases: ['全讯'] },
+  '全讯射频': { name: '全讯射频', aliases: [] },
 
   // === 咏传电子 ===
-  '咏传电子': { name: '咏传电子', aliases: ['咏传'] },
+  '咏传电子': { name: '咏传电子', aliases: [] },
 
   // === 通嘉科技 ===
-  '通嘉科技': { name: '通嘉科技', aliases: ['通嘉'] },
+  '通嘉科技': { name: '通嘉科技', aliases: [] },
 
   // === 华腾微电子 ===
-  '华腾微电子': { name: '华腾微电子', aliases: ['华腾'] },
+  '华腾微电子': { name: '华腾微电子', aliases: [] },
 
   // === 磐时电子 ===
-  '磐时电子': { name: '磐时电子', aliases: ['磐时'] },
+  '磐时电子': { name: '磐时电子', aliases: [] },
 
   // === 旭福半导体 ===
-  '旭福半导体': { name: '旭福半导体', aliases: ['旭福'] },
+  '旭福半导体': { name: '旭福半导体', aliases: [] },
 
   // === 欣芯半导体 ===
-  '欣芯半导体': { name: '欣芯半导体', aliases: ['欣芯'] },
+  '欣芯半导体': { name: '欣芯半导体', aliases: [] },
 
   // === 宏远发展 ===
-  '宏远发展': { name: '宏远发展', aliases: ['宏远'] },
+  '宏远发展': { name: '宏远发展', aliases: [] },
 
   // === 禾新医院 ===
   '禾新医院': { name: '禾新医院', aliases: ['禾新'] },
