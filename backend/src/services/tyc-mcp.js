@@ -1,10 +1,10 @@
-// 天眼查 AI MCP 客户端：直连 MCP HTTP 端点查询企业数据
+// 天眼查 AI MCP 客户端：直连 shared core REST 端点查询企业数据
 // 文档：https://www.tianyancha.com/ai/guide.md
-// 端点：https://mcp.tianyancha.com/mcp
+// 端点：https://mcp.tianyancha.com/v1/core/tools/call
 
 const { query } = require('../config/db')
 
-const MCP_URL = 'https://mcp.tianyancha.com/mcp'
+const CORE_URL = 'https://mcp.tianyancha.com/v1/core/tools/call'
 
 async function getTycToken() {
   const rows = await query(
@@ -13,31 +13,30 @@ async function getTycToken() {
   return rows[0]?.setting_value || null
 }
 
-// MCP JSON-RPC 调用
+// shared core REST 调用（非 JSON-RPC，直接 POST tool_name + arguments）
 async function mcpCall(toolName, args = {}, token) {
   if (!token) throw new Error('天眼查 API token 未配置（系统设置 → news.tianyanchaToken）')
-  const response = await fetch(MCP_URL, {
+  const response = await fetch(CORE_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: Date.now(),
-      method: 'tools/call',
-      params: { name: toolName, arguments: args },
-    }),
+    body: JSON.stringify({ tool_name: toolName, arguments: args, format: 'json' }),
   })
-  if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    throw new Error(`天眼查 MCP HTTP ${response.status}: ${text.slice(0, 200)}`)
+  const text = await response.text()
+  let data
+  try { data = JSON.parse(text) } catch { throw new Error(`天眼查 MCP 响应非 JSON: HTTP ${response.status} ${text.slice(0, 200)}`) }
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`天眼查 MCP HTTP ${response.status}: ${data.error_description || data.error || text.slice(0, 200)}`)
   }
-  const data = await response.json()
-  if (data.error) throw new Error(`天眼查 MCP: ${data.error.message || JSON.stringify(data.error)}`)
-  // MCP 返回格式：result.content[0].text 为 JSON 字符串
-  const text = data?.result?.content?.[0]?.text || ''
-  try { return JSON.parse(text) } catch { return text }
+  // 返回格式：{ content: [...] } 或直接 content 对象
+  const content = data?.content
+  if (typeof content === 'string') {
+    try { return JSON.parse(content) } catch { return content }
+  }
+  return content ?? data
 }
 
 // 企业工商登记信息
