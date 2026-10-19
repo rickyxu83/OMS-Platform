@@ -120,12 +120,10 @@ async function fetchEastmoneyNews(customerName) {
         const content = String(item.content || '')
         // 去重：同一 URL 只保留一次（多关键词搜索会命中同篇文章）
         if (url && seenUrls.has(url)) continue
-        // 相关性判断（两级）：
-        // 强匹配：关键词在标题有效出现 → 保留
-        // 弱匹配：关键词在内容前 150 字有效出现 → 仅长关键词（≥4 字）保留
+        // 相关性判断（严格模式）：只保留标题有效匹配
+        // 内容出现不算——“唯乐高融资”内容提到捷安特、“托克锂产品”内容提到捷安特这类不算客户新闻
         const titleMatch = keywords.some((kw) => isRelevantMatch(title, kw))
-        const contentMatch = keywords.some((kw) => kw.length >= 4 && isRelevantMatch(content.slice(0, 150), kw))
-        if (!titleMatch && !contentMatch) continue
+        if (!titleMatch) continue
         if (url) seenUrls.add(url)
         results.push({
           title,
