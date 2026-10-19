@@ -147,6 +147,12 @@ async function refreshCustomerProfile(customerId, token) {
     },
   )
 
+  // 字段变更追踪：天眼查刷新也记录
+  if (changedFields.length) {
+    const { logChange } = require('./change-tracker')
+    await logChange('customer', customerId, changedFields, null, 'tianyancha')
+  }
+
   return { ...profile, changedFields }
 }
 

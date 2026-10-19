@@ -55,6 +55,8 @@ interface Customer {
   profileFetchedAt?: string | null;
   profileIndustry?: string | null;
   profileChangedFields?: string[];
+  // 字段变更提醒（3 天内有变更）
+  recentChange?: { fields: string[]; changedBy: string; changedAt: string; source: string } | null;
 }
 
 interface CustomerDevice {
@@ -711,6 +713,8 @@ export function Customers() {
   // 客户资讯（天眼查公司基本资料）
   const [customerProfile, setCustomerProfile] = useState<any>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  // 字段变更提醒（客户详情）
+  const [recentChange, setRecentChange] = useState<any>(null);
   const [deleteError, setDeleteError] = useState("");
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | number | null>(null);
@@ -896,6 +900,10 @@ export function Customers() {
     api.get(`/customers/${customerId}/profile`).then((res: any) => {
       if (!cancelled) setCustomerProfile(res?.profile || null);
     }).catch(() => {}).finally(() => { if (!cancelled) setProfileLoading(false) });
+
+    // 字段变更提醒（从列表数据获取）
+    if (detailTarget.recentChange) setRecentChange(detailTarget.recentChange);
+    else setRecentChange(null);
 
     loadDetailInsight();
     return () => {
@@ -1342,15 +1350,6 @@ export function Customers() {
             ) : (
               <span title={t.misc.unknown} className="truncate">{t.misc.unknown}</span>
             )}
-            {c.profileFetchedAt ? (
-              <span
-                className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-blue-200"
-                title={`已有客户资讯（${c.profileIndustry || '天眼查'}）· ${formatDate(c.profileFetchedAt)}更新`}
-              >
-                <BookOpen className="h-3 w-3" />
-                资讯
-              </span>
-            ) : null}
           </span>
         }
         status={(
@@ -1802,10 +1801,8 @@ export function Customers() {
                               ) : (
                                 <div title={t.misc.unknown} className="truncate font-medium">{t.misc.unknown}</div>
                               )}
-                              {(c.profileChangedFields?.length ?? 0) > 0 ? (
-                                <span className="ml-1 inline-flex shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800" title={`客户资讯有更新：${(c.profileChangedFields || []).join('、')}`}>NEW</span>
-                              ) : c.profileFetchedAt ? (
-                                <span className="ml-1 inline-flex shrink-0 items-center rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700" title={`已有客户资讯 · ${formatDate(c.profileFetchedAt)}更新`}>资讯</span>
+                              {c.recentChange ? (
+                                <span className="ml-1 inline-flex shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800" title={`${c.recentChange.changedBy} 更新了：${c.recentChange.fields.join('、')}`}>UPD</span>
                               ) : null}
                               <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                                 {c.salesperson ? <span className="truncate" title={`${t.list.salesperson}：${c.salesperson}`}>{t.list.salesperson}：{c.salesperson}</span> : null}
@@ -2058,8 +2055,15 @@ export function Customers() {
 
                   <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
                     <div className="space-y-5">
+                      {/* 字段变更提醒 */}
+                      {recentChange?.fields?.length ? (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm">
+                          <span className="font-medium text-amber-800">{recentChange.changedBy}</span>
+                          <span className="text-amber-700"> 更新了：{recentChange.fields.join('、')}</span>
+                        </div>
+                      ) : null}
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div className="rounded-lg border p-4">
+                        <div className={`rounded-lg border p-4 ${recentChange?.fields?.includes('contact_name') || recentChange?.fields?.includes('contact_phone') ? 'ring-2 ring-amber-300 bg-amber-50/50' : ''}`}>
                           <div className="text-sm font-medium">{t.dialog.contacts}</div>
                           <div className="mt-3 space-y-2">
                             {contacts.some((contact) => contact.name || contact.phone || contact.email) ? contacts.map((contact, index) => (
@@ -2074,7 +2078,7 @@ export function Customers() {
                           </div>
                         </div>
 
-                        <div className="rounded-lg border p-4">
+                        <div className={`rounded-lg border p-4 ${recentChange?.fields?.includes('address') ? 'ring-2 ring-amber-300 bg-amber-50/50' : ''}`}>
                           <div className="text-sm font-medium">{t.dialog.address}</div>
                           <div className="mt-3 text-sm leading-6 text-slate-700">{detailTarget.address || t.misc.unknown}</div>
                           {canManageSalesDeliveryAddress && detailTarget.salesDeliveryAddress ? (
