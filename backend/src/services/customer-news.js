@@ -80,6 +80,20 @@ function httpPost(url, body, { headers = {}, timeout = 15000 } = {}) {
 // ========== 方案 D：东方财富新闻搜索（免费，覆盖率高） ==========
 // 搜索母公司名+别名，东方财富新闻库覆盖台企/上市/非上市企业
 
+// 相关性判断：检查文本中关键词是否为有效匹配
+// 过滤：①更长词的一部分（如“杰捷安特”含“捷安特”）②行业协会（如“中国信托业协会”）
+function isRelevantMatch(text, keyword) {
+  if (!text || !keyword) return false
+  const idx = text.indexOf(keyword)
+  if (idx === -1) return false
+  // 前面是中文字符：可能是更长词的一部分（如“杰捷安特”中的“捷安特”）
+  if (idx > 0 && /[\u4e00-\u9fff]/.test(text[idx - 1])) return false
+  // 后面紧跟协会/行业组织后缀：是行业协会不是公司（如“中国信托业协会”）
+  const after = text.slice(idx + keyword.length)
+  if (/^(业协会|行业协会|协会|商会|联合会)/.test(after)) return false
+  return true
+}
+
 async function fetchEastmoneyNews(customerName) {
   const { searchKeywords } = require('./customer-parent-map')
   const keywords = searchKeywords(customerName)
@@ -106,13 +120,12 @@ async function fetchEastmoneyNews(customerName) {
         const content = String(item.content || '')
         // 去重：同一 URL 只保留一次（多关键词搜索会命中同篇文章）
         if (url && seenUrls.has(url)) continue
-        // 相关性过滤：关键词必须在标题或内容前 150 字出现；
-        // 短关键词（≤3 字）容易误判，必须在标题出现才算相关
-        const isRelevant = keywords.some((kw) => {
-          if (kw.length <= 3) return title.includes(kw)
-          return title.includes(kw) || content.slice(0, 150).includes(kw)
-        })
-        if (!isRelevant) continue
+        // 相关性判断（两级）：
+        // 强匹配：关键词在标题有效出现 → 保留
+        // 弱匹配：关键词在内容前 150 字有效出现 → 仅长关键词（≥4 字）保留
+        const titleMatch = keywords.some((kw) => isRelevantMatch(title, kw))
+        const contentMatch = keywords.some((kw) => kw.length >= 4 && isRelevantMatch(content.slice(0, 150), kw))
+        if (!titleMatch && !contentMatch) continue
         if (url) seenUrls.add(url)
         results.push({
           title,
