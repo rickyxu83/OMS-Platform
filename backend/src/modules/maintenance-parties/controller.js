@@ -156,10 +156,7 @@ async function list(req, res) {
     },
   )
 
-  // 3 天内字段变更（列表角标用）
-  const { recentChanges } = require('../../services/change-tracker')
-  const changeMap = await recentChanges('maintenance_party', rows.map((r) => r.id), 3)
-  res.json({ items: rows.map((r) => ({ ...partyPayload(r), recentChange: changeMap.get(Number(r.id)) || null })) })
+  res.json({ items: rows.map(partyPayload) })
 }
 
 async function create(req, res) {
@@ -231,7 +228,7 @@ async function detail(req, res) {
 
 async function update(req, res) {
   await ensureMaintenancePartyColumns()
-  const existing = await query('SELECT * FROM maintenance_parties WHERE id = :id LIMIT 1', { id: req.params.id })
+  const existing = await query('SELECT id, contact, contacts, phone FROM maintenance_parties WHERE id = :id LIMIT 1', { id: req.params.id })
   if (!existing[0]) {
     throw notFound('维护方不存在')
   }
@@ -285,19 +282,6 @@ async function update(req, res) {
   )
 
   res.status(204).end()
-
-  // 字段变更追踪
-  const { logChange, diffFields } = require('../../services/change-tracker')
-  const TRACKED = ['name', 'contact', 'phone', 'official_website', 'remark']
-  const newData = {
-    name: hasName ? name : existing[0].name,
-    contact: hasContact ? req.body.contact : existing[0].contact,
-    phone: hasPhone ? req.body.phone : existing[0].phone,
-    official_website: hasOfficialWebsite ? officialWebsite : existing[0].official_website,
-    remark: hasRemark ? remark : existing[0].remark,
-  }
-  const changedFields = diffFields(existing[0], newData, TRACKED)
-  if (changedFields.length) await logChange('maintenance_party', Number(req.params.id), changedFields, req.user)
 }
 
 async function remove(req, res) {

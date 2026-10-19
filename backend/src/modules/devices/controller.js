@@ -1482,11 +1482,8 @@ async function list(req, res) {
   const statsRow = statsRows[0] || {}
 
   const total = Number(countRows[0]?.total || 0)
-  // 3 天内字段变更（列表角标用）
-  const { recentChanges } = require('../../services/change-tracker')
-  const changeMap = await recentChanges('device', rows.map((r) => r.id), 3)
   res.json({
-    items: rows.map((r) => ({ ...devicePayload(r), recentChange: changeMap.get(Number(r.id)) || null })),
+    items: rows.map(devicePayload),
     total,
     page,
     pageSize,
@@ -2205,19 +2202,6 @@ async function update(req, res) {
   )
 
   res.status(204).end()
-
-  // 字段变更追踪
-  const { logChange, diffFields } = require('../../services/change-tracker')
-  const TRACKED = ['name', 'model', 'serial_no', 'remark', 'maintenance_type', 'maintenance_start', 'maintenance_end', 'location']
-  const newData = {
-    name: hasName ? normalizedName : existing[0].name, model: normalizedModel, serial_no: normalizedSerialNo,
-    remark: remark || existing[0].remark, maintenance_type: normalizedMaintenanceType || existing[0].maintenance_type,
-    maintenance_start: normalizeDate(maintenanceStart) || existing[0].maintenance_start,
-    maintenance_end: normalizeDate(maintenanceEnd) || existing[0].maintenance_end,
-    location: location || existing[0].location,
-  }
-  const changedFields = diffFields(existing[0], newData, TRACKED)
-  if (changedFields.length) await logChange('device', Number(req.params.id), changedFields, req.user)
 }
 
 async function remove(req, res) {

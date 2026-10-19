@@ -949,7 +949,6 @@ async function list(req, res) {
     ? 'COALESCE(es.last_used_at, c.updated_at, c.created_at) DESC, COALESCE(es.engineer_order_count, 0) DESC, c.id DESC'
     : 'c.id DESC'
   const salesScope = buildSalesCustomerScope(req.user, 'c')
-  const { recentChanges } = require('../../services/change-tracker')
   const rows = await query(
       `SELECT c.id, c.name, c.name_key, c.code, c.address, c.sales_delivery_address, c.contact_name, c.contact_phone, c.salesperson,
             c.level,
@@ -1016,12 +1015,7 @@ async function list(req, res) {
 
   const visibleRows = shouldPostFilterKeyword ? rows.filter((row) => customerMatchesKeyword(row, rawKeyword)).slice(0, normalizedPageSize) : rows
   const contactsByCustomer = await loadContacts(visibleRows.map((row) => row.id), req.user.id)
-  // 3 天内的字段变更（列表角标用）
-  const changeMap = await recentChanges('customer', visibleRows.map((row) => row.id), 3)
-  res.json({ items: visibleRows.map((row) => ({
-    ...customerPayload(row, contactsByCustomer.get(row.id) || [], sortLocale, canAccessSalesDeliveryAddress(req.user)),
-    recentChange: changeMap.get(Number(row.id)) || null,
-  })) })
+  res.json({ items: visibleRows.map((row) => customerPayload(row, contactsByCustomer.get(row.id) || [], sortLocale, canAccessSalesDeliveryAddress(req.user))) })
 }
 
 async function create(req, res) {
@@ -1200,8 +1194,7 @@ async function update(req, res) {
     mapAddress,
     remark,
   } = req.body || {}
-  // 取完整旧数据用于变更对比
-  const existing = await query('SELECT * FROM customers WHERE id = :id LIMIT 1', { id: req.params.id })
+  const existing = await query('SELECT id, code, salesperson, sales_delivery_address, contact_name, contact_phone FROM customers WHERE id = :id LIMIT 1', { id: req.params.id })
   if (!existing[0]) {
     throw notFound('客户不存在')
   }
@@ -1267,18 +1260,6 @@ async function update(req, res) {
   } catch (error) {
     throw duplicateCustomerError(error) || error
   }
-
-  // 字段变更追踪：对比新旧数据，记录变更供其他用户感知
-  const { logChange, diffFields } = require('../../services/change-tracker')
-  const TRACKED = ['name', 'address', 'contact_name', 'contact_phone', 'salesperson', 'level', 'remark']
-  const newData = {
-    name: name || existing[0].name, address: address || existing[0].address,
-    contact_name: contactName || existing[0].contact_name, contact_phone: normalizedContactPhone || existing[0].contact_phone,
-    salesperson: salesperson || existing[0].salesperson, level: normalizeCustomerLevel(level) || existing[0].level,
-    remark: remark !== undefined ? remark : existing[0].remark,
-  }
-  const changedFields = diffFields(existing[0], newData, TRACKED)
-  if (changedFields.length) await logChange('customer', Number(req.params.id), changedFields, req.user)
 
   // 联系人写维护后收敛历史重复（issue #15）：读路径不再做写库，避免 GET 副作用与并发死锁/惊群
   await cleanupDuplicateContacts([req.params.id])

@@ -57,8 +57,6 @@ interface Customer {
   profileFetchedAt?: string | null;
   profileIndustry?: string | null;
   profileChangedFields?: string[];
-  // 字段变更提醒（3 天内有变更）
-  recentChange?: { fields: string[]; changedBy: string; changedAt: string; source: string } | null;
 }
 
 interface CustomerDevice {
@@ -714,8 +712,6 @@ export function Customers() {
   const [detailInsightError, setDetailInsightError] = useState("");
   // 客户资讯（天眼查弹窗）
   const [profileDialog, setProfileDialog] = useState<{ id: number; name: string | null } | null>(null);
-  // 字段变更提醒（客户详情）
-  const [recentChange, setRecentChange] = useState<any>(null);
   const [deleteError, setDeleteError] = useState("");
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | number | null>(null);
@@ -896,10 +892,6 @@ export function Customers() {
     }
 
     // 客户资讯改由天眼查弹窗按需加载，详情不再预取
-
-    // 字段变更提醒（从列表数据获取）
-    if (detailTarget.recentChange) setRecentChange(detailTarget.recentChange);
-    else setRecentChange(null);
 
     loadDetailInsight();
     return () => {
@@ -1821,9 +1813,6 @@ export function Customers() {
                                 <TycLogo className="h-3.5 w-3.5" hasData={!!c.profileFetchedAt} />
                               </button>
                               </div>
-                              {c.recentChange ? (
-                                <span className="ml-1 inline-flex shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800" title={`${c.recentChange.changedBy} 更新了：${c.recentChange.fields.join('、')}`}>UPD</span>
-                              ) : null}
                               <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                                 {c.salesperson ? <span className="truncate" title={`${t.list.salesperson}：${c.salesperson}`}>{t.list.salesperson}：{c.salesperson}</span> : null}
                               </div>
@@ -2085,15 +2074,8 @@ export function Customers() {
 
                   <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
                     <div className="space-y-5">
-                      {/* 字段变更提醒 */}
-                      {recentChange?.fields?.length ? (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm">
-                          <span className="font-medium text-amber-800">{recentChange.changedBy}</span>
-                          <span className="text-amber-700"> 更新了：{recentChange.fields.join('、')}</span>
-                        </div>
-                      ) : null}
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div className={`rounded-lg border p-4 ${recentChange?.fields?.includes('contact_name') || recentChange?.fields?.includes('contact_phone') ? 'ring-2 ring-amber-300 bg-amber-50/50' : ''}`}>
+                        <div className="rounded-lg border p-4">
                           <div className="text-sm font-medium">{t.dialog.contacts}</div>
                           <div className="mt-3 space-y-2">
                             {contacts.some((contact) => contact.name || contact.phone || contact.email) ? contacts.map((contact, index) => (
@@ -2108,7 +2090,7 @@ export function Customers() {
                           </div>
                         </div>
 
-                        <div className={`rounded-lg border p-4 ${recentChange?.fields?.includes('address') ? 'ring-2 ring-amber-300 bg-amber-50/50' : ''}`}>
+                        <div className="rounded-lg border p-4">
                           <div className="text-sm font-medium">{t.dialog.address}</div>
                           <div className="mt-3 text-sm leading-6 text-slate-700">{detailTarget.address || t.misc.unknown}</div>
                           {canManageSalesDeliveryAddress && detailTarget.salesDeliveryAddress ? (
