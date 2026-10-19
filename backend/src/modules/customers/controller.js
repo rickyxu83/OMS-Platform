@@ -952,7 +952,7 @@ async function list(req, res) {
       `SELECT c.id, c.name, c.name_key, c.code, c.address, c.sales_delivery_address, c.contact_name, c.contact_phone, c.salesperson,
             c.level,
             latitude, longitude, map_provider, map_poi_id, map_poi_name, map_address,
-            remark, created_at, updated_at,
+            remark, c.created_at, c.updated_at,
             COALESCE(soc.service_order_count, 0) AS service_order_count,
             cp.fetched_at AS profile_fetched_at,
             cp.industry AS profile_industry
