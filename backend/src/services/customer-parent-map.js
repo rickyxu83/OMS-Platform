@@ -69,7 +69,7 @@ const PARENT_MAP = {
   '李长荣': { name: '李长荣化工', stockCode: '1704', stockExchange: TW_STOCK, aliases: ['LCY', '李长荣'] },
 
   // === 永大电梯 ===
-  '永大电梯': { name: '永大电梯', stockCode: '1507', stockExchange: TW_STOCK, aliases: ['永大'] },
+  '永大电梯': { name: '永大电梯', stockCode: '1507', stockExchange: TW_STOCK, aliases: [] },
 
   // === 特力集团 ===
   '特力集团': { name: '特力集团', stockCode: '2908', stockExchange: TW_STOCK, aliases: ['特力'] },

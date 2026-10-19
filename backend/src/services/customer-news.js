@@ -91,6 +91,8 @@ function isRelevantMatch(text, keyword) {
   // 后面紧跟协会/行业组织后缀：是行业协会不是公司（如“中国信托业协会”）
   const after = text.slice(idx + keyword.length)
   if (/^(业协会|行业协会|协会|商会|联合会)/.test(after)) return false
+  // “X业”开头但不是公司名后缀：是行业术语（如“中国信托业”=信托行业，不是中国信托商业银行）
+  if (/^业(?!银行|纸|科技|电子|电脑|橡胶|电梯|通讯|金属|医院|动力|射频|半导体|仪器|净化|兴业|精密|发展)/.test(after)) return false
   return true
 }
 
