@@ -19,6 +19,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ErrorToast } from "@/components/ErrorToast";
+import { TycLogo } from "@/components/TycLogo";
+import { CustomerProfileDialog } from "@/components/CustomerProfileDialog";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -710,9 +712,8 @@ export function Customers() {
   const [detailInsight, setDetailInsight] = useState<CustomerInsight | null>(null);
   const [detailInsightLoading, setDetailInsightLoading] = useState(false);
   const [detailInsightError, setDetailInsightError] = useState("");
-  // 客户资讯（天眼查公司基本资料）
-  const [customerProfile, setCustomerProfile] = useState<any>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
+  // 客户资讯（天眼查弹窗）
+  const [profileDialog, setProfileDialog] = useState<{ id: number; name: string | null } | null>(null);
   // 字段变更提醒（客户详情）
   const [recentChange, setRecentChange] = useState<any>(null);
   const [deleteError, setDeleteError] = useState("");
@@ -865,7 +866,6 @@ export function Customers() {
       setDetailInsight(null);
       setDetailInsightError("");
       setDetailInsightLoading(false);
-      setCustomerProfile(null);
       return;
     }
 
@@ -895,11 +895,7 @@ export function Customers() {
       }
     }
 
-    // 客户资讯（独立加载，不阻塞）
-    setProfileLoading(true);
-    api.get(`/customers/${customerId}/profile`).then((res: any) => {
-      if (!cancelled) setCustomerProfile(res?.profile || null);
-    }).catch(() => {}).finally(() => { if (!cancelled) setProfileLoading(false) });
+    // 客户资讯改由天眼查弹窗按需加载，详情不再预取
 
     // 字段变更提醒（从列表数据获取）
     if (detailTarget.recentChange) setRecentChange(detailTarget.recentChange);
@@ -1350,6 +1346,17 @@ export function Customers() {
             ) : (
               <span title={t.misc.unknown} className="truncate">{t.misc.unknown}</span>
             )}
+            <button
+              type="button"
+              className="inline-flex shrink-0 items-center rounded p-1 transition-colors hover:bg-accent"
+              title="天眼查企业资讯"
+              onClick={(event) => {
+                event.stopPropagation();
+                setProfileDialog({ id: Number(c.id), name: c.name || null });
+              }}
+            >
+              <TycLogo className="h-4 w-4" hasData={!!c.profileFetchedAt} />
+            </button>
           </span>
         }
         status={(
@@ -1789,6 +1796,7 @@ export function Customers() {
                           <div className="flex min-w-0 items-start gap-2">
                             <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                             <div className="min-w-0 flex-1">
+                              <div className="flex min-w-0 items-center gap-1">
                               {c.name ? (
                                 <button
                                   type="button"
@@ -1801,6 +1809,18 @@ export function Customers() {
                               ) : (
                                 <div title={t.misc.unknown} className="truncate font-medium">{t.misc.unknown}</div>
                               )}
+                              <button
+                                type="button"
+                                className="inline-flex shrink-0 items-center rounded p-0.5 transition-colors hover:bg-accent"
+                                title="天眼查企业资讯"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setProfileDialog({ id: Number(c.id), name: c.name || null });
+                                }}
+                              >
+                                <TycLogo className="h-3.5 w-3.5" hasData={!!c.profileFetchedAt} />
+                              </button>
+                              </div>
                               {c.recentChange ? (
                                 <span className="ml-1 inline-flex shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800" title={`${c.recentChange.changedBy} 更新了：${c.recentChange.fields.join('、')}`}>UPD</span>
                               ) : null}
@@ -2004,7 +2024,17 @@ export function Customers() {
                   <div className="rounded-lg border bg-slate-50/60 p-5">
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div className="min-w-0">
-                        <div className="text-lg font-semibold leading-7 text-slate-900">{detailTarget.name || t.misc.unknown}</div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="text-lg font-semibold leading-7 text-slate-900">{detailTarget.name || t.misc.unknown}</div>
+                          <button
+                            type="button"
+                            className="inline-flex shrink-0 items-center rounded p-1 transition-colors hover:bg-accent"
+                            title="天眼查企业资讯"
+                            onClick={() => setProfileDialog({ id: Number(detailTarget.id), name: detailTarget.name || null })}
+                          >
+                            <TycLogo className="h-5 w-5" hasData={!!detailTarget.profileFetchedAt} />
+                          </button>
+                        </div>
                         <div className="mt-1 text-sm text-muted-foreground">{detailTarget.code || t.misc.unknown}</div>
                       </div>
                       {(() => {
@@ -2103,72 +2133,6 @@ export function Customers() {
                         </div>
                       </div>
 
-                      {/* 客户资讯（天眼查公司基本资料） */}
-                      {customerProfile ? (() => {
-                        // 变更字段黄色高亮
-                        const cf = new Set(customerProfile.changedFields || [])
-                        const hl = (field: string) => cf.has(field) ? 'bg-amber-50 ring-1 ring-amber-200 rounded px-1 -mx-1' : ''
-                        return (
-                        <div className="rounded-lg border p-4">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <div className="text-sm font-medium">客户资讯</div>
-                              {cf.size > 0 ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">有更新</span> : null}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              来源：天眼查 · {customerProfile.fetchedAt ? formatDate(customerProfile.fetchedAt) : ''}
-                            </div>
-                          </div>
-                          <div className="mt-3 space-y-2 text-sm">
-                            {customerProfile.companyName && customerProfile.companyName !== detailTarget.name ? (
-                              <div className={`flex gap-2 ${hl('company_name')}`}><span className="shrink-0 text-muted-foreground w-20">注册名</span><span>{customerProfile.companyName}</span></div>
-                            ) : null}
-                            {customerProfile.industry ? (
-                              <div className={`flex gap-2 ${hl('industry')}`}><span className="shrink-0 text-muted-foreground w-20">产业</span><span>{customerProfile.industry}</span></div>
-                            ) : null}
-                            {customerProfile.registeredCapital ? (
-                              <div className={`flex gap-2 ${hl('registered_capital')}`}><span className="shrink-0 text-muted-foreground w-20">资本额</span><span>{customerProfile.registeredCapital}</span></div>
-                            ) : null}
-                            {customerProfile.foundDate ? (
-                              <div className={`flex gap-2 ${hl('found_date')}`}><span className="shrink-0 text-muted-foreground w-20">成立日</span><span>{customerProfile.foundDate}</span></div>
-                            ) : null}
-                            {customerProfile.legalPerson ? (
-                              <div className={`flex gap-2 ${hl('legal_person')}`}><span className="shrink-0 text-muted-foreground w-20">法定代表人</span><span>{customerProfile.legalPerson}</span></div>
-                            ) : null}
-                            {customerProfile.regStatus ? (
-                              <div className={`flex gap-2 ${hl('reg_status')}`}><span className="shrink-0 text-muted-foreground w-20">登记状态</span><span>{customerProfile.regStatus}</span></div>
-                            ) : null}
-                            {customerProfile.companyType ? (
-                              <div className={`flex gap-2 ${hl('company_type')}`}><span className="shrink-0 text-muted-foreground w-20">企业类型</span><span>{customerProfile.companyType}</span></div>
-                            ) : null}
-                            {customerProfile.website ? (
-                              <div className={`flex gap-2 ${hl('website')}`}><span className="shrink-0 text-muted-foreground w-20">网址</span><a href={customerProfile.website.startsWith('http') ? customerProfile.website : `https://${customerProfile.website}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{customerProfile.website}</a></div>
-                            ) : null}
-                            {customerProfile.phone ? (
-                              <div className={`flex gap-2 ${hl('phone')}`}><span className="shrink-0 text-muted-foreground w-20">电话</span><span>{customerProfile.phone}</span></div>
-                            ) : null}
-                            {customerProfile.address && customerProfile.address !== detailTarget.address ? (
-                              <div className={`flex gap-2 ${hl('address')}`}><span className="shrink-0 text-muted-foreground w-20">注册地址</span><span>{customerProfile.address}</span></div>
-                            ) : null}
-                            {customerProfile.personnel?.length ? (
-                              <div className="mt-2">
-                                <div className="text-muted-foreground mb-1">主要人员</div>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {customerProfile.personnel.slice(0, 6).map((p: any, i: number) => (
-                                    <span key={i} className="rounded bg-slate-100 px-2 py-0.5 text-xs">{p.name}{p.title ? `（${p.title}）` : ''}</span>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : null}
-                            {customerProfile.profileText ? (
-                              <div className="mt-2 rounded-md bg-slate-50 px-3 py-2 text-xs leading-5 text-muted-foreground">
-                                {customerProfile.profileText.length > 200 ? customerProfile.profileText.slice(0, 200) + '…' : customerProfile.profileText}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                        )
-                      })() : null}
 
                       <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
                         <div className="rounded-lg border p-4">
@@ -2714,6 +2678,14 @@ export function Customers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 天眼查客户资讯弹窗 */}
+      <CustomerProfileDialog
+        customerId={profileDialog?.id ?? null}
+        customerName={profileDialog?.name ?? null}
+        open={profileDialog !== null}
+        onOpenChange={(open) => { if (!open) setProfileDialog(null); }}
+      />
     </div>
   );
 }
