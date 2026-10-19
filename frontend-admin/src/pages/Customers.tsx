@@ -54,6 +54,7 @@ interface Customer {
   // 客户资讯标记（天眼查）
   profileFetchedAt?: string | null;
   profileIndustry?: string | null;
+  profileChangedFields?: string[];
 }
 
 interface CustomerDevice {
@@ -1801,6 +1802,11 @@ export function Customers() {
                               ) : (
                                 <div title={t.misc.unknown} className="truncate font-medium">{t.misc.unknown}</div>
                               )}
+                              {(c.profileChangedFields?.length ?? 0) > 0 ? (
+                                <span className="ml-1 inline-flex shrink-0 items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800" title={`客户资讯有更新：${(c.profileChangedFields || []).join('、')}`}>NEW</span>
+                              ) : c.profileFetchedAt ? (
+                                <span className="ml-1 inline-flex shrink-0 items-center rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700" title={`已有客户资讯 · ${formatDate(c.profileFetchedAt)}更新`}>资讯</span>
+                              ) : null}
                               <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                                 {c.salesperson ? <span className="truncate" title={`${t.list.salesperson}：${c.salesperson}`}>{t.list.salesperson}：{c.salesperson}</span> : null}
                               </div>
@@ -2094,44 +2100,51 @@ export function Customers() {
                       </div>
 
                       {/* 客户资讯（天眼查公司基本资料） */}
-                      {customerProfile ? (
+                      {customerProfile ? (() => {
+                        // 变更字段黄色高亮
+                        const cf = new Set(customerProfile.changedFields || [])
+                        const hl = (field: string) => cf.has(field) ? 'bg-amber-50 ring-1 ring-amber-200 rounded px-1 -mx-1' : ''
+                        return (
                         <div className="rounded-lg border p-4">
                           <div className="flex items-center justify-between gap-2">
-                            <div className="text-sm font-medium">客户资讯</div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-medium">客户资讯</div>
+                              {cf.size > 0 ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">有更新</span> : null}
+                            </div>
                             <div className="text-xs text-muted-foreground">
                               来源：天眼查 · {customerProfile.fetchedAt ? formatDate(customerProfile.fetchedAt) : ''}
                             </div>
                           </div>
                           <div className="mt-3 space-y-2 text-sm">
                             {customerProfile.companyName && customerProfile.companyName !== detailTarget.name ? (
-                              <div className="flex gap-2"><span className="shrink-0 text-muted-foreground w-20">注册名</span><span>{customerProfile.companyName}</span></div>
+                              <div className={`flex gap-2 ${hl('company_name')}`}><span className="shrink-0 text-muted-foreground w-20">注册名</span><span>{customerProfile.companyName}</span></div>
                             ) : null}
                             {customerProfile.industry ? (
-                              <div className="flex gap-2"><span className="shrink-0 text-muted-foreground w-20">产业</span><span>{customerProfile.industry}</span></div>
+                              <div className={`flex gap-2 ${hl('industry')}`}><span className="shrink-0 text-muted-foreground w-20">产业</span><span>{customerProfile.industry}</span></div>
                             ) : null}
                             {customerProfile.registeredCapital ? (
-                              <div className="flex gap-2"><span className="shrink-0 text-muted-foreground w-20">资本额</span><span>{customerProfile.registeredCapital}</span></div>
+                              <div className={`flex gap-2 ${hl('registered_capital')}`}><span className="shrink-0 text-muted-foreground w-20">资本额</span><span>{customerProfile.registeredCapital}</span></div>
                             ) : null}
                             {customerProfile.foundDate ? (
-                              <div className="flex gap-2"><span className="shrink-0 text-muted-foreground w-20">成立日</span><span>{customerProfile.foundDate}</span></div>
+                              <div className={`flex gap-2 ${hl('found_date')}`}><span className="shrink-0 text-muted-foreground w-20">成立日</span><span>{customerProfile.foundDate}</span></div>
                             ) : null}
                             {customerProfile.legalPerson ? (
-                              <div className="flex gap-2"><span className="shrink-0 text-muted-foreground w-20">法定代表人</span><span>{customerProfile.legalPerson}</span></div>
+                              <div className={`flex gap-2 ${hl('legal_person')}`}><span className="shrink-0 text-muted-foreground w-20">法定代表人</span><span>{customerProfile.legalPerson}</span></div>
                             ) : null}
                             {customerProfile.regStatus ? (
-                              <div className="flex gap-2"><span className="shrink-0 text-muted-foreground w-20">登记状态</span><span>{customerProfile.regStatus}</span></div>
+                              <div className={`flex gap-2 ${hl('reg_status')}`}><span className="shrink-0 text-muted-foreground w-20">登记状态</span><span>{customerProfile.regStatus}</span></div>
                             ) : null}
                             {customerProfile.companyType ? (
-                              <div className="flex gap-2"><span className="shrink-0 text-muted-foreground w-20">企业类型</span><span>{customerProfile.companyType}</span></div>
+                              <div className={`flex gap-2 ${hl('company_type')}`}><span className="shrink-0 text-muted-foreground w-20">企业类型</span><span>{customerProfile.companyType}</span></div>
                             ) : null}
                             {customerProfile.website ? (
-                              <div className="flex gap-2"><span className="shrink-0 text-muted-foreground w-20">网址</span><a href={customerProfile.website.startsWith('http') ? customerProfile.website : `https://${customerProfile.website}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{customerProfile.website}</a></div>
+                              <div className={`flex gap-2 ${hl('website')}`}><span className="shrink-0 text-muted-foreground w-20">网址</span><a href={customerProfile.website.startsWith('http') ? customerProfile.website : `https://${customerProfile.website}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{customerProfile.website}</a></div>
                             ) : null}
                             {customerProfile.phone ? (
-                              <div className="flex gap-2"><span className="shrink-0 text-muted-foreground w-20">电话</span><span>{customerProfile.phone}</span></div>
+                              <div className={`flex gap-2 ${hl('phone')}`}><span className="shrink-0 text-muted-foreground w-20">电话</span><span>{customerProfile.phone}</span></div>
                             ) : null}
                             {customerProfile.address && customerProfile.address !== detailTarget.address ? (
-                              <div className="flex gap-2"><span className="shrink-0 text-muted-foreground w-20">注册地址</span><span>{customerProfile.address}</span></div>
+                              <div className={`flex gap-2 ${hl('address')}`}><span className="shrink-0 text-muted-foreground w-20">注册地址</span><span>{customerProfile.address}</span></div>
                             ) : null}
                             {customerProfile.personnel?.length ? (
                               <div className="mt-2">
@@ -2150,7 +2163,8 @@ export function Customers() {
                             ) : null}
                           </div>
                         </div>
-                      ) : null}
+                        )
+                      })() : null}
 
                       <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
                         <div className="rounded-lg border p-4">

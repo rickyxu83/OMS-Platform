@@ -258,6 +258,7 @@ function customerPayload(row, contacts = [], sortLocale = 'zh-CN', includeSalesD
     // 客户资讯标记：有天眼查资料的客户（前端列表加角标）
     profileFetchedAt: row.profile_fetched_at || null,
     profileIndustry: row.profile_industry || null,
+    profileChangedFields: typeof row.profile_changed_fields === 'string' ? JSON.parse(row.profile_changed_fields) : (row.profile_changed_fields || []),
     sortInitial: sort.sortInitial,
     sortKey: sort.sortKey,
     sortLocale,
@@ -955,7 +956,8 @@ async function list(req, res) {
             remark, c.created_at, c.updated_at,
             COALESCE(soc.service_order_count, 0) AS service_order_count,
             cp.fetched_at AS profile_fetched_at,
-            cp.industry AS profile_industry
+            cp.industry AS profile_industry,
+            cp.changed_fields AS profile_changed_fields
       FROM customers c
       LEFT JOIN (
         SELECT customer_id, COUNT(*) AS service_order_count

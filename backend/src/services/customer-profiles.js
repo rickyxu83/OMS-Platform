@@ -25,12 +25,19 @@ async function ensureTables() {
       profile_text TEXT COMMENT '企业简介',
       personnel_json JSON COMMENT '主要人员 [{name,title}]',
       raw_json JSON COMMENT '原始数据备份',
+      changed_fields JSON COMMENT '本次刷新变更的字段名列表',
       source VARCHAR(32) DEFAULT 'tianyancha',
       fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       CONSTRAINT fk_customer_profiles_customer FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE CASCADE
     )`,
   )
+  // 兼容已有表：补 changed_fields 列
+  const col = await query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE table_schema = DATABASE() AND table_name = 'customer_profiles' AND column_name = 'changed_fields' LIMIT 1`,
+  )
+  if (!col[0]) await query("ALTER TABLE customer_profiles ADD COLUMN changed_fields JSON COMMENT '本次刷新变更的字段名列表'")
 }
 
 // 从天眼查抓取客户资讯
@@ -83,15 +90,35 @@ async function refreshCustomerProfile(customerId, token) {
   const customers = await query('SELECT id, name FROM customers WHERE id = :id LIMIT 1', { id: customerId })
   if (!customers[0]) throw new Error('客户不存在')
 
+  // 先取旧数据用于变更对比
+  const oldRows = await query('SELECT * FROM customer_profiles WHERE customer_id = :customerId LIMIT 1', { customerId })
+  const oldProfile = oldRows[0] || null
+
   const profile = await fetchProfile(customers[0].name, token)
+
+  // 对比变更字段
+  const TRACKED_FIELDS = ['company_name', 'industry', 'legal_person', 'registered_capital', 'found_date', 'reg_status', 'company_type', 'address', 'website', 'phone']
+  const changedFields = []
+  if (oldProfile) {
+    const newValues = {
+      company_name: profile.companyName, industry: profile.industry, legal_person: profile.legalPerson,
+      registered_capital: profile.registeredCapital, found_date: profile.foundDate, reg_status: profile.regStatus,
+      company_type: profile.companyType, address: profile.address, website: profile.website, phone: profile.phone,
+    }
+    for (const field of TRACKED_FIELDS) {
+      const oldVal = String(oldProfile[field] || '').trim()
+      const newVal = String(newValues[field] || '').trim()
+      if (oldVal !== newVal) changedFields.push(field)
+    }
+  }
 
   await query(
     `INSERT INTO customer_profiles
       (customer_id, company_name, industry, legal_person, registered_capital, found_date,
-       reg_status, company_type, address, website, phone, email, profile_text, personnel_json, raw_json, fetched_at)
+       reg_status, company_type, address, website, phone, email, profile_text, personnel_json, raw_json, changed_fields, fetched_at)
      VALUES
       (:customerId, :companyName, :industry, :legalPerson, :registeredCapital, :foundDate,
-       :regStatus, :companyType, :address, :website, :phone, :email, :profileText, :personnel, :raw, NOW())
+       :regStatus, :companyType, :address, :website, :phone, :email, :profileText, :personnel, :raw, :changedFields, NOW())
      ON DUPLICATE KEY UPDATE
       company_name = VALUES(company_name), industry = VALUES(industry),
       legal_person = VALUES(legal_person), registered_capital = VALUES(registered_capital),
@@ -99,7 +126,7 @@ async function refreshCustomerProfile(customerId, token) {
       company_type = VALUES(company_type), address = VALUES(address),
       website = VALUES(website), phone = VALUES(phone), email = VALUES(email),
       profile_text = VALUES(profile_text), personnel_json = VALUES(personnel_json),
-      raw_json = VALUES(raw_json), fetched_at = NOW()`,
+      raw_json = VALUES(raw_json), changed_fields = VALUES(changed_fields), fetched_at = NOW()`,
     {
       customerId,
       companyName: profile.companyName?.slice(0, 255) || null,
@@ -116,10 +143,11 @@ async function refreshCustomerProfile(customerId, token) {
       profileText: profile.profileText || null,
       personnel: JSON.stringify(profile.personnel),
       raw: JSON.stringify(profile.raw),
+      changedFields: JSON.stringify(changedFields),
     },
   )
 
-  return profile
+  return { ...profile, changedFields }
 }
 
 // 批量刷新客户资讯（调度器用，分天轮询控制免费额度）
@@ -185,6 +213,7 @@ async function getProfile(customerId) {
     email: row.email,
     profileText: row.profile_text,
     personnel: typeof row.personnel_json === 'string' ? JSON.parse(row.personnel_json) : (row.personnel_json || []),
+    changedFields: typeof row.changed_fields === 'string' ? JSON.parse(row.changed_fields) : (row.changed_fields || []),
     source: row.source,
     fetchedAt: row.fetched_at,
   }
