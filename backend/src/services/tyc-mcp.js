@@ -49,7 +49,7 @@ async function getCompanyProfile(companyName, token) {
   return mcpCall('get_company_profile', { searchKey: companyName }, token)
 }
 
-// 主要人员（董事长/总经理等）
+// 主要人员（董事长/总经理等）——⚠️ 需 VIP 权益，免费 token 调用会 403，生产环境勿用
 async function getKeyPersonnel(companyName, token) {
   return mcpCall('get_key_personnel', { searchKey: companyName }, token)
 }
@@ -64,7 +64,7 @@ async function getCompanyAnnouncement(companyName, token) {
   return mcpCall('get_company_announcement', { searchKey: companyName }, token)
 }
 
-// 企业风险总览
+// 企业风险总览（免费层可用：返回实质风险计数 + 股东变更预警）
 async function getRiskOverview(companyName, token) {
   return mcpCall('get_risk_overview', { searchKey: companyName }, token)
 }

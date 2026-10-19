@@ -1588,16 +1588,22 @@ async function profileDetail(req, res) {
 }
 
 // 刷新客户资讯
+// body: { mode?: 'risk' | 'full' } —— risk 只刷风险总览（1 次调用），full 工商+简介+风险（3 次调用）
 async function profileRefresh(req, res) {
   const { getTycToken } = require('../../services/tyc-mcp')
   const { refreshCustomerProfile } = require('../../services/customer-profiles')
   const token = await getTycToken()
   if (!token) return res.status(400).json({ error: { message: '天眼查 API token 未配置（系统设置 → news.tianyanchaToken）' } })
+  const mode = req.body?.mode === 'risk' ? 'risk' : 'full'
   try {
-    const profile = await refreshCustomerProfile(Number(req.params.id), token)
-    res.json({ ok: true, profile })
+    const profile = await refreshCustomerProfile(Number(req.params.id), token, { mode })
+    res.json({ ok: true, mode, profile })
   } catch (err) {
-    res.status(500).json({ error: { message: err.message || '刷新失败' } })
+    const msg = err.message || '刷新失败'
+    // 免费额度每日 10 次：额度用完 / 权益不足单独成 429/403，前端据此禁用按钮
+    if (/quota|额度/.test(msg)) return res.status(429).json({ error: { message: '天眼查今日免费额度已用完，明日 0 点重置', code: 'quota_exhausted' } })
+    if (/VIP|权益|entitlement/i.test(msg)) return res.status(403).json({ error: { message: '该接口需要天眼查 VIP 权益', code: 'insufficient_entitlement' } })
+    res.status(500).json({ error: { message: msg } })
   }
 }
 
