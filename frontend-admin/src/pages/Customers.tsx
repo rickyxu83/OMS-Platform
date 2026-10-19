@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft, Building2, Star, CircleUserRound, MoreHorizontal, RotateCcw, type LucideIcon } from "lucide-react";
+import { Search, Plus, RefreshCw, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft, Building2, Star, CircleUserRound, MoreHorizontal, RotateCcw, BookOpen, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +51,9 @@ interface Customer {
   updatedAt?: string;
   createdAt?: string;
   contacts?: Array<{ id?: string | number; name?: string; phone?: string; email?: string }>;
+  // 客户资讯标记（天眼查）
+  profileFetchedAt?: string | null;
+  profileIndustry?: string | null;
 }
 
 interface CustomerDevice {
@@ -1338,6 +1341,15 @@ export function Customers() {
             ) : (
               <span title={t.misc.unknown} className="truncate">{t.misc.unknown}</span>
             )}
+            {c.profileFetchedAt ? (
+              <span
+                className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-blue-200"
+                title={`已有客户资讯（${c.profileIndustry || '天眼查'}）· ${formatDate(c.profileFetchedAt)}更新`}
+              >
+                <BookOpen className="h-3 w-3" />
+                资讯
+              </span>
+            ) : null}
           </span>
         }
         status={(

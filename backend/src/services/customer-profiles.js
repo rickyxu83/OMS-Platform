@@ -35,11 +35,12 @@ async function ensureTables() {
 
 // 从天眼查抓取客户资讯
 // 注意：必须用大陆子公司全名搜（天眼查是大陆企业库，台湾母公司名搜不到）
-async function fetchProfile(customerName, token) {
+// 免费额度控制：lite=true 只调工商登记（1 次/客户），lite=false 调全部 3 个接口（3 次/客户）
+async function fetchProfile(customerName, token, { lite = true } = {}) {
   const [regInfo, profileText, personnel] = await Promise.all([
     tyc.getRegistrationInfo(customerName, token).catch(() => null),
-    tyc.getCompanyProfile(customerName, token).catch(() => null),
-    tyc.getKeyPersonnel(customerName, token).catch(() => null),
+    lite ? Promise.resolve(null) : tyc.getCompanyProfile(customerName, token).catch(() => null),
+    lite ? Promise.resolve(null) : tyc.getKeyPersonnel(customerName, token).catch(() => null),
   ])
 
   // 解析工商登记信息：天眼查 MCP 返回 { sources: { base: {...}, type: {...} } }

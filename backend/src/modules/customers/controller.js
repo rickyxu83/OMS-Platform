@@ -255,6 +255,9 @@ function customerPayload(row, contacts = [], sortLocale = 'zh-CN', includeSalesD
     mapPoiName: row.map_poi_name,
     mapAddress: row.map_address,
     serviceOrderCount: Number(row.service_order_count || 0),
+    // 客户资讯标记：有天眼查资料的客户（前端列表加角标）
+    profileFetchedAt: row.profile_fetched_at || null,
+    profileIndustry: row.profile_industry || null,
     sortInitial: sort.sortInitial,
     sortKey: sort.sortKey,
     sortLocale,
@@ -950,7 +953,9 @@ async function list(req, res) {
             c.level,
             latitude, longitude, map_provider, map_poi_id, map_poi_name, map_address,
             remark, created_at, updated_at,
-            COALESCE(soc.service_order_count, 0) AS service_order_count
+            COALESCE(soc.service_order_count, 0) AS service_order_count,
+            cp.fetched_at AS profile_fetched_at,
+            cp.industry AS profile_industry
       FROM customers c
       LEFT JOIN (
         SELECT customer_id, COUNT(*) AS service_order_count
@@ -958,6 +963,7 @@ async function list(req, res) {
         WHERE status <> 'cancelled'
         GROUP BY customer_id
       ) soc ON soc.customer_id = c.id
+      LEFT JOIN customer_profiles cp ON cp.customer_id = c.id
       LEFT JOIN (
         SELECT so.customer_id, COUNT(*) AS engineer_order_count, MAX(COALESCE(so.submitted_at, so.created_at)) AS last_used_at
         FROM service_orders so
