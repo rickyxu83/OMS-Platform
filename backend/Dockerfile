@@ -8,7 +8,9 @@ RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories
     && apk add --no-cache --timeout 30 font-noto-cjk
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+# npm 同样走国内镜像。lockfile 里 resolved 指向 registry.npmjs.org，
+# --replace-registry-host=npmjs（npm>=9.5 的默认值，显式写出防止默认变动）会把 tarball 地址改写到镜像源。
+RUN npm ci --omit=dev --registry=https://registry.npmmirror.com --replace-registry-host=npmjs
 
 COPY . .
 
