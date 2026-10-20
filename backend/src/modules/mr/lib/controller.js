@@ -150,6 +150,9 @@ function orderPayload(row) {
 function canView(order, user, assistantIds = []) {
   if (user.role === 'admin') return true
   if (Number(order.voidPendingApproverId || 0) === Number(user.id)) return true
+  // 作废审批人（如行政主管）审批完后仍能查看该单：decideVoid 提交后返回详情依赖 canView，
+  // 否则审批实际成功但响应 403「无权查看」，用户误以为失败重复点击触发「待办不属于你」
+  if (order.voidParticipant) return true
   if (user.role === 'operations_director' && ['approved', 'voided'].includes(order.status)) return true
   if (SALES_ROLES.has(user.role) && Number(order.salesOwnerId) === Number(user.id)) return true
   if (ASSISTANT_LIKE_ROLES.has(user.role) && assistantIds.includes(Number(order.assistantUserId))) return true
@@ -267,6 +270,10 @@ async function loadRawOrder(id, user = null) {
             (SELECT va.approver_id FROM mr_void_approvals va
              WHERE va.mr_id = o.id AND va.action IS NULL
              ORDER BY va.id DESC LIMIT 1) AS void_pending_approver_id,
+            EXISTS (
+              SELECT 1 FROM mr_void_approvals void_participant
+              WHERE void_participant.mr_id = o.id AND void_participant.approver_id = :viewerId
+            ) AS void_participant,
             EXISTS (
               SELECT 1 FROM mr_approvals participant
               WHERE participant.mr_id = o.id
@@ -2975,6 +2982,7 @@ async function quoteCoachDistill(req, res) {
 
 module.exports = {
   ensureTables,
+  canView,
   remind,
   processStaleMrReminders,
   assistantIdsFor,
