@@ -1582,7 +1582,7 @@ async function submitPurchase(req, res) {
       // spec 013：公司料号所有品项必填（无厂商/0 成本/敦阳敦沪内部承担也要）；采购单号仅有外部供应商的品项必填
       if (!companyValue) throw badRequest(`第 ${item.row_no} 项「${String(item.name || '').slice(0, 50)}」需填写公司料号`)
       const needPurchase = vendorText !== '' && !isInternalVendor(vendorText)
-      if (needPurchase && !value) throw badRequest('有外部供应商的品项需填写采购单号；供应商为敦阳/敦沪（内部承担）或未填的品项不强制')
+      if (needPurchase && !value) throw badRequest('有外部供应商的品项需填写采购单号；供应商为敦阳/敦沪（内部承担，台湾敦阳除外）或未填的品项不强制')
       const before = String(item.purchase_order_no || '')
       if (before !== value) auditChanges.push({ rowNo: item.row_no, name: item.name, field: 'purchaseOrderNo', before: before || null, after: value })
       const beforeCompany = String(item.company_part_no || '')
