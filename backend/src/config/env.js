@@ -62,7 +62,8 @@ const env = {
   webauthnRpName: process.env.WEBAUTHN_RP_NAME || 'OMS Platform',
   webauthnOrigins: parseCsv(process.env.WEBAUTHN_ORIGINS),
   // 暗启动：逗号分隔的禁用模块清单（对应 app.js 挂载点 key），用于生产对半成品模块（MR/考勤/审批/签名）零暴露。
-  // 默认空（全挂载）；生产 compose 注入 FEATURE_MODULES_DISABLED=mr,attendance,approval-tasks,user-signature
+  // 默认空（全挂载）；按需按模块关停，如 FEATURE_MODULES_DISABLED=mr,attendance
+  // 考勤 2026-10-20 内测上线：生产已全挂载，backend.env 不再禁用 attendance
   featureModulesDisabled: new Set(parseCsv(process.env.FEATURE_MODULES_DISABLED)),
   uploadDir: process.env.UPLOAD_DIR || 'uploads',
   amapKey: process.env.AMAP_KEY || '',
