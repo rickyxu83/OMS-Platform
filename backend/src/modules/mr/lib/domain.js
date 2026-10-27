@@ -384,7 +384,8 @@ function validateSubmission(order, items) {
   if (order.pricingMode === 1 && items.length) {
     const margins = items.map((item) => item.marginRate).filter((value) => value !== null)
     if (margins.length !== items.length) errors.push({ field: 'items', message: '多项系统集成须完整填写各品项的采购价，方可计算毛利' })
-    else if (!items.every((item) => item.quotedUnitPrice !== null) && Math.max(...margins) - Math.min(...margins) > 0.01) errors.push({ field: 'items', message: '按采购价分摊时，多项系统集成的各品项毛利率必须一致' })
+    // 容差 0.05：分摊后小计/成本四舍五入到分，小金额行的舍入噪声可达 ~0.02 个百分点（2026-10 MR53 跳线行被误拦）
+    else if (!items.every((item) => item.quotedUnitPrice !== null) && Math.max(...margins) - Math.min(...margins) > 0.05) errors.push({ field: 'items', message: '按采购价分摊时，多项系统集成的各品项毛利率必须一致' })
   }
 
   if (order.pricingMode === 2) {
