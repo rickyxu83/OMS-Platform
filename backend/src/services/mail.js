@@ -1474,7 +1474,7 @@ async function sendHolidaySyncMail({ year, synced, count = 0, warnings = [], rea
     <div style="font-family:Arial,'Microsoft YaHei',sans-serif;line-height:1.7;color:#1f2937">
       <h2 style="margin:0 0 12px">${synced ? '法定节假日自动同步完成' : '法定节假日自动同步失败'}</h2>
       ${synced
-        ? `<p>系统已从国务院公告镜像双源自动同步 <b>${htmlEscape(String(year))} 年</b>法定节假日与调休补班安排，共 <b>${count}</b> 天，并已生效于加班折算规则。</p>
+        ? `<p>系统已从国务院公告镜像多源自动同步（≥3 源一致） <b>${htmlEscape(String(year))} 年</b>法定节假日与调休补班安排，共 <b>${count}</b> 天，并已生效于加班折算规则。</p>
            ${warningList}
            <p>请登录管理端「假勤设置 → 法定节假日」抽查确认。</p>`
         : `<p>系统尝试自动同步 <b>${htmlEscape(String(year))} 年</b>法定节假日失败：</p>
