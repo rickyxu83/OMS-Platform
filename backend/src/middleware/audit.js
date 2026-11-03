@@ -42,12 +42,26 @@ function auditTarget(req) {
   }
 }
 
+// 临时需求（2026-11-03 佬拍板）：假勤（考勤）模块的读操作也留审计，
+// 2026-12-31 23:59:59（北京时间）后自动失效。到期后此逻辑整体可删，恢复"只审计写操作"。
+const TEMP_READ_AUDIT_TARGET = 'attendance'
+const TEMP_READ_AUDIT_UNTIL = new Date('2026-12-31T23:59:59+08:00').getTime()
+
+function isTempReadAudit(req) {
+  if (req.method !== 'GET') return false
+  if (Date.now() > TEMP_READ_AUDIT_UNTIL) return false
+  const basePath = (req.baseUrl || '').replace(/^\/api\/v1\/?/, '')
+  return basePath.split('/').filter(Boolean)[0] === TEMP_READ_AUDIT_TARGET
+}
+
 function auditLogger(req, res, next) {
   const startedAt = Date.now()
   res.on('finish', () => {
-    if (!req.user || req.method === 'GET' || !actionByMethod[req.method]) return
+    if (!req.user || !actionByMethod[req.method]) return
     // GET/read 审计降噪：列表/查询每请求一记会在同一时刻产生大量相同 read 记录,
-    // 审计只保留写操作（create/update/delete）与既有业务审计,读操作不再留痕
+    // 审计只保留写操作（create/update/delete）与既有业务审计,读操作不再留痕；
+    // 例外：上方临时窗口期内的假勤读操作
+    if (req.method === 'GET' && !isTempReadAudit(req)) return
     if (req.path === '/health') return
 
     const { targetType, targetId } = auditTarget(req)
