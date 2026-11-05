@@ -3,6 +3,7 @@
 // 定时任务每天 2 次刷新，结果存 customer_news 表，首页「客户动态」卡片展示
 
 const { query } = require('../config/db')
+const env = require('../config/env')
 const https = require('https')
 const http = require('http')
 const { resolveParent, searchKeywords, searchExcludes, listedInfo, TW_STOCK, CN_STOCK } = require('./customer-parent-map')
@@ -317,8 +318,8 @@ async function refreshCustomerNews() {
       const eastmoneyItems = await fetchEastmoneyNews(customer.name)
       newsItems.push(...eastmoneyItems)
 
-      // 方案 B：天眼查（需要 token，每日限额 ~10 次，超限自动停止）
-      if (settings['news.tianyanchaToken'] && paidCallsToday < 10) {
+      // 方案 B：天眼查（需要 token，每日限额 ~10 次，超限自动停止；TYC_AUTO_REFRESH_DISABLED 时整个跳过）
+      if (!env.tycAutoRefreshDisabled && settings['news.tianyanchaToken'] && paidCallsToday < 10) {
         const tianyanchaItems = await fetchTianyanchaNews(customer.name, settings['news.tianyanchaToken'])
         newsItems.push(...tianyanchaItems)
         paidCallsToday++
