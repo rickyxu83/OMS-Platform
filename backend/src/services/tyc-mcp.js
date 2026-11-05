@@ -29,7 +29,15 @@ async function mcpCall(toolName, args = {}, token) {
   let data
   try { data = JSON.parse(text) } catch { throw new Error(`天眼查 MCP 响应非 JSON: HTTP ${response.status} ${text.slice(0, 200)}`) }
   if (response.status < 200 || response.status >= 300) {
-    throw new Error(`天眼查 MCP HTTP ${response.status}: ${data.error_description || data.error || text.slice(0, 200)}`)
+    const raw = data.error_description || data.error || text.slice(0, 200)
+    // 友好化常见错误：402 免费额度耗尽（如 "no single source can cover this call"）；403 权益不足
+    if (response.status === 402) {
+      throw new Error(`天眼查今日免费额度已用完，明日 0 点重置（HTTP 402: ${raw}）`)
+    }
+    if (response.status === 403) {
+      throw new Error(`该接口需要天眼查 VIP 权益或数据包（HTTP 403: ${raw}）`)
+    }
+    throw new Error(`天眼查 MCP HTTP ${response.status}: ${raw}`)
   }
   // 返回格式：{ content: [...] } 或直接 content 对象
   const content = data?.content
