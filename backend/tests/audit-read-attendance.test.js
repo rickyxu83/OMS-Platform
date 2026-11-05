@@ -91,7 +91,15 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     assert.equal(calls.length, 0)
   }
 
-  // 5. 过了 2026-12-31（北京时间）：假勤 GET 自动恢复不留痕
+  // 5. 导航角标自动轮询（pending-count）不留痕：非用户主动查看
+  {
+    const { auditLogger, calls } = loadAuditMiddleware()
+    simulate(auditLogger, { method: 'GET', baseUrl: '/api/v1/attendance', path: '/requests/pending-count' })
+    await sleep(10)
+    assert.equal(calls.length, 0)
+  }
+
+  // 6. 过了 2026-12-31（北京时间）：假勤 GET 自动恢复不留痕
   {
     const realNow = Date.now
     Date.now = () => new Date('2027-01-01T00:00:01+08:00').getTime()
