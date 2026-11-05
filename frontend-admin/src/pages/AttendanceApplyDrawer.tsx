@@ -308,7 +308,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
       if (startMinutes >= 12 * 60 && startMinutes < 13 * 60) return "调休开始时间不能在 12:00-13:00 午休时段内";
       if (!compTimeValid) return "调休时长必须以 1 小时为单位（最小 1 小时）";
     }
-    if (form.requestType === "leave" && form.leaveType === "personal" && !String(form.reason || "").trim()) return "请填写事假事由";
+    if (form.requestType === "leave" && ["personal", "other"].includes(form.leaveType) && !String(form.reason || "").trim()) return form.leaveType === "personal" ? "请填写事假事由" : "请填写请假原因";
     if (proofRequired && proofFiles.length === 0) {
       return `${leaveTypeLabelOf(form.leaveType, leaveTypes)}必须上传证明`;
     }
@@ -363,7 +363,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
             startAt: payloadStartAt,
             endAt: payloadEndAt,
             hours: payloadHours,
-            reason: requestType === "leave" && ["personal", "annual"].includes(form.leaveType) ? String(form.reason || "").trim() || undefined : undefined,
+            reason: requestType === "leave" && ["personal", "annual", "other"].includes(form.leaveType) ? String(form.reason || "").trim() || undefined : undefined,
           });
         const draftId: number | string = draft.id;
         // 附件阶段独立捕获：失败自动撤回刚建的申请，提示重填重提（不留草稿续传）
@@ -382,7 +382,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
           return;
         }
         // 事由随提交落库：新建申请与建单值一致
-        await api.post(`/attendance/requests/${draftId}/submit`, requestType === "leave" && form.leaveType === "personal" ? { reason: String(form.reason || "").trim() } : undefined);
+        await api.post(`/attendance/requests/${draftId}/submit`, requestType === "leave" && ["personal", "other"].includes(form.leaveType) ? { reason: String(form.reason || "").trim() } : undefined);
       }
       toast.success("申请已提交");
       onOpenChange(false);
@@ -788,6 +788,19 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </div>
                 ) : null}
 
+                {form.requestType === "leave" && form.leaveType === "other" ? (
+                  <div className="space-y-2">
+                    <Label>请假原因<span className="text-destructive"> *</span></Label>
+                    <Textarea
+                      rows={2}
+                      className="resize-none"
+                      value={form.reason || ""}
+                      placeholder="请填写请假原因，审批人可见"
+                      onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
+                    />
+                  </div>
+                ) : null}
+
                 {form.requestType === "leave" && form.leaveType === "annual" ? (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
@@ -1009,9 +1022,9 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       <span className="text-muted-foreground">工作代理</span>
                       <span className="font-medium">{selectedDelegateName || "未选择"}</span>
                     </div>
-                    {form.requestType === "leave" && form.leaveType === "personal" ? (
+                    {form.requestType === "leave" && ["personal", "other"].includes(form.leaveType) ? (
                       <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
-                        <span className="text-muted-foreground">事由</span>
+                        <span className="text-muted-foreground">{form.leaveType === "personal" ? "事由" : "请假原因"}</span>
                         <span className="font-medium">{String(form.reason || "").trim() || "未填写"}</span>
                       </div>
                     ) : null}
