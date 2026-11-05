@@ -1034,7 +1034,7 @@ export function Dashboard() {
           const Icon = stat.icon;
           return (
             <Card key={stat.title} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-              <CardHeader className="flex flex-row items-center justify-between px-3 pb-2 pt-3 sm:px-4 sm:pt-4">
+              <CardHeader className="flex flex-row items-center justify-between px-3 pb-1 pt-2.5 sm:px-4 sm:pt-3">
                 <CardTitle className="text-xs font-medium text-muted-foreground sm:text-sm">
                   {stat.title}
                 </CardTitle>
@@ -1042,9 +1042,9 @@ export function Dashboard() {
                   <Icon className={`w-4 h-4 ${stat.color}`} />
                 </div>
               </CardHeader>
-              <CardContent className="px-3 pb-3 sm:px-4 sm:pb-4">
+              <CardContent className="px-3 pb-2.5 sm:px-4 sm:pb-3">
                 <div className="flex items-baseline gap-2">
-                  <div className="text-2xl font-bold sm:text-3xl tabular-nums">
+                  <div className="text-xl font-bold sm:text-2xl tabular-nums">
                     {loading ? (
                       <Skeleton className="h-8 w-16" />
                     ) : (
@@ -1058,16 +1058,16 @@ export function Dashboard() {
                   </div>
                 </div>
                 {loading ? null : stat.spark ? (
-                  <div className="mt-2">
-                    <Sparkline data={stat.spark} className={`h-8 w-full ${stat.color}`} />
+                  <div className="mt-1">
+                    <Sparkline data={stat.spark} className={`h-6 w-full ${stat.color}`} />
                     <p className="mt-1 text-xs text-muted-foreground">{t.stats.trend14}</p>
                   </div>
                 ) : stat.key === "today" ? (
                   // 今日为 0 时不显示 -100% 红箭头（刺眼且无信息量），改中性文案
                   todayTrendCount === 0 ? (
-                    <p className="mt-2 text-xs text-muted-foreground">{t.stats.noToday}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{t.stats.noToday}</p>
                   ) : stat.delta !== null && stat.delta !== undefined ? (
-                    <p className="mt-2 flex items-center gap-1 text-xs">
+                    <p className="mt-1 flex items-center gap-1 text-xs">
                       {stat.delta >= 0 ? (
                         <TrendingUp className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
                       ) : (
