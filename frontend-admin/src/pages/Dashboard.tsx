@@ -1210,63 +1210,6 @@ export function Dashboard() {
         </Card>
       )}
 
-      {/* 客户动态（有新闻时才显示卡片） */}
-      {customerNews.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg">客户动态</CardTitle>
-                <CardDescription>近 3 个月客户相关新闻与公告</CardDescription>
-              </div>
-              {(user?.role === 'sales' || user?.role === 'sales_supervisor') && myCustomerNames.size > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setNewsOnlyMine(!newsOnlyMine)}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-                    newsOnlyMine ? 'bg-primary text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                  }`}
-                >
-                  {newsOnlyMine ? '✓ 只看我的客户' : '只看我的客户'}
-                </button>
-              ) : null}
-            </div>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 sm:px-6">
-            <div className="space-y-2.5">
-              {(newsOnlyMine ? customerNews.filter((item) => {
-                const names = String(item.customerNames || item.customerName || '').split('、')
-                return names.some((n) => myCustomerNames.has(n))
-              }) : customerNews).map((item) => {
-                // 3 天内的新闻标 NEW
-                const isNew = item.publishedAt && (Date.now() - new Date(String(item.publishedAt).replace(' ', 'T')).getTime()) < 3 * 24 * 3600 * 1000
-                return (
-                <div key={item.id} className="flex items-start gap-3 rounded-lg border bg-background px-3 py-2.5 text-sm">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      {isNew ? <span className="shrink-0 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">NEW</span> : null}
-                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${item.customerLevel === 'vip' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
-                        {item.customerNames || item.customerName}
-                      </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{item.sourceName || item.source}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{item.publishedAt ? formatDate(item.publishedAt) : ''}</span>
-                    </div>
-                    {item.url ? (
-                      <a href={item.url} target="_blank" rel="noopener noreferrer" className="mt-1 block truncate font-medium text-foreground hover:text-primary hover:underline">
-                        {item.title}
-                      </a>
-                    ) : (
-                      <div className="mt-1 truncate font-medium text-foreground">{item.title}</div>
-                    )}
-                    {item.summary ? <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.summary}</div> : null}
-                  </div>
-                </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-5 lg:gap-6">
         <section className="lg:col-span-3">
@@ -1347,6 +1290,64 @@ export function Dashboard() {
           </Card>
         </section>
       </div>
+
+      {/* 客户动态（有新闻时才显示卡片） */}
+      {customerNews.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg">客户动态</CardTitle>
+                <CardDescription>近 3 个月客户相关新闻与公告</CardDescription>
+              </div>
+              {(user?.role === 'sales' || user?.role === 'sales_supervisor') && myCustomerNames.size > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setNewsOnlyMine(!newsOnlyMine)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                    newsOnlyMine ? 'bg-primary text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  }`}
+                >
+                  {newsOnlyMine ? '✓ 只看我的客户' : '只看我的客户'}
+                </button>
+              ) : null}
+            </div>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 sm:px-6">
+            <div className="max-h-[340px] space-y-2.5 overflow-y-auto pr-1">
+              {(newsOnlyMine ? customerNews.filter((item) => {
+                const names = String(item.customerNames || item.customerName || '').split('、')
+                return names.some((n) => myCustomerNames.has(n))
+              }) : customerNews).map((item) => {
+                // 3 天内的新闻标 NEW
+                const isNew = item.publishedAt && (Date.now() - new Date(String(item.publishedAt).replace(' ', 'T')).getTime()) < 3 * 24 * 3600 * 1000
+                return (
+                <div key={item.id} className="flex items-start gap-3 rounded-lg border bg-background px-3 py-2.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      {isNew ? <span className="shrink-0 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">NEW</span> : null}
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${item.customerLevel === 'vip' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
+                        {item.customerNames || item.customerName}
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{item.sourceName || item.source}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{item.publishedAt ? formatDate(item.publishedAt) : ''}</span>
+                    </div>
+                    {item.url ? (
+                      <a href={item.url} target="_blank" rel="noopener noreferrer" className="mt-1 block truncate font-medium text-foreground hover:text-primary hover:underline">
+                        {item.title}
+                      </a>
+                    ) : (
+                      <div className="mt-1 truncate font-medium text-foreground">{item.title}</div>
+                    )}
+                    {item.summary ? <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.summary}</div> : null}
+                  </div>
+                </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={Boolean(previewOrder)} onOpenChange={(open) => { if (!open) closeOrderPreview(); }}>
         <DialogContent
