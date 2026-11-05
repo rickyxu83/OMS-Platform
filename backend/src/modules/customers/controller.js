@@ -18,6 +18,7 @@ const CUSTOMER_FORCE_DELETE_ROLES = new Set(['admin', 'dispatcher', 'operations_
 const SALES_DELIVERY_ADDRESS_ROLES = new Set(['admin', 'assistant', 'operations_director', 'sales_supervisor', 'sales'])
 let ensureCustomerColumnsPromise = null
 let ensureCustomerContactEmailColumnPromise = null
+let ensureCustomerProfileTablesPromise = null
 let pinyinFn = null
 
 try {
@@ -126,6 +127,21 @@ async function ensureCustomerContactEmailColumn() {
     })()
   }
   return ensureCustomerContactEmailColumnPromise
+}
+
+// customer_profiles 由 customer-profiles 服务惰性建表，但客户列表 JOIN 了它，
+// 必须在使用前确保存在（生产曾因表未建导致列表 500、首页地图无数据，2026-11-05）
+async function ensureCustomerProfileTables() {
+  if (!ensureCustomerProfileTablesPromise) {
+    ensureCustomerProfileTablesPromise = (async () => {
+      const { ensureTables } = require('../../services/customer-profiles')
+      await ensureTables()
+    })().catch((error) => {
+      ensureCustomerProfileTablesPromise = null // 失败允许下次重试
+      throw error
+    })
+  }
+  return ensureCustomerProfileTablesPromise
 }
 function normalizeCustomerLevel(level) {
   return CUSTOMER_LEVELS.has(level) ? level : 'normal'
@@ -918,6 +934,7 @@ async function deletePreview(req, res) {
 async function list(req, res) {
   await ensureCustomerColumns()
   await ensureCustomerContactEmailColumn()
+  await ensureCustomerProfileTables()
   const { salesperson = '', mine = '' } = req.query
   const sortLocale = normalizeSortLocale(req.query.sortLocale || req.query.lang)
   const keyword = String(req.query.keyword ?? req.query.q ?? '').trim()
