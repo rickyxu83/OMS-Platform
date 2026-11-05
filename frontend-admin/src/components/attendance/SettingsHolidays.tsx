@@ -12,8 +12,8 @@ import { fmtHolidayDate, holidayWeekday, type LegalHolidayItem } from "@/pages/a
 
 // 法定节假日模块说明文案
 const HOLIDAY_TABLE_HELP = "法定节假日数据来源：① 内置——系统预置国务院已公布年份，启动时自动校正；② 自动——每年 11~12 月每天 09:15 自动检查来年数据，从两个国务院公告镜像源（holiday-cn、jiejiariapi）拉取并比对，一致后自动写入并邮件通知管理员；同步失败时每周一提醒一次，12 月 15 日起仍未成功则每天提醒；③ 手动——管理员手工新增。「调休补班」按正常工作日处理。";
-const HOLIDAY_SYNC_HELP = "数据来自 holiday-cn 与 jiejiariapi 两个独立维护的国务院公告镜像源，双源比对一致且通过结构校验（放假日数量合理、补班日必须在周末、七大节日齐全）后才展示预览；点击「确认写入」时后端会重新拉取校验，不信任前端回传。支持任意年份（可用于回填历史或测试）。来年数据无需手动操作：每年 11 月起系统每天自动同步，成功或持续失败都会邮件通知管理员。";
-const HOLIDAY_SOURCE_HELP = "内置：系统预置的官方数据，每次启动自动校正；自动：每年 11~12 月定时任务双源同步写入；手动：管理员手工维护，作为前两者的兜底。";
+const HOLIDAY_SYNC_HELP = "数据来自 holiday-cn、lanceliao、chinese-days、jiejiariapi 四个独立维护的国务院公告镜像源，多数决比对（≥3 源一致）且通过结构校验（放假日数量合理、补班日必须在周末、七大节日齐全）后才展示预览；个别源更新滞后或暂无数据不影响其他源达成多数一致；点击「确认写入」时后端会重新拉取校验，不信任前端回传。支持任意年份（可用于回填历史或测试）。来年数据无需手动操作：每年 11 月起系统每天自动同步（≥3 源一致才写入），成功或持续失败都会邮件通知管理员。";
+const HOLIDAY_SOURCE_HELP = "内置：系统预置的官方数据，每次启动自动校正；自动：每年 11~12 月定时任务多源同步写入；手动：管理员手工维护，作为前两者的兜底。";
 const HOLIDAY_SOURCE_LABELS: Record<string, string> = {
   builtin: "内置",
   manual: "手动",
@@ -56,7 +56,7 @@ interface SettingsHolidaysProps {
   enableLegalHoliday: (item: LegalHolidayItem) => void;
 }
 
-/** 考勤设置-工作日历：法定节假日列表 + 双源同步预览 + 手工维护 */
+/** 考勤设置-工作日历：法定节假日列表 + 多源同步预览 + 手工维护 */
 export function SettingsHolidays(props: SettingsHolidaysProps) {
   const {
     canManage, holidayYear, setHolidayYear, syncYear, setSyncYear, syncPreview, setSyncPreview,

@@ -339,6 +339,7 @@ async function update(req, res) {
         passwordHash,
       },
     )
+    await clearLoginRateLimitForUser(id)
   } else {
     await query(
       `UPDATE users
@@ -424,6 +425,7 @@ async function updateMe(req, res) {
   }
 
   await query(`UPDATE users SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = :id`, params)
+  if (newPassword) await clearLoginRateLimitForUser(req.user.id)
   if (engineerSignature !== null && params.engineerSignature) {
     await backfillMrApprovalSignatureSnapshots(req.user.id, params.engineerSignature)
   }

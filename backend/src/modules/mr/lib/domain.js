@@ -38,9 +38,13 @@ function text(value, max = 500) {
 // 用途（spec 013 起）：①采购提交时内部承担品项不强制采购单号（但公司料号仍必填）；②报价导入的自己公司识别同口径。
 // 注意：签核通过不再据此跳过采购——所有 MR 一律流转采购填料号。
 const INTERNAL_VENDOR_RE = /(敦阳|敦陽|stark|dunyang|敦沪|dunhu)/i
+// 台湾敦阳为例外（2026-10-20 佬裁决）：台湾主体是独立下单对象，按普通外部厂商对待（需填采购单号）
+const TAIWAN_VENDOR_RE = /台(湾|灣)|taiwan/i
 
 function isInternalVendor(vendor) {
-  return INTERNAL_VENDOR_RE.test(String(vendor || '').trim())
+  const text = String(vendor || '').trim()
+  if (TAIWAN_VENDOR_RE.test(text)) return false
+  return INTERNAL_VENDOR_RE.test(text)
 }
 
 function normalizedLabel(value, max = 32) {
@@ -380,7 +384,8 @@ function validateSubmission(order, items) {
   if (order.pricingMode === 1 && items.length) {
     const margins = items.map((item) => item.marginRate).filter((value) => value !== null)
     if (margins.length !== items.length) errors.push({ field: 'items', message: '多项系统集成须完整填写各品项的采购价，方可计算毛利' })
-    else if (!items.every((item) => item.quotedUnitPrice !== null) && Math.max(...margins) - Math.min(...margins) > 0.01) errors.push({ field: 'items', message: '按采购价分摊时，多项系统集成的各品项毛利率必须一致' })
+    // 容差 0.05：分摊后小计/成本四舍五入到分，小金额行的舍入噪声可达 ~0.02 个百分点（2026-10 MR53 跳线行被误拦）
+    else if (!items.every((item) => item.quotedUnitPrice !== null) && Math.max(...margins) - Math.min(...margins) > 0.05) errors.push({ field: 'items', message: '按采购价分摊时，多项系统集成的各品项毛利率必须一致' })
   }
 
   if (order.pricingMode === 2) {

@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useLocation, useNavigationType } from "react-router-dom";
-import { SHOW_ATTENDANCE } from "@/lib/feature-flags";
 import {
   LayoutDashboard,
   ListTodo,
@@ -118,7 +117,7 @@ const STRINGS: Record<AppLang, {
       customers: "客户档案",
       devices: "设备资产",
       "maintenance-parties": "维保方目录",
-      attendance: "假勤管理",
+      attendance: "假勤管理（内测）",
       "attendance-duty": "工程值班",
       timesheets: "月报导出",
       "smart-report": "智能报表",
@@ -175,7 +174,7 @@ const STRINGS: Record<AppLang, {
       customers: "客戶檔案",
       devices: "設備資產",
       "maintenance-parties": "維保方目錄",
-      attendance: "假勤管理",
+      attendance: "假勤管理（內測）",
       "attendance-duty": "工程值班",
       timesheets: "月報導出",
       "smart-report": "智能報表",
@@ -259,8 +258,7 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
   },
 ];
 
-/** 暗启动隐藏入口：考勤（SHOW_ATTENDANCE=false 时从导航剔除，桌面与移动端共用 navGroups 过滤点）；MR/待办已点亮常驻 */
-const FEATURE_FLAG_HIDDEN_NAV_PATHS = new Set(["attendance"]);
+/** 考勤 2026-10-20 内测上线：菜单常驻，不再按开关剔除 */
 
 const MOBILE_NAV_LABELS: Record<string, string> = {
   dashboard: "首页",
@@ -342,7 +340,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   );
   const [attendancePendingCount, setAttendancePendingCount] = useState(0);
   useEffect(() => {
-    if (!SHOW_ATTENDANCE || !canApproveAttendance) return;
+    if (!canApproveAttendance) return;
     let cancelled = false;
     async function loadPendingCount() {
       try {
@@ -471,7 +469,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     NAV_CONFIG.map((group) => ({
       group: strings.groups[group.groupKey],
       items: group.items
-        .filter((item) => SHOW_ATTENDANCE || !FEATURE_FLAG_HIDDEN_NAV_PATHS.has(item.path))
         .map((item) => ({
           label: strings.pages[item.labelKey],
           icon: item.icon,

@@ -4,7 +4,6 @@ import { useAuth } from "@/contexts/AuthContext"
 import { Login } from "@/pages/Login"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useAdminDomTextI18n } from "@/lib/use-admin-dom-text-i18n"
-import { SHOW_ATTENDANCE } from "@/lib/feature-flags"
 import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from "react"
 
 const AdminLayout = lazy(() => import("@/components/AdminLayout").then((module) => ({ default: module.AdminLayout })))
@@ -61,12 +60,11 @@ const ADMIN_ROUTE_FALLBACKS: Array<{ path: string; permissions: string[] }> = [
   { path: "/attendance-duty", permissions: ROUTE_ACCESS_PERMISSIONS["attendance-duty"] },
   { path: "/timesheets", permissions: ROUTE_ACCESS_PERMISSIONS.timesheets },
 ]
-/** 暗启动隐藏路由：SHOW_ATTENDANCE=false 时登录默认跳转候选剔除考勤（与菜单过滤一致）；MR/待办已点亮常驻 */
-const FEATURE_FLAG_HIDDEN_ROUTE_PATHS = new Set(["/attendance", "/attendance-duty"])
+/** 考勤 2026-10-20 内测上线：路由常驻，不再按开关剔除 */
 
 function firstAccessibleAdminPath(hasPermission: (...permissions: string[]) => boolean) {
   return ADMIN_ROUTE_FALLBACKS.find((route) => (
-    (SHOW_ATTENDANCE || !FEATURE_FLAG_HIDDEN_ROUTE_PATHS.has(route.path)) && hasPermission(...route.permissions)
+    hasPermission(...route.permissions)
   ))?.path || "/login"
 }
 
@@ -354,26 +352,22 @@ export default function App() {
               </ProtectedAdminPage>
             }
           />
-          {SHOW_ATTENDANCE ? (
-            <>
-              <Route
-                path="/attendance"
-                element={
-                  <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.attendance}>
-                    <Attendance />
-                  </ProtectedAdminPage>
-                }
-              />
-              <Route
-                path="/attendance-duty"
-                element={
-                  <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["attendance-duty"]}>
-                    <Navigate to="/attendance" replace />
-                  </ProtectedAdminPage>
-                }
-              />
-            </>
-          ) : null}
+          <Route
+            path="/attendance"
+            element={
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS.attendance}>
+                <Attendance />
+              </ProtectedAdminPage>
+            }
+          />
+          <Route
+            path="/attendance-duty"
+            element={
+              <ProtectedAdminPage allowPermissions={ROUTE_ACCESS_PERMISSIONS["attendance-duty"]}>
+                <Navigate to="/attendance" replace />
+              </ProtectedAdminPage>
+            }
+          />
           <Route
             path="/timesheets"
             element={
