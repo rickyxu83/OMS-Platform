@@ -46,10 +46,13 @@ function auditTarget(req) {
 // 2026-12-31 23:59:59（北京时间）后自动失效。到期后此逻辑整体可删，恢复"只审计写操作"。
 const TEMP_READ_AUDIT_TARGET = 'attendance'
 const TEMP_READ_AUDIT_UNTIL = new Date('2026-12-31T23:59:59+08:00').getTime()
+// 导航角标等全局后台轮询接口：任何页面刷新都会自动触发，不属于用户主动查看假勤，排除
+const TEMP_READ_AUDIT_EXCLUDE_PATHS = new Set(['/requests/pending-count'])
 
 function isTempReadAudit(req) {
   if (req.method !== 'GET') return false
   if (Date.now() > TEMP_READ_AUDIT_UNTIL) return false
+  if (TEMP_READ_AUDIT_EXCLUDE_PATHS.has(req.path)) return false
   const basePath = (req.baseUrl || '').replace(/^\/api\/v1\/?/, '')
   return basePath.split('/').filter(Boolean)[0] === TEMP_READ_AUDIT_TARGET
 }
