@@ -293,7 +293,7 @@ export function Attendance() {
   const [holidayDraft, setHolidayDraft] = useState({ date: dateValue(), name: "", dayType: "legal_holiday" });
   // 审批页节假日展示按所选年份前端过滤（与申请抽屉共用 load 的全量数据，不再重复请求）
   const [publicHolidayYear, setPublicHolidayYear] = useState(todayYear());
-  // 同步官方节假日：双源拉取预览（任意年份），确认后写入；来年数据由后端定时任务自动同步
+  // 同步官方节假日：多源拉取预览（任意年份），确认后写入；来年数据由后端定时任务自动同步
   const [syncYear, setSyncYear] = useState(String(todayYear() + 1));
   const [syncPreview, setSyncPreview] = useState<{
     items: Array<{ date: string; name: string; dayType: string }>;

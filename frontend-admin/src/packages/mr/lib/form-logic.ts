@@ -3,9 +3,13 @@ import type { MrItem, MrOrder } from '../types'
 // 供应商为敦阳/敦沪（含繁体/英文写法）表示内部承担、无需采购（2026-09-08 佬裁决；2026-09-10 spec 011 加敦沪），
 // 与后端 mr/lib/domain.js 的 isInternalVendor 同口径
 const INTERNAL_VENDOR_RE = /(敦阳|敦陽|stark|dunyang|敦沪|dunhu)/i
+// 台湾敦阳为例外（2026-10-20 佬裁决）：台湾主体按普通外部厂商对待
+const TAIWAN_VENDOR_RE = /台(湾|灣)|taiwan/i
 
 export function isInternalVendor(vendor?: string | null) {
-  return INTERNAL_VENDOR_RE.test(String(vendor || '').trim())
+  const text = String(vendor || '').trim()
+  if (TAIWAN_VENDOR_RE.test(text)) return false
+  return INTERNAL_VENDOR_RE.test(text)
 }
 
 export function defaultCostTaxRate(invoiceType?: string | null) {

@@ -192,7 +192,10 @@ const styles = `
 
 export function MrDocumentView({ order, toolbar, embedded = false }: { order: MrOrder; toolbar?: ReactNode; embedded?: boolean }) {
   const status = order.status || 'draft'
-  const formal = ['approved', 'voided'].includes(status)
+  // 助理复核通过后，后续签核人的预览即隐藏未填写字段（与正式归档文件同口径，2026-10-14 佬裁决）；
+  // 助理步本人仍需看到「未填写」标记以便补全。归档态（approved/voided）始终隐藏。
+  const assistantApproved = status === 'in_review' && (order.approvals || []).some((approval) => approval.stepKey === 'assistant' && approval.action === 'approve')
+  const formal = ['approved', 'voided'].includes(status) || assistantApproved
   const detailGroupsRef = useRef<HTMLDivElement | null>(null)
   // 统一“订购与交付资料”4 张便当卡片高度（取最高者，避免内容行数不同导致参差）
   useEffect(() => {

@@ -1093,7 +1093,7 @@ async function deleteLegalHoliday(req, res) {
   res.json({ ok: true })
 }
 
-// 同步官方节假日（双源拉取国务院公告镜像）：预览不写库；确认时后端重新拉取再写入，不信任前端回传。
+// 同步官方节假日（多源拉取国务院公告镜像，多数决）：预览不写库；确认时后端重新拉取再写入，不信任前端回传。
 async function syncLegalHolidaysPreview(req, res) {
   await ensureSchema()
   const result = await fetchYearHolidays(req.body?.year)
@@ -1101,7 +1101,7 @@ async function syncLegalHolidaysPreview(req, res) {
   res.json({ year: result.year, items: result.items, warnings: result.warnings, sources: result.sources })
 }
 
-// 双源比对一致的节假日批量落库（source='auto'，后续启动时 builtin 官方数据仍可纠偏）
+// 多源多数决一致的节假日批量落库（source='auto'，后续启动时 builtin 官方数据仍可纠偏）
 async function writeSyncedHolidays(items, createdBy = null) {
   for (const item of items) {
     await query(
@@ -1127,7 +1127,7 @@ async function syncLegalHolidaysConfirm(req, res) {
   res.json({ ok: true, year: result.year, count: result.items.length, warnings: result.warnings, sources: result.sources })
 }
 
-// 定时任务用：每年 11~12 月检查来年节假日，缺失则自动双源同步（最严格模式：双源必须均可用且一致）。
+// 定时任务用：每年 11~12 月检查来年节假日，缺失则自动多源同步（最严格模式：≥3 源一致才写入）。
 // 返回结果由调用方（scheduler）决定邮件通知策略。
 async function autoSyncNextYearHolidays() {
   await ensureSchema()
@@ -1142,7 +1142,7 @@ async function autoSyncNextYearHolidays() {
   )
   const existing = Number(rows[0]?.cnt || 0)
   if (existing >= 20) return { skipped: true, reason: 'already_present', year: targetYear, count: existing }
-  const result = await fetchYearHolidays(targetYear, { requireDualSource: true })
+  const result = await fetchYearHolidays(targetYear, { requireConsensus: true })
   if (!result.ok) return { skipped: false, synced: false, year: targetYear, reason: result.reason }
   await writeSyncedHolidays(result.items, null)
   return { skipped: false, synced: true, year: targetYear, count: result.items.length, warnings: result.warnings }

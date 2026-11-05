@@ -11,6 +11,7 @@ const {
 const { deleteSalesNotificationsForOrderIds } = require('../../services/sales-notifications')
 const { deleteInstallSupervisorNotificationsForOrderIds } = require('../../services/install-supervisor-notifications')
 const { INTERNAL_CUSTOMER_NAME, INTERNAL_CUSTOMER_NAME_KEY } = require('./internal')
+const { ensureTables: ensureMrTables } = require('../mr/lib/tables')
 
 const CUSTOMER_LEVELS = new Set(['key', 'normal', 'potential', 'vip'])
 const CUSTOMER_FORCE_DELETE_ROLES = new Set(['admin', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales_supervisor', 'sales'])
@@ -1357,6 +1358,12 @@ async function merge(req, res) {
       sourceCustomerId,
     })
     await connection.execute('UPDATE devices SET customer_id = :targetCustomerId WHERE customer_id = :sourceCustomerId', {
+      targetCustomerId,
+      sourceCustomerId,
+    })
+    // MR 订购申请同步迁 customer_id；customer_name 为提交时快照（历史凭证），不随合并改写
+    await ensureMrTables()
+    await connection.execute('UPDATE mr_orders SET customer_id = :targetCustomerId WHERE customer_id = :sourceCustomerId', {
       targetCustomerId,
       sourceCustomerId,
     })

@@ -34,7 +34,7 @@ export function MrPurchaseCard({ order, onChanged, onDraftSaved }: { order: MrOr
   const items = order.items || []
   const status = String(order.purchaseStatus || '')
   const editable = Boolean(order.permissions?.canPurchase) && ['pending', 'done'].includes(status)
-  // 无供应商或供应商为敦阳/敦沪（内部承担）的品项没有外部下单对象，不强制采购单号，但仍需填公司料号
+  // 无供应商或供应商为敦阳/敦沪（内部承担，台湾敦阳除外）的品项没有外部下单对象，不强制采购单号，但仍需填公司料号
   const hasVendor = (item: { vendor?: string | null }) => {
     const vendor = String(item.vendor || '').trim()
     return vendor !== '' && !isInternalVendor(vendor)
