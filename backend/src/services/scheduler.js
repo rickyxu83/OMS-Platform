@@ -571,6 +571,10 @@ function startScheduler() {
   // 客户资讯（天眼查公司基本资料）：每天 09:00 批量轮询（免费额度 ~10 次/天，分 9 天一轮）
   scheduleCron('0 9 * * *', async () => {
     try {
+      if (env.tycAutoRefreshDisabled) {
+        console.log('[scheduler] Customer profiles refresh skipped (TYC_AUTO_REFRESH_DISABLED)')
+        return
+      }
       const { getTycToken } = require('./tyc-mcp')
       const { refreshAllProfiles } = require('./customer-profiles')
       const token = await getTycToken()

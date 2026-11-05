@@ -55,6 +55,8 @@ const env = {
   corsAllowedOrigins: parseCsv(process.env.CORS_ALLOWED_ORIGINS),
   disableLoginIpRateLimit: process.env.DISABLE_LOGIN_IP_RATE_LIMIT === 'true',
   disableLoginAccountLockout: process.env.DISABLE_LOGIN_ACCOUNT_LOCKOUT === 'true',
+  // 天眼查自动获取开关（额度有限，测试服可设 TYC_AUTO_REFRESH_DISABLED=true 关闭，手动点击查看不受影响）
+  tycAutoRefreshDisabled: process.env.TYC_AUTO_REFRESH_DISABLED === 'true',
   mrApprovalEmailDomains: parseCsv(process.env.MR_APPROVAL_EMAIL_DOMAINS),
   // 通行密钥（WebAuthn）配置：rpId 为域名主体（如 example.com），origins 覆盖各环境完整 Origin；
   // 未配置 rpId 时通行密钥功能整体关闭（端点 404、前端入口隐藏），属可选增强不阻塞启动
