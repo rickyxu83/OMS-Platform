@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ErrorToast } from "@/components/ErrorToast";
-import { TycLogo } from "@/components/TycLogo";
+import { TycInfoButton } from "@/components/TycInfoButton";
 import { CustomerProfileDialog } from "@/components/CustomerProfileDialog";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1338,17 +1338,11 @@ export function Customers() {
             ) : (
               <span title={t.misc.unknown} className="truncate">{t.misc.unknown}</span>
             )}
-            <button
-              type="button"
-              className="inline-flex shrink-0 items-center rounded p-1 transition-colors hover:bg-accent"
-              title="天眼查企业资讯"
-              onClick={(event) => {
-                event.stopPropagation();
-                setProfileDialog({ id: Number(c.id), name: c.name || null });
-              }}
-            >
-              <TycLogo className="h-4 w-4" hasData={!!c.profileFetchedAt} />
-            </button>
+            <TycInfoButton
+              customerId={Number(c.id)}
+              hasData={!!c.profileFetchedAt}
+              onOpenDialog={() => setProfileDialog({ id: Number(c.id), name: c.name || null })}
+            />
           </span>
         }
         status={(
@@ -1801,17 +1795,13 @@ export function Customers() {
                               ) : (
                                 <div title={t.misc.unknown} className="truncate font-medium">{t.misc.unknown}</div>
                               )}
-                              <button
-                                type="button"
-                                className="inline-flex shrink-0 items-center rounded p-0.5 transition-colors hover:bg-accent"
-                                title="天眼查企业资讯"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setProfileDialog({ id: Number(c.id), name: c.name || null });
-                                }}
-                              >
-                                <TycLogo className="h-3.5 w-3.5" hasData={!!c.profileFetchedAt} />
-                              </button>
+                              <TycInfoButton
+                                customerId={Number(c.id)}
+                                hasData={!!c.profileFetchedAt}
+                                logoClassName="h-3.5 w-3.5"
+                                buttonClassName="inline-flex shrink-0 items-center rounded p-0.5 transition-colors hover:bg-accent"
+                                onOpenDialog={() => setProfileDialog({ id: Number(c.id), name: c.name || null })}
+                              />
                               </div>
                               <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                                 {c.salesperson ? <span className="truncate" title={`${t.list.salesperson}：${c.salesperson}`}>{t.list.salesperson}：{c.salesperson}</span> : null}
@@ -2015,14 +2005,13 @@ export function Customers() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <div className="text-lg font-semibold leading-7 text-slate-900">{detailTarget.name || t.misc.unknown}</div>
-                          <button
-                            type="button"
-                            className="inline-flex shrink-0 items-center rounded p-1 transition-colors hover:bg-accent"
-                            title="天眼查企业资讯"
-                            onClick={() => setProfileDialog({ id: Number(detailTarget.id), name: detailTarget.name || null })}
-                          >
-                            <TycLogo className="h-5 w-5" hasData={!!detailTarget.profileFetchedAt} />
-                          </button>
+                          <TycInfoButton
+                            customerId={Number(detailTarget.id)}
+                            hasData={!!detailTarget.profileFetchedAt}
+                            logoClassName="h-5 w-5"
+                            stopPropagation={false}
+                            onOpenDialog={() => setProfileDialog({ id: Number(detailTarget.id), name: detailTarget.name || null })}
+                          />
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">{detailTarget.code || t.misc.unknown}</div>
                       </div>
