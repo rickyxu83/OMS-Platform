@@ -5,7 +5,7 @@
 const { query } = require('../config/db')
 const https = require('https')
 const http = require('http')
-const { resolveParent, searchKeywords, listedInfo, TW_STOCK, CN_STOCK } = require('./customer-parent-map')
+const { resolveParent, searchKeywords, searchExcludes, listedInfo, TW_STOCK, CN_STOCK } = require('./customer-parent-map')
 
 // ========== 基础设施 ==========
 
@@ -126,6 +126,8 @@ async function fetchEastmoneyNews(customerName) {
         // 内容出现不算——“唯乐高融资”内容提到捷安特、“托克锂产品”内容提到捷安特这类不算客户新闻
         const titleMatch = keywords.some((kw) => isRelevantMatch(title, kw))
         if (!titleMatch) continue
+        // 排除近名公司噪音（如中国信托 vs 中信金融资产）
+        if (searchExcludes(customerName).some((ex) => title.includes(ex))) continue
         if (url) seenUrls.add(url)
         results.push({
           title,

@@ -44,7 +44,8 @@ const PARENT_MAP = {
   '台湾土地银行': { name: '台湾土地银行', aliases: ['土地银行', 'Land Bank'] },
 
   // === 中国信托 CTBC ===
-  '中国信托商业银行': { name: '中国信托', stockCode: '2891', stockExchange: TW_STOCK, aliases: ['中国信托金融控股', '中信金', 'CTBC'] },
+  // 注意：去掉别名「中信金」——东方财富搜“中信金”命中的全是中信集团旗下中信金融资产，台湾中信金控在大陆媒体写作“中国信托金融控股”
+  '中国信托商业银行': { name: '中国信托', stockCode: '2891', stockExchange: TW_STOCK, aliases: ['中国信托金融控股', 'CTBC'], excludes: ['中信金融资产', '中信金控资产', '中信证券', '中信银行', '中信建投'] },
 
   // === 精元电脑 ===
   '精元电脑': { name: '精元电脑', aliases: [] },
@@ -166,4 +167,15 @@ function listedInfo(customerName) {
   return null
 }
 
-module.exports = { PARENT_MAP, resolveParent, searchKeywords, listedInfo, TW_STOCK, CN_STOCK }
+/**
+ * 获取客户的标题排除词列表（标题含这些词时即使关键词命中也不算客户新闻）
+ * 用于同名/近名公司噪音：如中国信托（台湾 CTBC）vs 中信金融资产（中信集团）
+ * @param {string} customerName
+ * @returns {string[]}
+ */
+function searchExcludes(customerName) {
+  const parent = resolveParent(customerName)
+  return Array.isArray(parent?.excludes) ? parent.excludes : []
+}
+
+module.exports = { PARENT_MAP, resolveParent, searchKeywords, searchExcludes, listedInfo, TW_STOCK, CN_STOCK }
