@@ -757,6 +757,15 @@ export function Dashboard() {
   const canSelectReportSalesperson = canUseWorkSummary && userRole !== "sales" && !useOwnScope;
   const canSelectReportEngineer = canUseWorkSummary && !useOwnScope;
   const [summary, setSummary] = useState<Summary>({});
+  const [customerNews, setCustomerNews] = useState<Array<{
+    id: number; customerId: number; customerName: string; customerNames: string | null; customerLevel: string;
+    title: string; url: string | null; source: string; sourceName: string | null;
+    summary: string | null; publishedAt: string | null;
+  }>>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsOnlyMine, setNewsOnlyMine] = useState(false);
+  // 当前用户的客户名列表（用于「只看我的客户」过滤）
+  const [myCustomerNames, setMyCustomerNames] = useState<Set<string>>(new Set());
   const [trend, setTrend] = useState<Array<{ date: string; total: number }>>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [mapPoints, setMapPoints] = useState<any[]>([]);
@@ -802,6 +811,11 @@ export function Dashboard() {
           api.get(`/service-orders?pageSize=20&sortBy=createdAt&sortDir=desc${useOwnScope ? "&mine=1" : ""}`),
           api.get("/customers?pageSize=200").catch(() => null),
         ]);
+        // 客户动态（独立加载，不阻塞主数据）
+        setNewsLoading(true)
+        api.get("/customers/news?days=90&limit=30").then((newsRes: any) => {
+          if (!cancelled) setCustomerNews(newsRes?.items || [])
+        }).catch(() => {}).finally(() => { if (!cancelled) setNewsLoading(false) })
         if (cancelled) return;
         setSummary(stats?.summary || {});
         setTrend(Array.isArray(stats?.trend) ? stats.trend : []);
@@ -809,6 +823,15 @@ export function Dashboard() {
         setOrders(items);
         const rawCustomers = customerRes?.items || customerRes?.data?.items || customerRes?.data || [];
         setReportCustomers((Array.isArray(rawCustomers) ? rawCustomers : []) as CustomerOption[]);
+        // 「只看我的客户」：按当前用户的销售身份匹配客户名
+        if (user?.role === 'sales' || user?.role === 'sales_supervisor') {
+          const myName = String(user?.realName || user?.real_name || user?.username || '');
+          setMyCustomerNames(new Set(
+            (Array.isArray(rawCustomers) ? rawCustomers : [])
+              .filter((c: any) => String(c.salesperson || '').trim() === myName)
+              .map((c: any) => String(c.name || ''))
+          ));
+        }
         setMapPoints(
           (Array.isArray(rawCustomers) ? rawCustomers : [])
             .map((c: any) => ({
@@ -1006,12 +1029,45 @@ export function Dashboard() {
 
       <ErrorToast message={error} />
 
+      {/* 客户动态跑马灯：横向循环滚动，hover 暂停，点击跳原文；底部完整列表保留 */}
+      {customerNews.length > 0 && (
+        <div className="news-marquee flex h-9 items-center overflow-hidden rounded-lg border border-primary/20 bg-primary/5">
+          <style>{`
+            @keyframes news-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+            .news-marquee-track { animation: news-marquee ${Math.max(60, customerNews.length * 14)}s linear infinite; }
+            .news-marquee:hover .news-marquee-track { animation-play-state: paused; }
+            @media (prefers-reduced-motion: reduce) { .news-marquee-track { animation: none; } }
+          `}</style>
+          <div className="flex h-full shrink-0 items-center gap-1.5 bg-primary px-3 text-xs font-medium text-white">
+            <Radio className="h-3.5 w-3.5" /> 客户动态
+          </div>
+          <div className="flex min-w-0 flex-1 items-center overflow-hidden">
+            <div className="news-marquee-track flex shrink-0 items-center whitespace-nowrap">
+              {[...customerNews, ...customerNews].map((item, index) => (
+                <button
+                  key={`${item.id}-${index}`}
+                  type="button"
+                  disabled={!item.url}
+                  onClick={() => item.url && window.open(item.url, "_blank", "noopener,noreferrer")}
+                  className="mx-4 inline-flex shrink-0 items-center gap-1.5 text-xs transition-colors hover:text-primary"
+                  title={item.title}
+                >
+                  <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">{item.customerNames || item.customerName}</span>
+                  <span className="max-w-[320px] truncate text-foreground">{item.title}</span>
+                  {item.publishedAt ? <span className="text-muted-foreground">{formatDate(item.publishedAt)}</span> : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-2 lg:grid-cols-4 lg:gap-6">
         {stats.map((stat, statIndex) => {
           const Icon = stat.icon;
           return (
             <Card key={stat.title} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-              <CardHeader className="flex flex-row items-center justify-between px-3 pb-2 pt-3 sm:px-4 sm:pt-4">
+              <CardHeader className="flex flex-row items-center justify-between px-3 pb-1 pt-2.5 sm:px-4 sm:pt-3">
                 <CardTitle className="text-xs font-medium text-muted-foreground sm:text-sm">
                   {stat.title}
                 </CardTitle>
@@ -1019,9 +1075,9 @@ export function Dashboard() {
                   <Icon className={`w-4 h-4 ${stat.color}`} />
                 </div>
               </CardHeader>
-              <CardContent className="px-3 pb-3 sm:px-4 sm:pb-4">
+              <CardContent className="px-3 pb-2.5 sm:px-4 sm:pb-3">
                 <div className="flex items-baseline gap-2">
-                  <div className="text-2xl font-bold sm:text-3xl tabular-nums">
+                  <div className="text-xl font-bold sm:text-2xl tabular-nums">
                     {loading ? (
                       <Skeleton className="h-8 w-16" />
                     ) : (
@@ -1035,16 +1091,16 @@ export function Dashboard() {
                   </div>
                 </div>
                 {loading ? null : stat.spark ? (
-                  <div className="mt-2">
-                    <Sparkline data={stat.spark} className={`h-8 w-full ${stat.color}`} />
+                  <div className="mt-1">
+                    <Sparkline data={stat.spark} className={`h-6 w-full ${stat.color}`} />
                     <p className="mt-1 text-xs text-muted-foreground">{t.stats.trend14}</p>
                   </div>
                 ) : stat.key === "today" ? (
                   // 今日为 0 时不显示 -100% 红箭头（刺眼且无信息量），改中性文案
                   todayTrendCount === 0 ? (
-                    <p className="mt-2 text-xs text-muted-foreground">{t.stats.noToday}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{t.stats.noToday}</p>
                   ) : stat.delta !== null && stat.delta !== undefined ? (
-                    <p className="mt-2 flex items-center gap-1 text-xs">
+                    <p className="mt-1 flex items-center gap-1 text-xs">
                       {stat.delta >= 0 ? (
                         <TrendingUp className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
                       ) : (
@@ -1187,6 +1243,7 @@ export function Dashboard() {
         </Card>
       )}
 
+
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-5 lg:gap-6">
         <section className="lg:col-span-3">
           <div className="mb-3 px-1 sm:mb-4">
@@ -1266,6 +1323,64 @@ export function Dashboard() {
           </Card>
         </section>
       </div>
+
+      {/* 客户动态（有新闻时才显示卡片） */}
+      {customerNews.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg">客户动态</CardTitle>
+                <CardDescription>近 3 个月客户相关新闻与公告</CardDescription>
+              </div>
+              {(user?.role === 'sales' || user?.role === 'sales_supervisor') && myCustomerNames.size > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setNewsOnlyMine(!newsOnlyMine)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                    newsOnlyMine ? 'bg-primary text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  }`}
+                >
+                  {newsOnlyMine ? '✓ 只看我的客户' : '只看我的客户'}
+                </button>
+              ) : null}
+            </div>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 sm:px-6">
+            <div className="max-h-[340px] space-y-2.5 overflow-y-auto pr-1">
+              {(newsOnlyMine ? customerNews.filter((item) => {
+                const names = String(item.customerNames || item.customerName || '').split('、')
+                return names.some((n) => myCustomerNames.has(n))
+              }) : customerNews).map((item) => {
+                // 3 天内的新闻标 NEW
+                const isNew = item.publishedAt && (Date.now() - new Date(String(item.publishedAt).replace(' ', 'T')).getTime()) < 3 * 24 * 3600 * 1000
+                return (
+                <div key={item.id} className="flex items-start gap-3 rounded-lg border bg-background px-3 py-2.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      {isNew ? <span className="shrink-0 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">NEW</span> : null}
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${item.customerLevel === 'vip' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
+                        {item.customerNames || item.customerName}
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{item.sourceName || item.source}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{item.publishedAt ? formatDate(item.publishedAt) : ''}</span>
+                    </div>
+                    {item.url ? (
+                      <a href={item.url} target="_blank" rel="noopener noreferrer" className="mt-1 block truncate font-medium text-foreground hover:text-primary hover:underline">
+                        {item.title}
+                      </a>
+                    ) : (
+                      <div className="mt-1 truncate font-medium text-foreground">{item.title}</div>
+                    )}
+                    {item.summary ? <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.summary}</div> : null}
+                  </div>
+                </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={Boolean(previewOrder)} onOpenChange={(open) => { if (!open) closeOrderPreview(); }}>
         <DialogContent

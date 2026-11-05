@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search, Plus, RefreshCw, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft, Building2, Star, CircleUserRound, MoreHorizontal, RotateCcw, type LucideIcon } from "lucide-react";
+import { Search, Plus, RefreshCw, MapPin, Crosshair, Check, Trash2, AlertTriangle, Server, ClipboardCheck, FileText, Pencil, ArrowRightLeft, Building2, Star, CircleUserRound, MoreHorizontal, RotateCcw, BookOpen, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ErrorToast } from "@/components/ErrorToast";
+import { TycInfoButton } from "@/components/TycInfoButton";
+import { CustomerProfileDialog } from "@/components/CustomerProfileDialog";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -51,6 +53,10 @@ interface Customer {
   updatedAt?: string;
   createdAt?: string;
   contacts?: Array<{ id?: string | number; name?: string; phone?: string; email?: string }>;
+  // 客户资讯标记（天眼查）
+  profileFetchedAt?: string | null;
+  profileIndustry?: string | null;
+  profileChangedFields?: string[];
 }
 
 interface CustomerDevice {
@@ -704,6 +710,8 @@ export function Customers() {
   const [detailInsight, setDetailInsight] = useState<CustomerInsight | null>(null);
   const [detailInsightLoading, setDetailInsightLoading] = useState(false);
   const [detailInsightError, setDetailInsightError] = useState("");
+  // 客户资讯（天眼查弹窗）
+  const [profileDialog, setProfileDialog] = useState<{ id: number; name: string | null } | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | number | null>(null);
@@ -882,6 +890,8 @@ export function Customers() {
         if (!cancelled) setDetailInsightLoading(false);
       }
     }
+
+    // 客户资讯改由天眼查弹窗按需加载，详情不再预取
 
     loadDetailInsight();
     return () => {
@@ -1328,6 +1338,11 @@ export function Customers() {
             ) : (
               <span title={t.misc.unknown} className="truncate">{t.misc.unknown}</span>
             )}
+            <TycInfoButton
+              customerId={Number(c.id)}
+              hasData={!!c.profileFetchedAt}
+              onOpenDialog={() => setProfileDialog({ id: Number(c.id), name: c.name || null })}
+            />
           </span>
         }
         status={(
@@ -1767,6 +1782,7 @@ export function Customers() {
                           <div className="flex min-w-0 items-start gap-2">
                             <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                             <div className="min-w-0 flex-1">
+                              <div className="flex min-w-0 items-center gap-1">
                               {c.name ? (
                                 <button
                                   type="button"
@@ -1779,6 +1795,14 @@ export function Customers() {
                               ) : (
                                 <div title={t.misc.unknown} className="truncate font-medium">{t.misc.unknown}</div>
                               )}
+                              <TycInfoButton
+                                customerId={Number(c.id)}
+                                hasData={!!c.profileFetchedAt}
+                                logoClassName="h-3.5 w-3.5"
+                                buttonClassName="inline-flex shrink-0 items-center rounded p-0.5 transition-colors hover:bg-accent"
+                                onOpenDialog={() => setProfileDialog({ id: Number(c.id), name: c.name || null })}
+                              />
+                              </div>
                               <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                                 {c.salesperson ? <span className="truncate" title={`${t.list.salesperson}：${c.salesperson}`}>{t.list.salesperson}：{c.salesperson}</span> : null}
                               </div>
@@ -1979,7 +2003,16 @@ export function Customers() {
                   <div className="rounded-lg border bg-slate-50/60 p-5">
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div className="min-w-0">
-                        <div className="text-lg font-semibold leading-7 text-slate-900">{detailTarget.name || t.misc.unknown}</div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="text-lg font-semibold leading-7 text-slate-900">{detailTarget.name || t.misc.unknown}</div>
+                          <TycInfoButton
+                            customerId={Number(detailTarget.id)}
+                            hasData={!!detailTarget.profileFetchedAt}
+                            logoClassName="h-5 w-5"
+                            stopPropagation={false}
+                            onOpenDialog={() => setProfileDialog({ id: Number(detailTarget.id), name: detailTarget.name || null })}
+                          />
+                        </div>
                         <div className="mt-1 text-sm text-muted-foreground">{detailTarget.code || t.misc.unknown}</div>
                       </div>
                       {(() => {
@@ -2070,6 +2103,7 @@ export function Customers() {
                           </div>
                         </div>
                       </div>
+
 
                       <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
                         <div className="rounded-lg border p-4">
@@ -2615,6 +2649,14 @@ export function Customers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 天眼查客户资讯弹窗 */}
+      <CustomerProfileDialog
+        customerId={profileDialog?.id ?? null}
+        customerName={profileDialog?.name ?? null}
+        open={profileDialog !== null}
+        onOpenChange={(open) => { if (!open) setProfileDialog(null); }}
+      />
     </div>
   );
 }

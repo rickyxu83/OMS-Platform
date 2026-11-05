@@ -256,6 +256,10 @@ function customerPayload(row, contacts = [], sortLocale = 'zh-CN', includeSalesD
     mapPoiName: row.map_poi_name,
     mapAddress: row.map_address,
     serviceOrderCount: Number(row.service_order_count || 0),
+    // 客户资讯标记：有天眼查资料的客户（前端列表加角标）
+    profileFetchedAt: row.profile_fetched_at || null,
+    profileIndustry: row.profile_industry || null,
+    profileChangedFields: typeof row.profile_changed_fields === 'string' ? JSON.parse(row.profile_changed_fields) : (row.profile_changed_fields || []),
     sortInitial: sort.sortInitial,
     sortKey: sort.sortKey,
     sortLocale,
@@ -950,8 +954,11 @@ async function list(req, res) {
       `SELECT c.id, c.name, c.name_key, c.code, c.address, c.sales_delivery_address, c.contact_name, c.contact_phone, c.salesperson,
             c.level,
             latitude, longitude, map_provider, map_poi_id, map_poi_name, map_address,
-            remark, created_at, updated_at,
-            COALESCE(soc.service_order_count, 0) AS service_order_count
+            remark, c.created_at, c.updated_at,
+            COALESCE(soc.service_order_count, 0) AS service_order_count,
+            cp.fetched_at AS profile_fetched_at,
+            cp.industry AS profile_industry,
+            cp.changed_fields AS profile_changed_fields
       FROM customers c
       LEFT JOIN (
         SELECT customer_id, COUNT(*) AS service_order_count
@@ -959,6 +966,7 @@ async function list(req, res) {
         WHERE status <> 'cancelled'
         GROUP BY customer_id
       ) soc ON soc.customer_id = c.id
+      LEFT JOIN customer_profiles cp ON cp.customer_id = c.id
       LEFT JOIN (
         SELECT so.customer_id, COUNT(*) AS engineer_order_count, MAX(COALESCE(so.submitted_at, so.created_at)) AS last_used_at
         FROM service_orders so
@@ -1522,6 +1530,71 @@ async function createContact(req, res) {
   res.status(201).json({ id: contact.id, name: contact.name, phone: contact.phone || null, email: contact.email || null })
 }
 
+// 客户动态（新闻/公告）列表：首页卡片用
+async function newsList(req, res) {
+  const { ensureTables } = require('../../services/customer-news')
+  await ensureTables()
+  const days = Math.min(90, Math.max(1, Number(req.query.days) || 30))
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20))
+  const customerId = Number(req.query.customerId) || null
+  const params = { days }
+  let where = 'n.published_at >= DATE_SUB(NOW(), INTERVAL :days DAY)'
+  if (customerId) {
+    where += ' AND n.customer_id = :customerId'
+    params.customerId = customerId
+  }
+  // 按 URL 去重（同篇文章在多个子公司下只显示一次，合并关联客户名）
+  const rows = await query(
+    `SELECT MIN(n.id) AS id, MIN(n.customer_id) AS customerId,
+            GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR '、') AS customerNames,
+            MIN(c.name) AS customerName, MIN(c.level) AS customerLevel,
+            n.title, n.url, n.source, MIN(n.source_name) AS sourceName,
+            MIN(n.summary) AS summary, MAX(n.published_at) AS publishedAt
+     FROM customer_news n
+     LEFT JOIN customers c ON c.id = n.customer_id
+     WHERE ${where}
+     GROUP BY COALESCE(n.url, n.title)
+     ORDER BY publishedAt DESC, id DESC
+     LIMIT ${limit}`,
+    params,
+  )
+  res.json({ items: rows })
+}
+
+// 手动触发刷新（管理员/编辑权限）
+async function newsRefresh(req, res) {
+  const { refreshCustomerNews } = require('../../services/customer-news')
+  const result = await refreshCustomerNews()
+  res.json(result)
+}
+
+// 客户资讯详情
+async function profileDetail(req, res) {
+  const { getProfile } = require('../../services/customer-profiles')
+  const profile = await getProfile(Number(req.params.id))
+  res.json({ profile })
+}
+
+// 刷新客户资讯
+// body: { mode?: 'risk' | 'full' } —— risk 只刷风险总览（1 次调用），full 工商+简介+风险（3 次调用）
+async function profileRefresh(req, res) {
+  const { getTycToken } = require('../../services/tyc-mcp')
+  const { refreshCustomerProfile } = require('../../services/customer-profiles')
+  const token = await getTycToken()
+  if (!token) return res.status(400).json({ error: { message: '天眼查 API token 未配置（系统设置 → news.tianyanchaToken）' } })
+  const mode = req.body?.mode === 'risk' ? 'risk' : 'full'
+  try {
+    const profile = await refreshCustomerProfile(Number(req.params.id), token, { mode })
+    res.json({ ok: true, mode, profile })
+  } catch (err) {
+    const msg = err.message || '刷新失败'
+    // 免费额度每日 10 次：额度用完 / 权益不足单独成 429/403，前端据此禁用按钮
+    if (/quota|额度/.test(msg)) return res.status(429).json({ error: { message: '天眼查今日免费额度已用完，明日 0 点重置', code: 'quota_exhausted' } })
+    if (/VIP|权益|entitlement/i.test(msg)) return res.status(403).json({ error: { message: '该接口需要天眼查 VIP 权益', code: 'insufficient_entitlement' } })
+    res.status(500).json({ error: { message: msg } })
+  }
+}
+
 module.exports = {
   list,
   create,
@@ -1533,5 +1606,9 @@ module.exports = {
   devices,
   nextCustomerCode,
   createContact,
+  newsList,
+  newsRefresh,
+  profileDetail,
+  profileRefresh,
   _test: { canAccessSalesDeliveryAddress, customerPayload, salesDeliveryAddressInput },
 }
