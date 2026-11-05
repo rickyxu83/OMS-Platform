@@ -1031,15 +1031,15 @@ export function Dashboard() {
 
       {/* 客户动态跑马灯：横向循环滚动，hover 暂停，点击跳原文；底部完整列表保留 */}
       {customerNews.length > 0 && (
-        <div className="news-marquee flex h-9 items-center overflow-hidden rounded-lg border bg-muted/40">
+        <div className="news-marquee flex h-9 items-center overflow-hidden rounded-lg border border-primary/20 bg-primary/5">
           <style>{`
             @keyframes news-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-            .news-marquee-track { animation: news-marquee ${Math.max(40, customerNews.length * 8)}s linear infinite; }
+            .news-marquee-track { animation: news-marquee ${Math.max(60, customerNews.length * 14)}s linear infinite; }
             .news-marquee:hover .news-marquee-track { animation-play-state: paused; }
             @media (prefers-reduced-motion: reduce) { .news-marquee-track { animation: none; } }
           `}</style>
-          <div className="flex h-full shrink-0 items-center gap-1.5 border-r bg-background px-3 text-xs font-medium text-muted-foreground">
-            <Radio className="h-3.5 w-3.5 text-primary" /> 客户动态
+          <div className="flex h-full shrink-0 items-center gap-1.5 bg-primary px-3 text-xs font-medium text-white">
+            <Radio className="h-3.5 w-3.5" /> 客户动态
           </div>
           <div className="flex min-w-0 flex-1 items-center overflow-hidden">
             <div className="news-marquee-track flex shrink-0 items-center whitespace-nowrap">
@@ -1049,12 +1049,12 @@ export function Dashboard() {
                   type="button"
                   disabled={!item.url}
                   onClick={() => item.url && window.open(item.url, "_blank", "noopener,noreferrer")}
-                  className="mx-4 inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-primary"
+                  className="mx-4 inline-flex shrink-0 items-center gap-1.5 text-xs transition-colors hover:text-primary"
                   title={item.title}
                 >
-                  <span className="font-medium text-foreground">{item.customerNames || item.customerName}</span>
-                  <span className="max-w-[320px] truncate">{item.title}</span>
-                  {item.publishedAt ? <span>{formatDate(item.publishedAt)}</span> : null}
+                  <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">{item.customerNames || item.customerName}</span>
+                  <span className="max-w-[320px] truncate text-foreground">{item.title}</span>
+                  {item.publishedAt ? <span className="text-muted-foreground">{formatDate(item.publishedAt)}</span> : null}
                 </button>
               ))}
             </div>
