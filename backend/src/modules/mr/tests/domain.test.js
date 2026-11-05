@@ -252,6 +252,17 @@ function validBody(overrides = {}) {
   const margins = purchaseOnlyAllocate.items.map((item) => item.marginRate)
   assert(Math.abs(margins[0] - margins[1]) < 0.01, '成本占比分摊后各品项毛利率应一致')
 
+  // 回归（2026-10 MR53）：成本占比分摊 + 分位舍入后，小金额行毛利率噪声可达 ~0.02，
+  // 容差 0.05 内不得再拦「各品项毛利率必须一致」
+  const mr53 = normalizeOrder(validBody({ pricingMode: 1, totalExcludingTax: 161000, installOptions: ['敦阳'], maintenanceOptions: ['敦阳'], items: [
+    { name: 'HP DL380G11', qty: 1, unitPrice: null, quotedUnitPrice: null, vendor: '厂商', costInclTax: 150000, taxRate: 13, purchaseOnly: true },
+    { name: '6类非屏蔽跳线 1米', qty: 2, unitPrice: null, quotedUnitPrice: null, vendor: '灵沛', costInclTax: 21, taxRate: 13, purchaseOnly: true },
+    { name: '6类非屏蔽跳线 2米', qty: 4, unitPrice: null, quotedUnitPrice: null, vendor: '灵沛', costInclTax: 56, taxRate: 13, purchaseOnly: true },
+    { name: '6类非屏蔽跳线 5米', qty: 8, unitPrice: null, quotedUnitPrice: null, vendor: '灵沛', costInclTax: 196, taxRate: 13, purchaseOnly: true },
+    { name: '6类非屏蔽跳线 10米', qty: 2, unitPrice: null, quotedUnitPrice: null, vendor: '灵沛', costInclTax: 86, taxRate: 13, purchaseOnly: true },
+  ] }))
+  assert(!validateSubmission(mr53.order, mr53.items).some((error) => error.message.includes('毛利率必须一致')), '舍入噪声不应触发毛利率一致性拦截')
+
   // 回归（2026-08-25 毛利率爆负事故）：单项系统集成主项仅采购（purchase_only，报价单仅有采购价）也必须分配 99%，
   // 否则提交签核后后端重算把主项单价抹成 null，签核视图毛利率变 -2687%。与前端 form-logic.check.ts 同场景
   const singlePurchaseOnly = normalizeOrder(validBody({ pricingMode: 2, totalExcludingTax: 73341, items: [
