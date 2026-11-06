@@ -72,6 +72,8 @@ const defaultSupervisorRoleRules = Object.freeze({
   sales_supervisor: 'operations_director',
   sales: 'sales_supervisor',
   engineer: 'engineering_supervisor',
+  finance: 'operations_director',
+  import_export: 'operations_director',
 })
 let schemaReadyPromise = null
 

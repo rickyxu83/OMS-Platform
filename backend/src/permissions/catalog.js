@@ -11,6 +11,8 @@ const ROLE_LABELS = Object.freeze({
   engineer: '工程师',
   purchaser: '采购',
   driver: '司机',
+  finance: '财务',
+  import_export: '进出口',
 })
 
 const ALL_ROLES = Object.keys(ROLE_LABELS)
@@ -26,10 +28,10 @@ const ATTENDANCE_APPLICANT_ROLES = Object.freeze(
 )
 
 const RAW_PERMISSION_ENTRIES = Object.freeze([
-  ['workspace.admin', '管理工作台', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales', 'engineer', 'purchaser', 'driver']],
+  ['workspace.admin', '管理工作台', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales', 'engineer', 'purchaser', 'driver', 'finance', 'import_export']],
   ['workspace.engineer', '工程师工作台', []],
   ['permission.manage', '配置角色权限', ['admin']],
-  ['order.view', '查看工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor']],
+  ['order.view', '查看工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor', 'finance', 'import_export']],
   ['order.create', '创建工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor']],
   ['order.edit', '编辑工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor']],
   ['order.delete', '删除工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor']],
@@ -42,12 +44,12 @@ const RAW_PERMISSION_ENTRIES = Object.freeze([
   ['inspection.edit', '编辑巡检计划', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor']],
   ['inspection.delete', '删除巡检计划', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor']],
   ['inspection.generate', '生成到期巡检工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor']],
-  ['customer.view', '查看客户', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor', 'engineer']],
+  ['customer.view', '查看客户', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor', 'engineer', 'finance', 'import_export']],
   ['customer.create', '创建客户', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales', 'sales_supervisor', 'engineer']],
   ['customer.edit', '编辑客户', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales', 'sales_supervisor', 'engineer']],
   ['customer.delete', '删除客户', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales', 'sales_supervisor', 'engineer']],
   ['customer.merge', '合并客户', ['admin', 'assistant', 'dispatcher', 'operations_director', 'sales_supervisor', 'sales']],
-  ['device.view', '查看设备', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor', 'engineer']],
+  ['device.view', '查看设备', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor', 'engineer', 'finance', 'import_export']],
   ['device.create', '创建设备', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales', 'sales_supervisor', 'engineer']],
   ['device.edit', '编辑设备', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'sales', 'sales_supervisor', 'engineer']],
   ['device.delete', '删除设备', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor']],

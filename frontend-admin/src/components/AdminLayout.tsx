@@ -138,6 +138,8 @@ const STRINGS: Record<AppLang, {
       engineer: "工程师",
       purchaser: "采购",
       driver: "司机",
+      finance: "财务",
+      import_export: "进出口",
     },
   },
   "zh-TW": {
@@ -195,6 +197,8 @@ const STRINGS: Record<AppLang, {
       engineer: "工程師",
       purchaser: "採購",
       driver: "司機",
+      finance: "財務",
+      import_export: "進出口",
     },
   },
 };

@@ -278,6 +278,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       'engineer',
       'purchaser',
       'driver',
+      'finance',
+      'import_export',
     ])
     assert.ok(res.body.roles.some((item) => item.role === 'admin'))
     assert.ok(res.body.roles.some((item) => item.role === 'operations_director'))

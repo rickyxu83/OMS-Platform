@@ -10,10 +10,12 @@ const ADMIN_WORKSPACE_ROLES = Object.freeze([
   'sales',
   'engineer',
   'purchaser',
+  'finance',
+  'import_export',
 ])
 const ENGINEER_WORKSPACE_ROLES = Object.freeze(['engineer', 'engineering_supervisor'])
 const OPERATION_ROLES = Object.freeze(['admin', 'assistant', 'assistant_supervisor', 'dispatcher', 'operations_director', 'engineering_supervisor'])
-const VIEW_ROLES = Object.freeze([...OPERATION_ROLES, 'administrative_supervisor', 'sales', 'sales_supervisor'])
+const VIEW_ROLES = Object.freeze([...OPERATION_ROLES, 'administrative_supervisor', 'sales', 'sales_supervisor', 'finance', 'import_export'])
 const ALL_SIGNED_IN_ROLES = Object.freeze([...new Set([...ADMIN_WORKSPACE_ROLES, ...ENGINEER_WORKSPACE_ROLES])])
 
 const ROLE_GROUPS = Object.freeze({

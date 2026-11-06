@@ -5,7 +5,7 @@ import type { WorkspaceOption } from '@/config/app'
 const ADMIN_ACCESS_ROLES = [
   'admin', 'assistant', 'dispatcher', 'operations_director',
   'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales',
-  'engineer', 'purchaser',
+  'engineer', 'purchaser', 'finance', 'import_export',
 ]
 const ADMIN_SUPERUSER_EXCLUDED_PERMISSIONS = new Set(['order.engineer.own', 'workspace.engineer', 'attendance.apply'])
 

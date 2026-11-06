@@ -29,6 +29,8 @@ const ROLE_LABELS: Record<string, string> = {
   sales: "业务",
   engineer: "工程师",
   purchaser: "采购",
+  finance: "财务",
+  import_export: "进出口",
 };
 
 export function EngineerSignature() {

@@ -160,6 +160,8 @@ docker exec <backend容器名> wget -qO- http://127.0.0.1:3000/api/v1/health    
 | `engineering_supervisor`（工程主管）    | 可使用工单填写入口；派单管理可见全部工单                                                                                                             |
 | `operations_director`（运营负责人）     | 可见全部工单                                                                                                                                         |
 | `administrative_supervisor`（行政主管） | 管理端业务数据只读，不可派单/审批/编辑/删除/改设置                                                                                                   |
+| `finance`（财务）                     | 运营总览、客户与设备只读；可提交假勤申请                                                                                                               |
+| `import_export`（进出口）              | 运营总览、客户与设备只读；可提交假勤申请                                                                                                               |
 | `admin`（管理员）                       | 全部权限                                                                                                                                             |
 
 工单填写入口请求本人相关数据时带 `?mine=1`，后端据此过滤 `effectiveEngineerId`。
