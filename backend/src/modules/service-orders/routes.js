@@ -13,7 +13,8 @@ function limitWhenWorkSummaryRequested(req, res, next) {
   next()
 }
 
-router.get('/stats/overview', requirePermission('order.engineer.own', 'order.view'), controller.statsOverview)
+// dashboard.view：运营总览只读访问（统计数据与最近工单卡片），不开放工单处理页面（2026-11-06 佬裁决：财务/进出口/司机看运营总览但不进工单）
+router.get('/stats/overview', requirePermission('order.engineer.own', 'order.view', 'dashboard.view'), controller.statsOverview)
 router.get('/timesheet/monthly', requirePermission('order.engineer.own', 'timesheet.view'), limitWhenWorkSummaryRequested, controller.timesheetMonthly)
 router.post('/timesheet/manual-entries', requirePermission('order.engineer.own'), controller.createTimesheetManualEntry)
 router.delete('/timesheet/manual-entries/:id', requirePermission('order.engineer.own'), controller.deleteTimesheetManualEntry)
@@ -22,7 +23,7 @@ router.get('/draft/self-report', requirePermission('order.engineer.own'), contro
 router.put('/draft/self-report', requirePermission('order.engineer.own'), controller.saveSelfReportDraft)
 router.delete('/draft/self-report', requirePermission('order.engineer.own'), controller.deleteSelfReportDraft)
 router.post('/bulk-delete', requirePermission('order.bulk-delete'), controller.bulkDelete)
-router.get('/', requirePermission('order.engineer.own', 'order.view'), controller.list)
+router.get('/', requirePermission('order.engineer.own', 'order.view', 'dashboard.view'), controller.list)
 router.post('/', requirePermission('order.create'), controller.create)
 router.post('/:id/confirm-inspection', requirePermission('order.assign'), controller.confirmInspectionOrder)
 router.post('/:id/assign', requirePermission('order.assign'), controller.assign)
