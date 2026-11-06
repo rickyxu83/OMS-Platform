@@ -60,7 +60,6 @@ function PasswordInput({
 
 export function ChangePassword() {
   const { logout, user } = useAuth();
-  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loginAlias, setLoginAlias] = useState(String(user?.loginAlias || ""));
@@ -92,7 +91,8 @@ export function ChangePassword() {
 
     setSaving(true);
     try {
-      await api.put("/users/me", { currentPassword, newPassword, loginAlias: normalizedAlias || null });
+      // 首次登录强制改密（must_change_password）无需当前密码，后端按账号状态放行
+      await api.put("/users/me", { newPassword, loginAlias: normalizedAlias || null });
       setDone(true);
       window.setTimeout(() => logout(), 1200);
     } catch (err) {
@@ -119,10 +119,6 @@ export function ChangePassword() {
         {done ? <div className="mb-4 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-700">密码已更新，请重新登录。</div> : null}
 
         <form className="space-y-4" onSubmit={submit}>
-          <div className="space-y-2">
-            <Label htmlFor="current-password">当前密码</Label>
-            <PasswordInput id="current-password" value={currentPassword} onChange={setCurrentPassword} autoComplete="current-password" />
-          </div>
           <div className="space-y-2">
             <Label htmlFor="new-password">新密码</Label>
             <PasswordInput id="new-password" value={newPassword} onChange={setNewPassword} autoComplete="new-password" describedBy="password-policy" />

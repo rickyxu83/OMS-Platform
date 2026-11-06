@@ -380,7 +380,7 @@ async function me(req, res) {
 async function updateMe(req, res) {
   await ensureUserLoginColumns()
   const { currentPassword = '', newPassword = '', engineerSignature = null, loginAlias } = req.body || {}
-  const rows = await query('SELECT id, password_hash, role, email, login_alias FROM users WHERE id = :id LIMIT 1', { id: req.user.id })
+  const rows = await query('SELECT id, password_hash, role, email, login_alias, must_change_password FROM users WHERE id = :id LIMIT 1', { id: req.user.id })
   const user = rows[0]
   if (!user) {
     throw notFound('用户不存在')
@@ -391,9 +391,13 @@ async function updateMe(req, res) {
 
   if (newPassword) {
     validatePassword(newPassword)
-    const passwordOk = await bcrypt.compare(currentPassword, user.password_hash)
-    if (!passwordOk) {
-      throw unauthorized('当前密码不正确')
+    // 首次登录强制改密（must_change_password=1）时不要求当前密码：用户刚用管理员设置的初始密码完成登录，
+    // 再要求输入一遍没有安全收益还易卡住（2026-11-06 佬裁决）。登录后在设置里改密码仍必须验证当前密码。
+    if (!user.must_change_password) {
+      const passwordOk = await bcrypt.compare(currentPassword, user.password_hash)
+      if (!passwordOk) {
+        throw unauthorized('当前密码不正确')
+      }
     }
     updates.push('password_hash = :passwordHash')
     updates.push('must_change_password = 0')
