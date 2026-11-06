@@ -73,6 +73,8 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   const { user } = useAuth();
   const userRole = String(user?.role || "");
   const canCompTime = ["engineer", "driver"].includes(userRole);
+  // 司机不需要代理人（2026-11-06 佬裁决）；工程师/销售代理人候选由后端按角色过滤
+  const delegateExempt = userRole === "driver";
   const visibleTypeCards = REQUEST_TYPE_CARDS.filter((item) => !item.roles || item.roles.includes(userRole));
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<ApplyForm>(createBlankForm);
@@ -103,7 +105,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
 
   // 代理人加载：请假/调休时按所选日期过滤冲突人员（逻辑同原页面）
   useEffect(() => {
-    if (!open || !["leave", "comp_time"].includes(form.requestType)) {
+    if (!open || !["leave", "comp_time"].includes(form.requestType) || delegateExempt) {
       setDelegatesLoading(false);
       return;
     }
@@ -301,7 +303,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
       if (travelInvalid) return travelInvalid;
       return "";
     }
-    if (!form.delegateEmployeeId) return "请选择代理人";
+    if (!form.delegateEmployeeId && !delegateExempt) return "请选择代理人";
     if (form.requestType === "comp_time") {
       if (!compDate) return "请选择调休日期";
       const startMinutes = Number(compStartTime.slice(0, 2)) * 60 + Number(compStartTime.slice(3, 5) || 0);
@@ -334,7 +336,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
           returnAt: travelReturnAt ? travelReturnAt.replace("T", " ") : undefined,
         });
       } else {
-        if (!form.delegateEmployeeId) throw new Error("请选择代理人");
+        if (!form.delegateEmployeeId && !delegateExempt) throw new Error("请选择代理人");
         if (requestType === "leave" && ["sick", "marriage"].includes(form.leaveType) && proofFiles.length === 0) {
           throw new Error(form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明");
         }
@@ -359,7 +361,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
         const draft = await api.post("/attendance/requests", {
             requestType,
             leaveType: requestType === "leave" ? form.leaveType : undefined,
-            delegateEmployeeId: form.delegateEmployeeId,
+            delegateEmployeeId: delegateExempt ? undefined : form.delegateEmployeeId,
             startAt: payloadStartAt,
             endAt: payloadEndAt,
             hours: payloadHours,
@@ -832,6 +834,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </div>
                 ) : null}
 
+                {!delegateExempt ? (
                 <div className="space-y-2">
                   <Label>工作代理人</Label>
                   <Select
@@ -857,8 +860,11 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                   </Select>
                   <p className="text-xs text-muted-foreground">
                     所选时段请假冲突的人员不可选择；代理人无需确认，提交后直接进入配置的审批链。
+                    {userRole === "engineer" ? "代理人仅限工程师或工程主管。" : ""}
+                    {userRole === "sales" ? "代理人仅限销售或销售主管。" : ""}
                   </p>
                 </div>
+                ) : null}
 
                 {proofRequired ? (
                   <div className="space-y-2">
@@ -1020,7 +1026,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                     )}
                     <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
                       <span className="text-muted-foreground">工作代理</span>
-                      <span className="font-medium">{selectedDelegateName || "未选择"}</span>
+                      <span className="font-medium">{delegateExempt ? "无需代理人" : selectedDelegateName || "未选择"}</span>
                     </div>
                     {form.requestType === "leave" && ["personal", "other"].includes(form.leaveType) ? (
                       <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
