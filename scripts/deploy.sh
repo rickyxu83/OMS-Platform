@@ -284,34 +284,26 @@ deploy_backend() {
   info "部署后端"
 
   local remote_dir="$REMOTE_ROOT/$BACKEND_RELATIVE"
-  local archive="/tmp/${PROJECT_SLUG}-backend-src.tgz"
-  local remote_archive="/tmp/${PROJECT_SLUG}-backend-src.tgz"
 
-  # 打包（排除不需要的文件）
-  cd "$ROOT_DIR/backend"
-  tar -c --exclude='node_modules' \
-         --exclude='.env' \
-         --exclude='.DS_Store' \
-         --exclude='uploads' \
-         -zf "$archive" .
-
-  scp "$archive" "$SSH_TARGET:$remote_archive"
-
+  # 部署前先在服务器上备份当前源码（本地操作，不占上传带宽）
   ssh "$SSH_TARGET" "set -e
-    # 备份当前后端源码
     mkdir -p '${REMOTE_ROOT}/backups'
     bak=\"${REMOTE_ROOT}/backups/backend-src-\$(date +%Y%m%d%H%M%S)\"
     mkdir -p \"\$bak\"
     if [ -d '${remote_dir}' ]; then cp -a '${remote_dir}' \"\$bak/current\"; fi
+    echo \"  ✓ 后端源码已备份: \$bak\"
+  "
 
-    # 替换源码（原子操作）
-    rm -rf '${remote_dir}_new'
-    mkdir -p '${remote_dir}_new'
-    tar -xzf '${remote_archive}' -C '${remote_dir}_new'
-    rm -rf '${remote_dir}'
-    mv '${remote_dir}_new' '${remote_dir}'
-    echo '  ✓ 后端源码已上传，备份: \$bak'
+  # rsync 增量上传（rn 为海外高延迟链路，全量 scp 10MB 级需 6+ 分钟，增量通常秒级）
+  rsync -az --delete \
+    --exclude='node_modules' \
+    --exclude='.env' \
+    --exclude='.DS_Store' \
+    --exclude='uploads' \
+    "$ROOT_DIR/backend/" "$SSH_TARGET:$remote_dir/"
+  echo '  ✓ 后端源码已同步（增量）'
 
+  ssh "$SSH_TARGET" "set -e
     # 重建并重启
     cd '${REMOTE_ROOT}'
     docker compose build backend
@@ -355,7 +347,6 @@ deploy_backend() {
     done
   "
 
-  rm -f "$archive"
 }
 
 # ============================================================
@@ -373,28 +364,19 @@ deploy_frontend() {
   local name="$1"
   local local_dist="$2"
   local remote_dir="$3"
-  # tar 名带 PID 后缀：多 worktree 并发部署同一 profile 时共用固定名会互踩（曾实证新包被旧包顶掉，双方日志均显示成功）
-  local archive="/tmp/${PROJECT_SLUG}-${name}-dist-$$.tgz"
-  local remote_archive="/tmp/${PROJECT_SLUG}-${name}-dist-$$.tgz"
-  local remote_new="/tmp/${PROJECT_SLUG}-${name}-new-$$"
 
-  tar -C "$local_dist" -czf "$archive" .
-  scp "$archive" "$SSH_TARGET:$remote_archive"
-
+  # 部署前先在服务器上备份当前站点（本地操作）
   ssh "$SSH_TARGET" "set -e
     mkdir -p '${REMOTE_ROOT}/backups'
     bak=\"${REMOTE_ROOT}/backups/${name}-site-\$(date +%Y%m%d%H%M%S)\"
     mkdir -p \"\$bak\"
     if [ -d '${remote_dir}' ]; then cp -a '${remote_dir}' \"\$bak/current\"; fi
-    rm -rf '${remote_new}'
-    mkdir -p '${remote_new}'
-    tar -xzf '${remote_archive}' -C '${remote_new}'
-    mkdir -p '${remote_dir}'
-    find '${remote_dir}' -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-    cp -a '${remote_new}'/. '${remote_dir}'/
-    rm -f '${remote_archive}'
-    echo \"  ✓ 前端已部署，备份: \$bak\"
+    echo \"  ✓ ${name} 站点已备份: \$bak\"
   "
+
+  # rsync 增量上传（vite 产物按内容 hash 命名，未变化的大文件 vendor 包自动跳过）
+  rsync -az --delete "$local_dist/" "$SSH_TARGET:$remote_dir/"
+  echo "  ✓ ${name} 前端已部署（增量）"
 }
 
 # ============================================================

@@ -69,6 +69,8 @@ const ROLE_LABELS: Record<string, string> = {
   engineer: "工程师",
   purchaser: "采购",
   driver: "司机",
+  finance: "财务",
+  import_export: "进出口",
 };
 
 const ROLE_VARIANT: Record<string, "default" | "info" | "purple" | "success" | "warning" | "secondary" | "rose" | "cyan" | "teal" | "orange" | "lime" | "fuchsia"> = {
@@ -84,6 +86,8 @@ const ROLE_VARIANT: Record<string, "default" | "info" | "purple" | "success" | "
   engineer: "fuchsia",
   purchaser: "teal",
   driver: "teal",
+  finance: "success",
+  import_export: "cyan",
 };
 
 const STATUS_VARIANT: Record<string, "success" | "secondary"> = {

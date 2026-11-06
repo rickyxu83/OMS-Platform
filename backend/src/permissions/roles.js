@@ -1,3 +1,5 @@
+const { ALL_ROLES } = require('./catalog')
+
 const ADMIN_WORKSPACE_ROLES = Object.freeze([
   'admin',
   'assistant',
@@ -10,10 +12,13 @@ const ADMIN_WORKSPACE_ROLES = Object.freeze([
   'sales',
   'engineer',
   'purchaser',
+  'driver',
+  'finance',
+  'import_export',
 ])
 const ENGINEER_WORKSPACE_ROLES = Object.freeze(['engineer', 'engineering_supervisor'])
 const OPERATION_ROLES = Object.freeze(['admin', 'assistant', 'assistant_supervisor', 'dispatcher', 'operations_director', 'engineering_supervisor'])
-const VIEW_ROLES = Object.freeze([...OPERATION_ROLES, 'administrative_supervisor', 'sales', 'sales_supervisor'])
+const VIEW_ROLES = Object.freeze([...OPERATION_ROLES, 'administrative_supervisor', 'sales', 'sales_supervisor', 'finance', 'import_export'])
 const ALL_SIGNED_IN_ROLES = Object.freeze([...new Set([...ADMIN_WORKSPACE_ROLES, ...ENGINEER_WORKSPACE_ROLES])])
 
 const ROLE_GROUPS = Object.freeze({
@@ -26,7 +31,8 @@ const ROLE_GROUPS = Object.freeze({
   serviceOrderView: VIEW_ROLES,
   serviceOrderEngineer: ENGINEER_WORKSPACE_ROLES,
   userManage: Object.freeze(['admin', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor']),
-  userSelf: ALL_SIGNED_IN_ROLES,
+  // 改自己密码/资料是任何登录用户的基本权利，与工作台角色组解耦（曾因 driver 漏加组导致首次登录无法改密，2026-11-06）
+  userSelf: Object.freeze(ALL_ROLES),
   engineerDirectory: ALL_SIGNED_IN_ROLES,
   salesDirectory: Object.freeze([
     'admin',
