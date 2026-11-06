@@ -207,7 +207,7 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
   {
     groupKey: "workspace",
     items: [
-      { labelKey: "dashboard", icon: LayoutDashboard, path: "dashboard", requiredPermissions: ["order.view", "order.engineer.own"] },
+      { labelKey: "dashboard", icon: LayoutDashboard, path: "dashboard", requiredPermissions: ["dashboard.view", "order.engineer.own"] },
       { labelKey: "approval-tasks", icon: ListTodo, path: "approval-tasks" },
     ],
   },

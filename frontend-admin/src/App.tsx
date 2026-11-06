@@ -30,7 +30,7 @@ const ChangePassword = lazy(() => import("@/pages/ChangePassword").then((module)
 const NotFound = lazy(() => import("@/pages/NotFound").then((module) => ({ default: module.NotFound })))
 
 const ROUTE_ACCESS_PERMISSIONS: Record<string, string[]> = {
-  dashboard: ["order.view", "order.engineer.own"],
+  dashboard: ["dashboard.view", "order.engineer.own"],
   "service-report": ["order.engineer.own"],
   "service-orders": ["order.view"],
   mr: ["mr.view"],
