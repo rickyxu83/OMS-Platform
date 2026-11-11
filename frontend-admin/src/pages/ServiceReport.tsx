@@ -4175,35 +4175,51 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                           {visiblePartEntries.map(({ part, index }) => (
                             <div key={index} className="grid gap-3 border-b p-3 last:border-b-0 md:grid-cols-[minmax(150px,1fr)_120px_minmax(0,1fr)_minmax(0,1fr)_90px_80px_40px] md:items-center">
                               <DenseField label="关联设备">
-                                <Select
-                                  value={part.deviceInputMode === "new" ? "__new__" : part.deviceId || "none"}
-                                  onValueChange={(value) => {
-                                    if (value === "__new__") {
-                                      updatePart(index, { deviceInputMode: "new", deviceId: "" });
-                                    } else {
-                                      updatePart(index, { deviceInputMode: "existing" });
-                                      choosePartDevice(index, value);
-                                    }
-                                  }}
-                                  disabled={loadingCustomerDevices}
-                                >
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="none">
-                                      {loadingCustomerDevices
-                                        ? "正在加载设备…"
-                                        : !form.customerId
-                                          ? "请先选择客户"
-                                          : selectedCustomerDevices.length
-                                            ? "请选择设备"
-                                            : "该客户暂无设备"}
-                                    </SelectItem>
-                                    {selectedCustomerDevices.map((device) => (
-                                      <SelectItem key={device.id} value={String(device.id)}>{deviceSelectLabel(device)}</SelectItem>
-                                    ))}
-                                    <SelectItem value="__new__">＋ 登记新设备（设备未录入时）</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                                <div className="flex items-center gap-1">
+                                  <Select
+                                    value={part.deviceInputMode === "new" ? "__new__" : part.deviceId || "none"}
+                                    onValueChange={(value) => {
+                                      if (value === "__new__") {
+                                        updatePart(index, { deviceInputMode: "new", deviceId: "" });
+                                      } else {
+                                        updatePart(index, { deviceInputMode: "existing" });
+                                        choosePartDevice(index, value);
+                                      }
+                                    }}
+                                    disabled={loadingCustomerDevices}
+                                  >
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="none">
+                                        {loadingCustomerDevices
+                                          ? "正在加载设备…"
+                                          : !form.customerId
+                                            ? "请先选择客户"
+                                            : part.deviceId
+                                              ? "— 清除选择 —"
+                                              : selectedCustomerDevices.length
+                                                ? "请选择设备"
+                                                : "该客户暂无设备"}
+                                      </SelectItem>
+                                      {selectedCustomerDevices.map((device) => (
+                                        <SelectItem key={device.id} value={String(device.id)}>{deviceSelectLabel(device)}</SelectItem>
+                                      ))}
+                                      <SelectItem value="__new__">＋ 登记新设备（设备未录入时）</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  {part.deviceId || part.deviceInputMode === "new" ? (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                                      title="清除关联设备"
+                                      onClick={() => updatePart(index, { deviceId: "", deviceInputMode: "existing" })}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  ) : null}
+                                </div>
                               </DenseField>
                               {part.deviceInputMode === "new" ? (
                                 <div className="grid gap-3 rounded-md border border-dashed border-primary/40 bg-primary/5 p-3 md:col-span-full md:grid-cols-4">
