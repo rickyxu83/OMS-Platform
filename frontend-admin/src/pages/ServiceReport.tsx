@@ -4290,19 +4290,15 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                                 </div>
                               ) : null}
 	                              <DenseField label="处理动作">
-                                <Select value={part.actionType} onValueChange={(value) => updatePart(index, { actionType: value })}>
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    {PART_ACTION_OPTIONS.filter((option) => {
-                                      // 2026-11-06 佬裁决：备件更换模块只留「备件更换」；硬件部件安装归安装模块；不再新增「部件记录」
-                                      // 历史行兼容：当前行原值始终显示，可改回该模块默认动作
-                                      if (option.value === part.actionType) return true;
-                                      if (hasReplacementModule && option.value === "replacement") return true;
-                                      if (!hasReplacementModule && hasOfficeMaterialsModule && option.value === "general") return true;
-                                      return false;
-                                    }).map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
-                                  </SelectContent>
-                                </Select>
+                                {/* 2026-11-06 佬裁决：备件更换模块动作固定，不再用下拉选择，只读徽章展示（历史行的安装/部件记录原样显示） */}
+                                <div className="flex h-9 items-center">
+                                  <Badge variant={(() => {
+                                    const action = part.actionType || partActionFor(form.serviceMode, form.serviceType, form.timesheetCategory);
+                                    return action === "installation" ? "success" : action === "replacement" ? "warning" : "outline";
+                                  })()}>
+                                    {optionText(PART_ACTION_OPTIONS, part.actionType || partActionFor(form.serviceMode, form.serviceType, form.timesheetCategory))}
+                                  </Badge>
+                                </div>
                               </DenseField>
                               <DenseField label="备件或硬件部件名称">
                                 <Input value={part.partName} onChange={(event) => updatePart(index, { partName: event.target.value })} />
