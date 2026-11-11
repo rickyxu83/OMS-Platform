@@ -62,6 +62,12 @@ export function emptyPart(actionType = "replacement", deviceId = "", installDevi
     quantity: "1",
     unit: "个",
     remark: "",
+    deviceInputMode: "existing",
+    newDeviceName: "",
+    newDeviceModel: "",
+    newDevicePn: "",
+    newDeviceSerialNo: "",
+    newDeviceRemark: "",
   };
 }
 

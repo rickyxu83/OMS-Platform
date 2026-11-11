@@ -2382,7 +2382,9 @@ function normalizeServiceParts(parts = [], { fallbackActionType = 'general', fal
       if (!partName) return null
       const installDeviceDraftId = String(part?.installDeviceDraftId || part?.install_device_draft_id || '').trim()
       const mappedInstallDeviceId = installDeviceDraftId ? installDeviceIdMap.get(installDeviceDraftId) : null
-      const deviceId = Number(part?.deviceId || part?.device_id || mappedInstallDeviceId || (!installDeviceDraftId ? fallbackDeviceId : null) || 0) || null
+      // 现场登记新设备（客户设备未录入时）：有 newDeviceModel 则不 fallback 主设备，保存时先建设备档案
+      const newDeviceModel = String(part?.newDeviceModel || '').trim()
+      const deviceId = Number(part?.deviceId || part?.device_id || mappedInstallDeviceId || (!installDeviceDraftId && !newDeviceModel ? fallbackDeviceId : null) || 0) || null
       return {
         deviceId,
         actionType: normalizePartActionType(part?.actionType || part?.action_type, fallbackActionType),
@@ -2391,6 +2393,11 @@ function normalizeServiceParts(parts = [], { fallbackActionType = 'general', fal
         quantity: Number(part?.quantity || 1) || 1,
         unit: String(part?.unit || '').trim() || null,
         remark: String(part?.remark || '').trim() || null,
+        newDeviceName: String(part?.newDeviceName || '').trim() || null,
+        newDeviceModel: newDeviceModel || null,
+        newDevicePn: String(part?.newDevicePn || '').trim() || null,
+        newDeviceSerialNo: String(part?.newDeviceSerialNo || '').trim() || null,
+        newDeviceRemark: String(part?.newDeviceRemark || '').trim() || null,
       }
     })
     .filter(Boolean)
@@ -2398,8 +2405,28 @@ function normalizeServiceParts(parts = [], { fallbackActionType = 'general', fal
 
 async function saveServiceParts(connection, orderId, parts, { customerId, fallbackActionType = 'general', fallbackDeviceId = null, installDeviceIdMap = new Map() } = {}) {
   await ensureServicePartsColumns(connection)
+  await ensureDeviceMaintenanceTypeEnum(connection)
   const normalizedParts = normalizeServiceParts(parts, { fallbackActionType, fallbackDeviceId, installDeviceIdMap })
   for (const part of normalizedParts) {
+    // 现场登记新设备：先为客户建设备档案（维保类型待确认），再关联备件记录（2026-11-06 佬裁决）
+    if (!part.deviceId && part.newDeviceModel) {
+      const [deviceResult] = await connection.execute(
+        `INSERT INTO devices (
+           customer_id, name, model, pn, serial_no, remark, maintenance_type, installation_source_service_order_id
+         )
+         VALUES (:customerId, :deviceName, :deviceModel, :devicePn, :deviceSerialNo, :deviceRemark, 'pending_confirmation', :orderId)`,
+        {
+          customerId,
+          deviceName: part.newDeviceName || null,
+          deviceModel: part.newDeviceModel,
+          devicePn: part.newDevicePn || null,
+          deviceSerialNo: part.newDeviceSerialNo || null,
+          deviceRemark: part.newDeviceRemark || null,
+          orderId,
+        },
+      )
+      part.deviceId = deviceResult.insertId
+    }
     if (['replacement', 'installation'].includes(part.actionType) && !part.deviceId) {
       throw badRequest('请选择备件或硬件部件关联设备')
     }

@@ -2061,8 +2061,9 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       engineerIds: form.engineerIds.map(Number).filter(Boolean),
       parts: activeParts().map((part) => {
         const actionType = part.actionType || partActionFor(form.serviceMode, payloadServiceType, payloadTimesheetCategory);
+        const isNewDevice = part.deviceInputMode === "new";
         return {
-          deviceId: part.deviceId ? Number(part.deviceId) : (isInstall ? null : primaryTargetDeviceId),
+          deviceId: isNewDevice ? null : (part.deviceId ? Number(part.deviceId) : (isInstall ? null : primaryTargetDeviceId)),
           installDeviceDraftId: part.installDeviceDraftId || null,
           actionType,
           partName: part.partName.trim(),
@@ -2070,6 +2071,13 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
           quantity: part.quantity || "1",
           unit: part.unit.trim() || "个",
           remark: part.remark.trim(),
+          ...(isNewDevice ? {
+            newDeviceName: (part.newDeviceName || "").trim(),
+            newDeviceModel: (part.newDeviceModel || "").trim(),
+            newDevicePn: (part.newDevicePn || "").trim(),
+            newDeviceSerialNo: (part.newDeviceSerialNo || "").trim(),
+            newDeviceRemark: (part.newDeviceRemark || "").trim(),
+          } : {}),
         };
       }),
     };
@@ -2117,7 +2125,9 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       const installTargetReady = Boolean(installTarget && (
         installTarget.inputMode === "existing" ? installTarget.deviceId : installTarget.model.trim()
       ));
-      return (needsDevice && !part.deviceId && !form.deviceId && !installTargetReady) || !part.partName.trim() || Number(part.quantity || 0) <= 0;
+      // 备件/部件可现场登记新设备（型号必填），解决客户设备未录入时无法提交的问题（2026-11-06）
+      const newDeviceReady = part.deviceInputMode === "new" && Boolean(part.newDeviceModel?.trim());
+      return (needsDevice && !part.deviceId && !form.deviceId && !installTargetReady && !newDeviceReady) || !part.partName.trim() || Number(part.quantity || 0) <= 0;
     });
     if (invalidPart) missing.push({ label: "备件或硬件部件明细（关联设备、名称、数量）", section: "asset" });
     if (selectedServiceModules.includes("replacement")) {
@@ -4165,7 +4175,18 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                           {visiblePartEntries.map(({ part, index }) => (
                             <div key={index} className="grid gap-3 border-b p-3 last:border-b-0 md:grid-cols-[minmax(150px,1fr)_120px_minmax(0,1fr)_minmax(0,1fr)_90px_80px_40px] md:items-center">
                               <DenseField label="关联设备">
-                                <Select value={part.deviceId || "none"} onValueChange={(value) => choosePartDevice(index, value)} disabled={loadingCustomerDevices}>
+                                <Select
+                                  value={part.deviceInputMode === "new" ? "__new__" : part.deviceId || "none"}
+                                  onValueChange={(value) => {
+                                    if (value === "__new__") {
+                                      updatePart(index, { deviceInputMode: "new", deviceId: "" });
+                                    } else {
+                                      updatePart(index, { deviceInputMode: "existing" });
+                                      choosePartDevice(index, value);
+                                    }
+                                  }}
+                                  disabled={loadingCustomerDevices}
+                                >
                                   <SelectTrigger><SelectValue /></SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="none">
@@ -4180,9 +4201,27 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                                     {selectedCustomerDevices.map((device) => (
                                       <SelectItem key={device.id} value={String(device.id)}>{deviceSelectLabel(device)}</SelectItem>
                                     ))}
+                                    <SelectItem value="__new__">＋ 登记新设备（设备未录入时）</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </DenseField>
+                              {part.deviceInputMode === "new" ? (
+                                <div className="grid gap-3 rounded-md border border-dashed border-primary/40 bg-primary/5 p-3 md:col-span-full md:grid-cols-4">
+                                  <DenseField label="新设备型号（必填）">
+                                    <Input value={part.newDeviceModel || ""} placeholder="必填" onChange={(event) => updatePart(index, { newDeviceModel: event.target.value })} />
+                                  </DenseField>
+                                  <DenseField label="序列号">
+                                    <Input value={part.newDeviceSerialNo || ""} onChange={(event) => updatePart(index, { newDeviceSerialNo: event.target.value })} />
+                                  </DenseField>
+                                  <DenseField label="PN">
+                                    <Input value={part.newDevicePn || ""} onChange={(event) => updatePart(index, { newDevicePn: event.target.value })} />
+                                  </DenseField>
+                                  <DenseField label="设备名称 / 位置备注">
+                                    <Input value={part.newDeviceName || ""} placeholder="选填" onChange={(event) => updatePart(index, { newDeviceName: event.target.value })} />
+                                  </DenseField>
+                                  <p className="text-xs text-muted-foreground md:col-span-4">提交后自动为该客户建设备档案（维保类型「待确认」），并关联到这条备件记录。</p>
+                                </div>
+                              ) : null}
 	                              <DenseField label="处理动作">
                                 <Select value={part.actionType} onValueChange={(value) => updatePart(index, { actionType: value })}>
                                   <SelectTrigger><SelectValue /></SelectTrigger>
