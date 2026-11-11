@@ -1350,6 +1350,28 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     scheduleInstallModelSearch(targetDeviceDraftIdValue, value);
   }
 
+  // 清除已选的已有设备，重置为手动输入空草稿（2026-11-06 佬验收反馈：选了目标设备后无法清除）
+  function clearTargetDeviceChoice(targetDeviceDraftIdValue: string) {
+    const nextDevices = form.targetDevices.map((device) => (
+      device.id === targetDeviceDraftIdValue ? emptyTargetDevice({ id: device.id }) : device
+    ));
+    patchTargetDevices(nextDevices, {
+      parts: form.parts.map((part) => (
+        part.deviceId && !nextDevices.some((device) => device.deviceId === part.deviceId) ? { ...part, deviceId: "" } : part
+      )),
+    });
+  }
+
+  function clearInstallDeviceChoice(installDeviceDraftIdValue: string) {
+    const nextDevices = form.installDevices.map((device) => (
+      device.id === installDeviceDraftIdValue ? emptyInstallDevice({ id: device.id }) : device
+    ));
+    patchInstallDevices(nextDevices, {
+      parts: form.parts.map((part) => (
+        part.installDeviceDraftId === installDeviceDraftIdValue ? { ...part, deviceId: "" } : part
+      )),
+    });
+  }
   function chooseTargetDevice(targetDeviceDraftIdValue: string, deviceId: string) {
     const device = selectedCustomerDevices.find((item) => String(item.id) === deviceId);
     if (!device) {
@@ -3807,21 +3829,35 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                               <div className={`grid gap-3 ${targetDevice.inputMode === "existing" ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
                                 <div className="relative space-y-2">
                                   <Label className="block text-sm font-medium text-foreground">{isRemote ? "远程目标设备 / 设备型号" : hasOfficeMaterialsModule ? "关联设备 / 设备型号" : "目标设备 / 设备型号"}</Label>
-                                  <Input
-                                    value={targetDeviceValue(targetDevice)}
-                                    placeholder="输入设备型号，或选择客户已有设备"
-                                    autoComplete="off"
-                                    onFocus={() => {
-                                      setTargetDeviceOpenId(targetDevice.id);
-                                      if (targetDevice.inputMode !== "existing" && targetDevice.model.trim().length >= 2) {
-                                        scheduleInstallModelSearch(targetDevice.id, targetDevice.model);
-                                      }
-                                    }}
-                                    onBlur={() => window.setTimeout(() => {
-                                      setTargetDeviceOpenId((current) => current === targetDevice.id ? null : current);
-                                    }, 160)}
-                                    onChange={(event) => changeTargetDevice(targetDevice.id, event.target.value)}
-                                  />
+                                  <div className="flex items-center gap-1">
+                                    <Input
+                                      value={targetDeviceValue(targetDevice)}
+                                      placeholder="输入设备型号，或选择客户已有设备"
+                                      autoComplete="off"
+                                      onFocus={() => {
+                                        setTargetDeviceOpenId(targetDevice.id);
+                                        if (targetDevice.inputMode !== "existing" && targetDevice.model.trim().length >= 2) {
+                                          scheduleInstallModelSearch(targetDevice.id, targetDevice.model);
+                                        }
+                                      }}
+                                      onBlur={() => window.setTimeout(() => {
+                                        setTargetDeviceOpenId((current) => current === targetDevice.id ? null : current);
+                                      }, 160)}
+                                      onChange={(event) => changeTargetDevice(targetDevice.id, event.target.value)}
+                                    />
+                                    {targetDevice.inputMode === "existing" ? (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
+                                        title="清除已选设备，改为手动输入"
+                                        onClick={() => clearTargetDeviceChoice(targetDevice.id)}
+                                      >
+                                        <X className="h-4 w-4" />
+                                      </Button>
+                                    ) : null}
+                                  </div>
                                   {targetDeviceOpenId === targetDevice.id ? (
                                     <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
                                       {loadingCustomerDevices ? (
@@ -3969,6 +4005,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 		                              <div className={`grid gap-3 ${installDevice.inputMode === "existing" ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
 	                                <div className="relative space-y-2">
 	                                  <Label className="block text-sm font-medium text-foreground">安装目标设备 / 设备型号</Label>
+	                                  <div className="flex items-center gap-1">
 		                                  <Input
 		                                    value={installTargetValue(installDevice)}
 		                                    placeholder="输入设备型号，或选择客户已有设备"
@@ -3984,6 +4021,19 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 		                                    }, 160)}
 	                                    onChange={(event) => changeInstallTarget(installDevice.id, event.target.value)}
 	                                  />
+	                                  {installDevice.inputMode === "existing" ? (
+	                                    <Button
+	                                      type="button"
+	                                      variant="ghost"
+	                                      size="icon"
+	                                      className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
+	                                      title="清除已选设备，改为手动输入"
+	                                      onClick={() => clearInstallDeviceChoice(installDevice.id)}
+	                                    >
+	                                      <X className="h-4 w-4" />
+	                                    </Button>
+	                                  ) : null}
+	                                  </div>
 	                                  {installTargetOpenId === installDevice.id ? (
 	                                    <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
 	                                      {loadingCustomerDevices ? (
