@@ -4273,7 +4273,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                               </DenseField>
                               {part.deviceInputMode === "new" ? (
                                 <div className="grid gap-3 rounded-md border border-dashed border-primary/40 bg-primary/5 p-3 md:col-span-full md:grid-cols-4">
-                                  <DenseField label="新设备型号（必填）">
+                                  <Field label="新设备型号" required>
                                     {renderModelCatalogSuggestionInput({
                                       inputId: `part-${index}-new-device-model`,
                                       value: part.newDeviceModel || "",
@@ -4281,22 +4281,22 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                                       placeholder: "必填；输入可从型号库补全",
                                       onChange: (newDeviceModel) => updatePart(index, { newDeviceModel }),
                                     })}
-                                  </DenseField>
-                                  <DenseField label="序列号">
-                                    <Input value={part.newDeviceSerialNo || ""} onChange={(event) => updatePart(index, { newDeviceSerialNo: event.target.value })} />
-                                  </DenseField>
-                                  <DenseField label="PN">
+                                  </Field>
+                                  <Field label="序列号">
+                                    <Input value={part.newDeviceSerialNo || ""} placeholder="选填" onChange={(event) => updatePart(index, { newDeviceSerialNo: event.target.value })} />
+                                  </Field>
+                                  <Field label="PN">
                                     {renderModelCatalogSuggestionInput({
                                       inputId: `part-${index}-new-device-pn`,
                                       value: part.newDevicePn || "",
                                       valueMode: "partNo",
-                                      placeholder: "输入 PN 或型号",
+                                      placeholder: "选填；输入 PN 或型号",
                                       onChange: (newDevicePn) => updatePart(index, { newDevicePn }),
                                     })}
-                                  </DenseField>
-                                  <DenseField label="设备名称 / 位置备注">
+                                  </Field>
+                                  <Field label="设备名称 / 位置备注">
                                     <Input value={part.newDeviceName || ""} placeholder="选填" onChange={(event) => updatePart(index, { newDeviceName: event.target.value })} />
-                                  </DenseField>
+                                  </Field>
                                   <p className="text-xs text-muted-foreground md:col-span-4">提交后自动为该客户建设备档案（维保类型「待确认」），并关联到这条备件记录。</p>
                                 </div>
                               ) : null}
