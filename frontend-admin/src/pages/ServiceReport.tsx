@@ -4274,13 +4274,25 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                               {part.deviceInputMode === "new" ? (
                                 <div className="grid gap-3 rounded-md border border-dashed border-primary/40 bg-primary/5 p-3 md:col-span-full md:grid-cols-4">
                                   <DenseField label="新设备型号（必填）">
-                                    <Input value={part.newDeviceModel || ""} placeholder="必填" onChange={(event) => updatePart(index, { newDeviceModel: event.target.value })} />
+                                    {renderModelCatalogSuggestionInput({
+                                      inputId: `part-${index}-new-device-model`,
+                                      value: part.newDeviceModel || "",
+                                      valueMode: "model",
+                                      placeholder: "必填；输入可从型号库补全",
+                                      onChange: (newDeviceModel) => updatePart(index, { newDeviceModel }),
+                                    })}
                                   </DenseField>
                                   <DenseField label="序列号">
                                     <Input value={part.newDeviceSerialNo || ""} onChange={(event) => updatePart(index, { newDeviceSerialNo: event.target.value })} />
                                   </DenseField>
                                   <DenseField label="PN">
-                                    <Input value={part.newDevicePn || ""} onChange={(event) => updatePart(index, { newDevicePn: event.target.value })} />
+                                    {renderModelCatalogSuggestionInput({
+                                      inputId: `part-${index}-new-device-pn`,
+                                      value: part.newDevicePn || "",
+                                      valueMode: "partNo",
+                                      placeholder: "输入 PN 或型号",
+                                      onChange: (newDevicePn) => updatePart(index, { newDevicePn }),
+                                    })}
                                   </DenseField>
                                   <DenseField label="设备名称 / 位置备注">
                                     <Input value={part.newDeviceName || ""} placeholder="选填" onChange={(event) => updatePart(index, { newDeviceName: event.target.value })} />
