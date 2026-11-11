@@ -229,11 +229,10 @@ export interface ServicePartDraft {
   quantity: string;
   unit: string;
   remark: string;
-  // 关联设备登记模式：existing=从客户现有设备选；new=现场登记新设备（型号必填），提交时自动建设备档案
+  // 关联设备登记模式：existing=从客户现有设备选；new=现场登记新设备（型号+序列号必填），提交时自动建设备档案
   deviceInputMode?: "existing" | "new";
   newDeviceName?: string;
   newDeviceModel?: string;
-  newDevicePn?: string;
   newDeviceSerialNo?: string;
   newDeviceRemark?: string;
 }

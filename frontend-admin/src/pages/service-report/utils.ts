@@ -65,7 +65,6 @@ export function emptyPart(actionType = "replacement", deviceId = "", installDevi
     deviceInputMode: "existing",
     newDeviceName: "",
     newDeviceModel: "",
-    newDevicePn: "",
     newDeviceSerialNo: "",
     newDeviceRemark: "",
   };
