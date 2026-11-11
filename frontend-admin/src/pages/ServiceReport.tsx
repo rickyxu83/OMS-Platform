@@ -590,7 +590,9 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   const hasReplacementModule = hasServiceModule("replacement") || replacementParts.length > 0;
   const hasHardwareInstallDetails = isInstall || installationParts.length > 0;
   const showAssetSection = isInstall || isRepairModule || isRemoteSupportModule || hasOfficeMaterialsModule || hasReplacementModule || generalParts.length > 0;
-  const showTargetDeviceFields = isRepairModule || isRemoteSupportModule || hasOfficeMaterialsModule || hasReplacementModule;
+  // 2026-11-06 佬裁决：备件更换模块存在时不显示目标设备卡片——服务对象由备件行关联设备承担
+  // （提交时反向联动自动补进目标设备）；不换件的维修/远程/内勤场景仍保留目标设备卡片。
+  const showTargetDeviceFields = (isRepairModule || isRemoteSupportModule || hasOfficeMaterialsModule) && !hasReplacementModule;
   const showInlineInstallParts = isInstall;
   const showPartsModule = hasReplacementModule || generalParts.length > 0 || (!showInlineInstallParts && hasHardwareInstallDetails);
   const installDeviceRows = useMemo(() => (
