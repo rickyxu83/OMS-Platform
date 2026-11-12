@@ -4290,7 +4290,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                               ) : null}
 	                              
                               <DenseField label="备件或硬件部件名称">
-                                <Input value={part.partName} onChange={(event) => updatePart(index, { partName: event.target.value })} />
+                                <Input value={part.partName} placeholder="如：硬盘、内存条、电源模块" onChange={(event) => updatePart(index, { partName: event.target.value })} />
                               </DenseField>
 	                              <DenseField label="料号 / PN">
 	                                {renderModelCatalogSuggestionInput({
