@@ -340,6 +340,7 @@ async function update(req, res) {
       },
     )
     await clearLoginRateLimitForUser(id)
+    await syncAttendanceProfileName(id, realName)
   } else {
     await query(
       `UPDATE users
@@ -365,7 +366,20 @@ async function update(req, res) {
     )
   }
 
+  await syncAttendanceProfileName(id, realName)
   res.status(204).end()
+}
+
+// 改名同步考勤员工档案（2026-11-12 事故：司机改名只改了 users.real_name，
+// 假勤页面与审批邮件取 attendance_employee_profiles.employee_name 快照，仍显示旧名）
+async function syncAttendanceProfileName(userId, realName) {
+  if (!realName) return
+  try {
+    await query('UPDATE attendance_employee_profiles SET employee_name = :employeeName WHERE user_id = :userId', { employeeName: realName, userId })
+  } catch (error) {
+    // 考勤表可能尚未初始化（未启用考勤的环境），表不存在时跳过同步
+    if (!/doesn't exist/i.test(String(error?.message || ''))) throw error
+  }
 }
 
 async function me(req, res) {

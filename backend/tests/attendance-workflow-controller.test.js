@@ -401,6 +401,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
             id: 322,
             workflow_version: 4,
             employee_id: 5,
+            applicant_role: 'driver',
             delegate_employee_id: null,
             employee_name: '司机甲',
             applicant_email: 'driver@example.test',
@@ -415,6 +416,9 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
           }], []]
         }
         if (/FROM files/.test(sql)) return [[{ proof_count: 0 }], []]
+        if (/FROM users/.test(sql) && /role IN \(:approverRole/.test(sql)) {
+          return [[{ role: 'administrative_supervisor', user_count: 1 }], []]
+        }
         if (/FROM users/.test(sql) && /role = :role/.test(sql)) {
           return [[{ id: 88, name: '行政主管甲', email: 'admin-sup@example.test' }], []]
         }
