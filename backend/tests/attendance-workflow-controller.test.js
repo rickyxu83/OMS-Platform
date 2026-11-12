@@ -2187,11 +2187,13 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
   }
 
   {
-    // 草稿状态不能再撤回
+    // 草稿丢弃 → withdrawn 终态（2026-11-12 补充：覆盖加班草稿只能重提或丢弃的场景）
+    const executeCalls = []
     const { controller } = await loadController({
-      connectionExecute: async (sql) => {
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
         if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
-          return [[{ id: 502, workflow_version: 4, employee_id: 5, status: 'draft', submitted_by: 42, request_type: 'leave' }], []]
+          return [[{ id: 502, workflow_version: 4, employee_id: 5, status: 'draft', submitted_by: 42, request_type: 'overtime', batch_id: null }], []]
         }
         return [[], []]
       },
@@ -2204,7 +2206,12 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     } catch (error) {
       thrown = error
     }
-    assert.equal(thrown?.status, 400)
+    assert.equal(thrown, null, '草稿应可丢弃: ' + (thrown && thrown.message))
+    const upd = executeCalls.find((call) => /UPDATE attendance_requests/.test(call.sql) && /status = 'withdrawn'/.test(call.sql))
+    assert.ok(upd, '草稿撤回应落 withdrawn 终态')
+    // 草稿无待审步骤，不应有 skipped 标记与通知
+    assert.equal(executeCalls.some((call) => /'skipped'/.test(call.sql)), false)
+    assert.equal(executeCalls.some((call) => /attendance_email_notifications/.test(call.sql)), false)
   }
 
   {

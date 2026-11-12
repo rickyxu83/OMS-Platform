@@ -573,6 +573,27 @@ export function Attendance() {
     });
   }
 
+  // 加班草稿一键重提（2026-11-12：加班撤回/驳回回草稿后不支持编辑，给直接重提入口）
+  function resubmitDraft(item: AttendanceRequest) {
+    setPendingAction({
+      title: "重新提交",
+      description: <>加班申请按原时段重新进入审批链。</>,
+      confirmLabel: "重新提交",
+      run: () => action(`/attendance/requests/${item.id}/submit`, "已重新提交"),
+    });
+  }
+
+  // 草稿丢弃：draft 撤回为终态（不可再编辑），与审批中撤回（回草稿可重提）区分
+  function discardDraft(item: AttendanceRequest) {
+    setPendingAction({
+      title: "丢弃草稿",
+      description: <>{requestTypeLabel(item.requestType)} · 丢弃后不可再编辑提交；如需申请请重新新建。</>,
+      confirmLabel: "确认丢弃",
+      destructive: true,
+      run: () => action(`/attendance/requests/${item.id}/withdraw`, "已丢弃"),
+    });
+  }
+
   // 代理人确认（2026-11-12 规范）：确认前明确提醒——确认后代理人在该时段将无法申请休假/调休
   function confirmDelegate(item: AttendanceRequest) {
     const range = `${String(item.startAt || "").replace("T", " ").slice(0, 16)} ~ ${String(item.endAt || "").replace("T", " ").slice(0, 16)}`;
@@ -1122,9 +1143,11 @@ export function Attendance() {
               const status = item.status || "";
               const isPending = status.startsWith("pending_");
               // spec 020：撤回/驳回回草稿，草稿/已撤回/已驳回均可原条修改后重新提交（加班由工单带入不支持）
+              const isDraft = status === "draft";
               const canEditResubmit = item.requestType !== "overtime" && ["draft", "withdrawn", "rejected"].includes(status);
+              const canResubmitOvertime = item.requestType === "overtime" && isDraft;
               const canWithdraw = ["pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(status);
-              if (!isPending && !canWithdraw && !canEditResubmit) return null;
+              if (!isPending && !canWithdraw && !canEditResubmit && !canResubmitOvertime && !isDraft) return null;
               const reminded = remindedRecently(item);
               return (
                 <>
@@ -1135,7 +1158,17 @@ export function Attendance() {
                   ) : null}
                   {canEditResubmit ? (
                     <Button size="sm" onClick={() => { setEditingRequest(item); setApplyOpen(true); }}>
-                      <Pencil className="mr-1 h-4 w-4" /> {status === "draft" ? "编辑提交" : "修改重提"}
+                      <Pencil className="mr-1 h-4 w-4" /> {isDraft ? "编辑提交" : "修改重提"}
+                    </Button>
+                  ) : null}
+                  {canResubmitOvertime ? (
+                    <Button size="sm" onClick={() => resubmitDraft(item)}>
+                      <Send className="mr-1 h-4 w-4" /> 重新提交
+                    </Button>
+                  ) : null}
+                  {isDraft ? (
+                    <Button size="sm" variant="outline" onClick={() => discardDraft(item)}>
+                      <Trash2 className="mr-1 h-4 w-4" /> 丢弃
                     </Button>
                   ) : null}
                   {canWithdraw ? (

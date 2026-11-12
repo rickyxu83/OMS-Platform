@@ -3242,15 +3242,35 @@ async function withdrawRequest(req, res) {
   await transaction(async (connection) => {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
-    // spec 020：撤回回到草稿（可修改后原条重新提交），不再终态；草稿本身不能再撤回
-    if (!['pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin'].includes(request.status)) {
+    // spec 020：审批中撤回回到草稿（可修改后原条重新提交），不再终态
+    const withdrawable = ['pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin']
+    // 草稿丢弃（2026-11-12 补充）：draft 无待审步骤，撤回即终态 withdrawn，不通知任何人；
+    // 覆盖加班草稿场景——加班由工单带入不支持编辑，撤回/驳回回草稿后只能重提或丢弃
+    if (request.status === 'draft') {
+      if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以撤回')
+      const draftGroup = await batchRequestsForUpdate(connection, request)
+      for (const item of draftGroup) {
+        if (item.status !== 'draft') continue
+        await connection.execute(
+          `UPDATE attendance_requests
+           SET status = 'withdrawn',
+               withdrawn_by = :userId,
+               withdrawn_at = NOW(),
+               withdraw_reason = :reason
+           WHERE id = :id`,
+          { id: item.id, userId: req.user.id, reason },
+        )
+      }
+      return
+    }
+    if (!withdrawable.includes(request.status)) {
       throw badRequest('当前状态不能撤回')
     }
     if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以撤回')
     // 组联动：同批申请中可撤回的条目一并撤回（终态/不可撤回状态跳过）
     const group = await batchRequestsForUpdate(connection, request)
     for (const item of group) {
-      if (!['pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin'].includes(item.status)) continue
+      if (!withdrawable.includes(item.status)) continue
       // 通知当前环节处理人（标 skipped 前取出 pending 步骤）
       const currentStep = await pendingApprovalStep(connection, item.id)
       await connection.execute(
