@@ -2354,6 +2354,32 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.equal(thrown?.status, 403, '非本人修改应 403')
   }
 
+  {
+    // 忽略候选工单（2026-11-12 佬需求：短单不占候选位）
+    const { controller, calls } = await loadController()
+    const req = { user: { id: 42, role: 'engineer' }, params: { id: '777' }, body: {} }
+    const res = createResponse()
+    await controller.dismissOvertimeServiceOrder(req, res)
+    assert.equal(res.body.ok, true)
+    const insert = calls.find((call) => /INSERT IGNORE INTO attendance_overtime_dismissals/.test(call.sql))
+    assert.ok(insert)
+    assert.equal(Number(insert.params.userId), 42)
+    assert.equal(Number(insert.params.id), 777)
+  }
+
+  {
+    // 恢复候选工单
+    const { controller, calls } = await loadController()
+    const req = { user: { id: 42, role: 'engineer' }, params: { id: '777' }, body: {} }
+    const res = createResponse()
+    await controller.restoreOvertimeServiceOrder(req, res)
+    assert.equal(res.body.ok, true)
+    const del = calls.find((call) => /DELETE FROM attendance_overtime_dismissals/.test(call.sql))
+    assert.ok(del)
+    assert.equal(Number(del.params.userId), 42)
+    assert.equal(Number(del.params.id), 777)
+  }
+
 })().catch((error) => {
   console.error(error)
   process.exit(1)

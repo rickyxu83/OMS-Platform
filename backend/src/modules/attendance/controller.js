@@ -370,6 +370,16 @@ async function ensureSchema() {
       )
 
       await query(
+        `CREATE TABLE IF NOT EXISTS attendance_overtime_dismissals (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          user_id BIGINT UNSIGNED NOT NULL,
+          service_order_id BIGINT UNSIGNED NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          UNIQUE KEY uniq_attendance_overtime_dismissal (user_id, service_order_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+      )
+      await query(
         `CREATE TABLE IF NOT EXISTS attendance_request_approvals (
           id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
           request_id BIGINT UNSIGNED NOT NULL,
@@ -2036,8 +2046,15 @@ async function listOvertimeServiceOrders(req, res) {
   const employee = await currentEmployee(req.user.id)
   if (!employee) throw forbidden('当前账号没有启用的员工档案')
   const rows = await serviceOrderOvertimeRows(req.user.id)
-  const usedMap = await usedOvertimeSegments(rows.map((row) => row.id), req.user.id)
-  const items = rows
+  // 本人已忽略的工单（2026-11-12 佬需求：几分钟的短单不想申请也不想占候选位）
+  const dismissedRows = await query(
+    'SELECT service_order_id AS orderId FROM attendance_overtime_dismissals WHERE user_id = :userId',
+    { userId: req.user.id },
+  )
+  const dismissedIds = new Set(dismissedRows.map((row) => Number(row.orderId)))
+  const activeRows = rows.filter((row) => !dismissedIds.has(Number(row.id)))
+  const usedMap = await usedOvertimeSegments(activeRows.map((row) => row.id), req.user.id)
+  const items = activeRows
     .map((row) => {
       const used = usedMap.get(Number(row.id)) || new Set()
       return {
@@ -2051,7 +2068,37 @@ async function listOvertimeServiceOrders(req, res) {
       }
     })
     .filter((item) => item.segments.length)
-  res.json({ items })
+  // 已忽略简要列表：供前端「已忽略 N 个工单」恢复入口
+  const dismissed = rows
+    .filter((row) => dismissedIds.has(Number(row.id)))
+    .map((row) => {
+      const snapshot = serviceOrderSnapshot(row)
+      return { id: snapshot.id, orderNo: snapshot.orderNo, customerName: snapshot.customerName, issueDescription: snapshot.issueDescription }
+    })
+  res.json({ items, dismissed })
+}
+
+// 忽略/恢复候选工单（仅影响本人候选列表，不影响工单本身与他人）
+async function dismissOvertimeServiceOrder(req, res) {
+  await ensureSchema()
+  const id = Number(req.params.id)
+  if (!id) throw badRequest('工单 ID 不正确')
+  await query(
+    'INSERT IGNORE INTO attendance_overtime_dismissals (user_id, service_order_id) VALUES (:userId, :id)',
+    { userId: req.user.id, id },
+  )
+  res.json({ ok: true })
+}
+
+async function restoreOvertimeServiceOrder(req, res) {
+  await ensureSchema()
+  const id = Number(req.params.id)
+  if (!id) throw badRequest('工单 ID 不正确')
+  await query(
+    'DELETE FROM attendance_overtime_dismissals WHERE user_id = :userId AND service_order_id = :id',
+    { userId: req.user.id, id },
+  )
+  res.json({ ok: true })
 }
 
 // 校验并归一化一个时段的加班结果。路上固定转调休，工作段按 body 的 overtimeResult。
@@ -4006,6 +4053,8 @@ module.exports = {
   updateRequest,
   submitRequest,
   listOvertimeServiceOrders,
+  dismissOvertimeServiceOrder,
+  restoreOvertimeServiceOrder,
   createServiceOrderOvertimeRequest,
   listRequests,
   pendingApprovalCount,
