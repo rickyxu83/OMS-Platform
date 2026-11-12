@@ -859,7 +859,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    所选时段请假冲突的人员不可选择；代理人无需确认，提交后直接进入配置的审批链。
+                    所选时段请假冲突的人员不可选择；提交后需代理人确认，确认后进入配置的审批链；代理人确认后在代理时段内将无法申请休假。
                     {userRole === "engineer" ? "代理人仅限工程师或工程主管。" : ""}
                     {userRole === "sales" ? "代理人仅限销售或销售主管。" : ""}
                   </p>
@@ -1049,7 +1049,9 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
               <div className="rounded-lg border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
                 {form.requestType === "overtime"
                   ? "提交后进入配置的审批链"
-                  : "提交后直接进入配置的审批链，代理人无需确认"}
+                  : delegateExempt
+                    ? "提交后直接进入配置的审批链，无需代理人"
+                    : "提交后先由代理人确认，确认后进入配置的审批链"}
               </div>
             </div>
           ) : null}
