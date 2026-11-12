@@ -967,21 +967,17 @@ export function Attendance() {
 
       {activeTab === "approve" ? (
         <div className="space-y-6">
-          {/* 卡片按内容自适应宽度、靠左紧凑排列（佬 2026-11-12：grid 等分拉宽后右侧留白不协调） */}
-          <div className="flex flex-wrap gap-3">
+          {/* 原始横条样式 + 每项左侧图标色块（2026-11-12 佬定稿） */}
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-2 rounded-lg border bg-card px-5 py-3 text-sm">
             {statTiles.map((stat) => (
-              <div key={stat.label} className={`flex w-fit min-w-44 items-center gap-3 rounded-xl border bg-card py-3 pl-4 pr-6 shadow-sm ${stat.warn ? "border-amber-300 bg-amber-50/40" : ""}`}>
-                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${stat.iconBox}`}>
-                  <stat.icon className="h-5 w-5" />
+              <span key={stat.label} className="flex items-center gap-2 text-muted-foreground">
+                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${stat.iconBox}`}>
+                  <stat.icon className="h-4 w-4" />
                 </span>
-                <div className="min-w-0">
-                  <div className={`text-2xl font-bold leading-none tracking-tight ${stat.warn ? "text-amber-600" : "text-foreground"}`}>
-                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : formatCount(stat.value)}
-                    {stat.warn && !loading ? <span className="ml-1.5 align-middle text-xs font-medium">不足</span> : null}
-                  </div>
-                  <div className="mt-1 truncate text-xs text-muted-foreground">{stat.label}</div>
-                </div>
-              </div>
+                {stat.label}
+                <b className={`text-base font-semibold ${stat.warn ? "text-amber-600" : "text-foreground"}`}>{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : formatCount(stat.value)}</b>
+                {stat.warn && !loading ? <span className="text-xs font-medium text-amber-600">不足</span> : null}
+              </span>
             ))}
           </div>
 
