@@ -367,7 +367,7 @@ export function RequestList({
           {showEmployee ? <span title={item.employeeName || "-"} className="truncate">{item.employeeName || "-"}</span> : requestDetailContent(item)}
         </span>
       )}
-      status={statusIndicator(item.status)}
+      status={statusIndicator(item.status, item)}
       fields={[
         ...(showEmployee ? [{ label: "明细", value: requestDetailContent(item) }] : []),
         { label: "时间", value: requestTimeRange(item) },
@@ -751,7 +751,7 @@ function SegmentsHoverCard({ group }: { group: AttendanceRequest[] }) {
                           {duration.value}<span className="ml-0.5 font-normal text-muted-foreground">{duration.unit}</span>
                         </span>
                       ) : null}
-                      <span className="shrink-0">{statusIndicator(item.status)}</span>
+                      <span className="shrink-0">{statusIndicator(item.status, item)}</span>
                     </div>
                   );
                 })}
@@ -765,15 +765,24 @@ function SegmentsHoverCard({ group }: { group: AttendanceRequest[] }) {
 }
 
 // —— 8-27 移植 ——
-function statusIndicator(status?: string) {
+function statusIndicator(status?: string, item?: AttendanceRequest) {
   const label = STATUS_LABELS[status || ""] || status || "-";
   const conf = STATUS_INDICATORS[status || ""];
-  if (!conf) return <span className="text-xs text-muted-foreground">{label}</span>;
+  // spec 020：撤回/驳回回草稿，草稿行提示来源（上次驳回原因/已撤回），引导修改重提
+  const draftHint = status === "draft" && item
+    ? item.rejectedReason
+      ? ` · 上次被驳回：${item.rejectedReason}`
+      : item.withdrawnAt
+        ? " · 已撤回"
+        : ""
+    : "";
+  if (!conf) return <span className="text-xs text-muted-foreground">{label}{draftHint}</span>;
   const Icon = conf.icon;
   return (
-    <span className={`inline-flex items-center gap-1 text-xs font-medium ${conf.color}`}>
+    <span className={`inline-flex items-center gap-1 text-xs font-medium ${conf.color}`} title={draftHint ? draftHint.slice(3) : undefined}>
       <Icon className="h-3.5 w-3.5" />
       {label}
+      {draftHint ? <span className="max-w-56 truncate font-normal text-muted-foreground">{draftHint}</span> : null}
     </span>
   );
 }

@@ -446,6 +446,7 @@ export interface ResumableDraft {
   delegateEmployeeId?: number | string | null;
   startAt?: string;
   endAt?: string;
+  hours?: number | null;
   proofFiles?: Array<{ id: number | string; originalName: string }>;
   proofFileCount?: number;
   reason?: string | null;
@@ -502,6 +503,14 @@ export interface AttendanceRequest {
   supervisorRole?: string | null;
   delegateEmployeeId?: number | string | null;
   delegateEmployeeName?: string | null;
+  // 撤回/驳回轨迹（spec 020：回草稿后引导修改重提）
+  rejectedBy?: number | string | null;
+  rejectedAt?: string | null;
+  rejectedReason?: string | null;
+  withdrawnBy?: number | string | null;
+  withdrawnAt?: string | null;
+  withdrawReason?: string | null;
+  submitCount?: number;
   requestType: RequestType;
   leaveType?: string | null;
   /** 假别快照（spec 004）：提交时名称/参考天数/政策说明；年度带薪额度使用情况 */

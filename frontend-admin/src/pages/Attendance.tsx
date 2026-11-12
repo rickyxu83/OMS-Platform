@@ -241,6 +241,8 @@ export function Attendance() {
     return view === "holidays" || view === "leaveTypes" ? view : "rules";
   });
   const [applyOpen, setApplyOpen] = useState(false);
+  // 编辑重提（spec 020）：非空时抽屉进入修改模式（预填原单，提交走 update+submit）
+  const [editingRequest, setEditingRequest] = useState<AttendanceRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [mine, setMine] = useState<AttendanceRequest[]>([]);
@@ -419,6 +421,8 @@ export function Attendance() {
   const filteredMine = useMemo(() => {
     if (mineStatus === "all") return mine;
     if (mineStatus === "pending") return mine.filter((item) => String(item.status || "").startsWith("pending_"));
+    // spec 020：撤回/驳回回草稿，归「待提交」分组；closed 仅余历史终态与作废
+    if (mineStatus === "draft") return mine.filter((item) => item.status === "draft");
     if (mineStatus === "closed") return mine.filter((item) => ["withdrawn", "voided"].includes(item.status || ""));
     return mine.filter((item) => item.status === mineStatus);
   }, [mine, mineStatus]);
@@ -563,7 +567,7 @@ export function Attendance() {
   function withdrawRequest(item: AttendanceRequest) {
     setPendingAction({
       title: "撤回申请",
-      description: <>{requestTypeLabel(item.requestType)} · 撤回后不再进入审批，可重新新建申请。</>,
+      description: <>{requestTypeLabel(item.requestType)} · 撤回后回到草稿，可修改后重新提交；当前环节的代理人/审批人会收到撤回通知。</>,
       confirmLabel: "确认撤回",
       run: () => action(`/attendance/requests/${item.id}/withdraw`, "已撤回"),
     });
@@ -917,7 +921,7 @@ export function Attendance() {
         </div>
         <div className="flex items-center gap-2">
           {canApply ? (
-            <Button onClick={() => setApplyOpen(true)}>
+            <Button onClick={() => { setEditingRequest(null); setApplyOpen(true); }}>
               <Plus className="mr-2 h-4 w-4" />
               新建申请
             </Button>
@@ -1086,6 +1090,7 @@ export function Attendance() {
               <>
                 {[
                   { key: "all", label: "全部", count: mine.length },
+                  { key: "draft", label: "待提交", count: mine.filter((item) => item.status === "draft").length },
                   { key: "pending", label: "审批中", count: mine.filter((item) => String(item.status || "").startsWith("pending_")).length },
                   { key: "approved", label: "已通过", count: mine.filter((item) => item.status === "approved").length },
                   { key: "rejected", label: "已驳回", count: mine.filter((item) => item.status === "rejected").length },
@@ -1111,14 +1116,21 @@ export function Attendance() {
             actions={(item) => {
               const status = item.status || "";
               const isPending = status.startsWith("pending_");
-              const canWithdraw = ["draft", "pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(status);
-              if (!isPending && !canWithdraw) return null;
+              // spec 020：撤回/驳回回草稿，草稿/已撤回/已驳回均可原条修改后重新提交（加班由工单带入不支持）
+              const canEditResubmit = item.requestType !== "overtime" && ["draft", "withdrawn", "rejected"].includes(status);
+              const canWithdraw = ["pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(status);
+              if (!isPending && !canWithdraw && !canEditResubmit) return null;
               const reminded = remindedRecently(item);
               return (
                 <>
                   {isPending ? (
                     <Button size="sm" variant="outline" disabled={reminded} title={reminded ? "24 小时内已催过，请稍后再试" : undefined} onClick={() => remindRequest(item)}>
                       <BellRing className="mr-1 h-4 w-4" /> 催一下
+                    </Button>
+                  ) : null}
+                  {canEditResubmit ? (
+                    <Button size="sm" onClick={() => { setEditingRequest(item); setApplyOpen(true); }}>
+                      <Pencil className="mr-1 h-4 w-4" /> {status === "draft" ? "编辑提交" : "修改重提"}
                     </Button>
                   ) : null}
                   {canWithdraw ? (
@@ -1587,10 +1599,11 @@ export function Attendance() {
 
       <AttendanceApplyDrawer
         open={applyOpen}
-        onOpenChange={setApplyOpen}
+        onOpenChange={(open) => { setApplyOpen(open); if (!open) setEditingRequest(null); }}
         onSubmitted={load}
         myProfile={myProfile}
         holidayDates={applicationHolidayDates}
+        editingRequest={editingRequest}
       />
 
       <ReasonConfirmDialog

@@ -182,7 +182,8 @@ async function leaveQuotaExtra(request) {
 async function queueApprovalNotification(connection, request, step, stepCount, delegate = null) {
   if (request.request_type !== 'leave') return
   const normalized = approvalStep(step)
-  const eventKey = `request:${request.id}:approval:${normalized.stepOrder}`
+  // 幂等键带重提轮次（spec 020）：撤回/驳回后重提，同环节通知不再被唯一键吞掉
+  const eventKey = `request:${request.id}:approval:${normalized.stepOrder}:c${Number(request.submit_count || 0) || 1}`
   await runSafely(
     { requestId: request.id, eventKey, eventType: 'approval_pending' },
     async () => {
@@ -217,7 +218,7 @@ async function queueApprovalNotification(connection, request, step, stepCount, d
 
 async function queueDelegateNotification(connection, request, delegate) {
   if (request.request_type !== 'leave' || !delegate) return
-  const eventKey = `request:${request.id}:delegate`
+  const eventKey = `request:${request.id}:delegate:c${Number(request.submit_count || 0) || 1}`
   await runSafely(
     { requestId: request.id, eventKey, eventType: 'delegate_info' },
     () => enqueueAttendanceEmailNotification(connection, {
@@ -290,9 +291,42 @@ async function queueReminderNotification(connection, request, step, { kind = 'ma
   )
 }
 
+// 撤回通知（spec 020）：告知撤回时当前环节的处理人（代理人或审批角色组），避免空跑待办
+async function queueWithdrawnLeaveNotification(connection, request, step, reason) {
+  if (request.request_type !== 'leave' || !step) return
+  const normalized = approvalStep(step)
+  const cycle = Number(request.submit_count || 0) || 1
+  const eventKey = `request:${request.id}:withdrawn:${normalized.stepOrder}:c${cycle}`
+  await runSafely(
+    { requestId: request.id, eventKey, eventType: 'request_withdrawn' },
+    async () => {
+      let recipients = []
+      if (normalized.assigneeRole) {
+        recipients = await roleRecipients(connection, normalized.assigneeRole, request.submitted_by)
+      } else if (normalized.assigneeEmployeeId) {
+        const contact = await employeeContact(connection, normalized.assigneeEmployeeId)
+        if (contact) recipients = [contact]
+      } else if (normalized.stepType === 'supervisor' && request.supervisor_employee_id) {
+        const contact = await employeeContact(connection, request.supervisor_employee_id)
+        if (contact) recipients = [contact]
+      }
+      return enqueueAttendanceEmailNotification(connection, {
+        requestId: request.id,
+        eventKey,
+        eventType: 'request_withdrawn',
+        recipients,
+        payload: requestPayload(request, {
+          withdrawReason: reason || '',
+          stepOrder: normalized.stepOrder,
+        }),
+      })
+    },
+  )
+}
+
 async function queueRejectedLeaveNotification(connection, request, user, reason) {
   if (request.request_type !== 'leave') return
-  const eventKey = `request:${request.id}:rejected`
+  const eventKey = `request:${request.id}:rejected:c${Number(request.submit_count || 0) || 1}`
   await runSafely(
     { requestId: request.id, eventKey, eventType: 'rejected' },
     () => enqueueAttendanceEmailNotification(connection, {
@@ -486,4 +520,5 @@ module.exports = {
   queueRejectedLeaveNotification,
   queueCompletedLeaveNotification,
   queueReminderNotification,
+  queueWithdrawnLeaveNotification,
 }

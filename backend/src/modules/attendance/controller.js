@@ -17,6 +17,7 @@ const {
   queueRejectedLeaveNotification,
   queueCompletedLeaveNotification,
   queueReminderNotification,
+  queueWithdrawnLeaveNotification,
 } = require('../../services/attendance-notifications')
 const { isTriplePayDate, triplePayDatesInRange } = require('./triple-pay-days')
 const {
@@ -322,6 +323,7 @@ async function ensureSchema() {
         `CREATE TABLE IF NOT EXISTS attendance_requests (
           id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
           workflow_version INT UNSIGNED NOT NULL DEFAULT 1,
+          submit_count INT UNSIGNED NOT NULL DEFAULT 0,
           employee_id BIGINT UNSIGNED NOT NULL,
           delegate_employee_id BIGINT UNSIGNED NULL,
           request_type VARCHAR(32) NOT NULL,
@@ -352,6 +354,7 @@ async function ensureSchema() {
           rejected_reason TEXT NULL,
           withdrawn_by BIGINT UNSIGNED NULL,
           withdrawn_at DATETIME NULL,
+          withdraw_reason VARCHAR(500) NULL,
           voided_by BIGINT UNSIGNED NULL,
           voided_at DATETIME NULL,
           void_reason TEXT NULL,
@@ -620,7 +623,7 @@ async function ensureAttendanceRequestColumns() {
      FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE()
        AND TABLE_NAME = 'attendance_requests'
-       AND COLUMN_NAME IN ('workflow_version', 'delegate_employee_id', 'working_days', 'supervisor_role', 'source_type', 'source_id', 'source_detail', 'source_snapshot', 'overtime_day_type', 'overtime_pay_multiplier')`,
+       AND COLUMN_NAME IN ('workflow_version', 'delegate_employee_id', 'working_days', 'supervisor_role', 'source_type', 'source_id', 'source_detail', 'source_snapshot', 'overtime_day_type', 'overtime_pay_multiplier', 'withdraw_reason', 'submit_count')`,
   )
   const existing = new Set(rows.map((row) => row.columnName))
   if (!existing.has('workflow_version')) {
@@ -628,6 +631,13 @@ async function ensureAttendanceRequestColumns() {
   }
   if (!existing.has('delegate_employee_id')) {
     await query('ALTER TABLE attendance_requests ADD COLUMN delegate_employee_id BIGINT UNSIGNED NULL AFTER employee_id')
+  }
+  if (!existing.has('submit_count')) {
+    // 重提轮次（spec 020）：通知 eventKey 幂等键带轮次，撤回/驳回后重提的邮件不再被唯一键吞掉
+    await query('ALTER TABLE attendance_requests ADD COLUMN submit_count INT UNSIGNED NOT NULL DEFAULT 0 AFTER workflow_version')
+  }
+  if (!existing.has('withdraw_reason')) {
+    await query('ALTER TABLE attendance_requests ADD COLUMN withdraw_reason VARCHAR(500) NULL AFTER withdrawn_at')
   }
   if (!existing.has('overtime_day_type')) {
     await query('ALTER TABLE attendance_requests ADD COLUMN overtime_day_type VARCHAR(32) NULL AFTER overtime_result')
@@ -838,6 +848,8 @@ function requestPayload(row) {
     rejectedReason: row.rejected_reason,
     withdrawnBy: row.withdrawn_by,
     withdrawnAt: row.withdrawn_at,
+    withdrawReason: row.withdraw_reason || null,
+    submitCount: Number(row.submit_count || 0),
     voidedBy: row.voided_by,
     voidedAt: row.voided_at,
     voidReason: row.void_reason,
@@ -1564,6 +1576,135 @@ async function createRequest(req, res) {
   )
 
   res.status(201).json({ id: result.insertId, status: 'draft', hours: input.hours, workingDays })
+}
+
+// spec 020：草稿/已撤回/已驳回申请的原条修改（对齐 MR「撤回回草稿→原单改→重提」模式）。
+// 保存后统一回到 draft，走既有 submit 重提；审批步骤/代理人确认/通知随重提重新生成。
+async function updateRequest(req, res) {
+  await ensureSchema()
+  assertAttendanceApplicantRole(req.user.role)
+  const employee = await currentEmployee(req.user.id)
+  if (!employee) throw forbidden('当前账号没有启用的员工档案')
+  const id = Number(req.params.id)
+  if (!id) throw badRequest('申请 ID 不正确')
+  const rows = await query('SELECT * FROM attendance_requests WHERE id = :id LIMIT 1', { id })
+  const request = rows[0]
+  if (!request) throw notFound('申请不存在')
+  if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以修改')
+  if (!['draft', 'withdrawn', 'rejected'].includes(request.status)) throw badRequest('当前状态不能修改')
+  if (request.request_type === 'overtime') throw badRequest('加班申请由工单时段带入，不支持修改，请撤回后重新申请')
+
+  const input = normalizeRequestInput(req.body)
+  if (input.requestType !== request.request_type) throw badRequest('申请类型不能变更')
+
+  // 假别表驱动校验（同 create）
+  let leaveTypeRow = null
+  if (input.requestType === 'leave') {
+    const map = await leaveTypeMap()
+    leaveTypeRow = map.get(input.leaveType) || null
+    if (!leaveTypeRow || !leaveTypeRow.enabled) throw badRequest('假别不正确或已停用')
+  }
+
+  // 代理人解析与校验（同 create：司机豁免；工程师/销售限同岗位）
+  let delegateEmployeeId = null
+  let workingDays = null
+  if (DELEGATE_EXEMPT_ROLES.has(req.user.role)) {
+    delegateEmployeeId = null
+  } else {
+    delegateEmployeeId = Number(req.body?.delegateEmployeeId)
+    if (!delegateEmployeeId) throw badRequest('请选择代理人')
+    if (delegateEmployeeId === Number(employee.id)) throw badRequest('代理人不能是本人')
+    const delegate = await enabledEmployeeById(delegateEmployeeId)
+    if (!delegate) throw badRequest('代理人不存在或未启用考勤')
+    const scope = DELEGATE_ROLE_SCOPE[req.user.role]
+    if (scope && !scope.includes(delegate.user_role)) {
+      throw badRequest(req.user.role === 'engineer' ? '代理人只能选工程师或工程主管' : '代理人只能选销售或销售主管')
+    }
+  }
+
+  if (input.requestType === 'leave') {
+    try {
+      const range = calculateWorkingLeaveRange({
+        startAt: input.startAt,
+        endAt: input.endAt,
+        holidays: new Set(legalHolidayCache.keys()),
+        makeupWorkdays: new Set(makeupWorkdayCache),
+        includeNonWorkingDays: Boolean(leaveTypeRow?.include_non_working_days),
+      })
+      input.startAt = range.startAt
+      input.endAt = range.endAt
+      input.hours = range.hours
+      workingDays = range.workingDays
+    } catch (error) {
+      throw badRequest(error.message)
+    }
+  } else {
+    workingDays = Number((Number(input.hours) / 8).toFixed(2))
+  }
+
+  // 代理期间禁止休假复核（同 create）
+  const agencyConflict = await query(
+    `SELECT r.id FROM attendance_requests r
+     WHERE r.delegate_employee_id = :employeeId
+       AND r.status IN ('pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin', 'approved')
+       AND NOT (r.end_at < :startAt OR r.start_at > :endAt)
+     LIMIT 1`,
+    { employeeId: employee.id, startAt: input.startAt, endAt: input.endAt },
+  )
+  if (agencyConflict.length) throw badRequest('您在所选时段已被指定为代理人，代理期间不能申请休假')
+
+  // 代理人冲突复核（同 create：查的是代理人自己的请假，与本申请无交叠）
+  if (input.requestType === 'leave' && delegateEmployeeId) {
+    const conflict = await findConflictingLeave(
+      (sql, params) => query(sql, params),
+      { employeeId: delegateEmployeeId, startAt: input.startAt, endAt: input.endAt },
+    )
+    if (conflict) throw badRequest('所选代理人在申请时段已有请假，请选择其他代理人')
+  }
+
+  // 余额前置校验（同 create）
+  if (input.requestType === 'comp_time') {
+    const balance = await queryBalanceHours(employee.id, 'comp_time')
+    if (balance < Number(input.hours)) {
+      throw badRequest(`调休余额不足（当前可用 ${balance} 小时）`)
+    }
+  }
+  if (input.requestType === 'leave' && input.leaveType === 'annual') {
+    const balanceDays = await queryBalanceHours(employee.id, 'annual_leave')
+    if (balanceDays < Number(workingDays || 0)) {
+      throw badRequest(`特休余额不足（当前可用 ${balanceDays} 天）`)
+    }
+  }
+
+  await query(
+    `UPDATE attendance_requests
+     SET delegate_employee_id = :delegateEmployeeId,
+         leave_type = :leaveType,
+         leave_type_label = :leaveTypeLabel,
+         leave_reference_days = :leaveReferenceDays,
+         leave_policy_note = :leavePolicyNote,
+         start_at = :startAt,
+         end_at = :endAt,
+         hours = :hours,
+         working_days = :workingDays,
+         reason = :reason,
+         status = 'draft'
+     WHERE id = :id`,
+    {
+      id,
+      delegateEmployeeId,
+      leaveType: input.requestType === 'leave' ? input.leaveType : null,
+      leaveTypeLabel: leaveTypeRow ? leaveTypeRow.label : null,
+      leaveReferenceDays: leaveTypeRow ? leaveTypeRow.reference_days : null,
+      leavePolicyNote: leaveTypeRow ? leaveTypeRow.policy_note : null,
+      startAt: input.startAt,
+      endAt: input.endAt,
+      hours: input.hours,
+      workingDays,
+      reason: input.reason || null,
+    },
+  )
+  res.json({ ok: true, id, status: 'draft', hours: input.hours, workingDays })
 }
 
 function toDate(value) {
@@ -2729,14 +2870,17 @@ async function submitRequest(req, res) {
     if (!steps.length) throw badRequest('审批流程不能为空')
     await insertApprovalSteps(connection, request.id, steps)
     const status = requestStatusForStep(steps[0].stepType)
+    // 重提轮次累加（spec 020）：通知 eventKey 幂等键按轮次区分，撤回/驳回后重提的邮件不被唯一键吞掉
+    const nextCycle = Number(request.submit_count || 0) + 1
     await connection.execute(
       `UPDATE attendance_requests
-       SET status = :status
+       SET status = :status,
+           submit_count = :cycle
        WHERE id = :id`,
-      { id: request.id, status },
+      { id: request.id, status, cycle: nextCycle },
     )
     if (request.request_type === 'leave') {
-      await queueSubmittedLeaveNotifications(connection, request, steps)
+      await queueSubmittedLeaveNotifications(connection, { ...request, submit_count: nextCycle }, steps)
     }
     return { status }
   })
@@ -3049,9 +3193,17 @@ async function rejectRequest(req, res) {
            WHERE id = :id`,
           { id: itemStep.id, userId: req.user.id, reason },
         )
+        // 其余待审步骤标 skipped（spec 020：驳回回草稿可修改重提，轨迹保留）
+        await connection.execute(
+          `UPDATE attendance_request_approvals
+           SET status = 'skipped', rejected_reason = '审批驳回'
+           WHERE request_id = :id AND status IN ('pending', 'waiting')`,
+          { id: item.id },
+        )
+        // spec 020：驳回不再终态，回到草稿由申请人修改后原条重新提交；驳回人/原因保留展示
         await connection.execute(
           `UPDATE attendance_requests
-           SET status = 'rejected',
+           SET status = 'draft',
                rejected_by = :userId,
                rejected_at = NOW(),
                rejected_reason = :reason
@@ -3067,9 +3219,10 @@ async function rejectRequest(req, res) {
     const isSupervisor = isRoleSupervisor || isLegacySupervisor
     const isAdmin = request.status === 'pending_admin' && await hasPermission(req.user.role, 'attendance.admin.approve')
     if (!isSupervisor && !isAdmin) throw forbidden()
+    // spec 020：v1 老路径同样驳回回草稿
     await connection.execute(
       `UPDATE attendance_requests
-       SET status = 'rejected',
+       SET status = 'draft',
            rejected_by = :userId,
            rejected_at = NOW(),
            rejected_reason = :reason
@@ -3084,25 +3237,38 @@ async function rejectRequest(req, res) {
 async function withdrawRequest(req, res) {
   await ensureSchema()
   const id = Number(req.params.id)
+  // 撤回原因选填（2026-11-12 佬裁决：自查自纠场景不强制，给了就留痕）
+  const reason = nullableText(req.body?.reason)
   await transaction(async (connection) => {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
-    if (!['draft', 'pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin'].includes(request.status)) {
+    // spec 020：撤回回到草稿（可修改后原条重新提交），不再终态；草稿本身不能再撤回
+    if (!['pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin'].includes(request.status)) {
       throw badRequest('当前状态不能撤回')
     }
     if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以撤回')
     // 组联动：同批申请中可撤回的条目一并撤回（终态/不可撤回状态跳过）
     const group = await batchRequestsForUpdate(connection, request)
     for (const item of group) {
-      if (!['draft', 'pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin'].includes(item.status)) continue
+      if (!['pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin'].includes(item.status)) continue
+      // 通知当前环节处理人（标 skipped 前取出 pending 步骤）
+      const currentStep = await pendingApprovalStep(connection, item.id)
+      await connection.execute(
+        `UPDATE attendance_request_approvals
+         SET status = 'skipped', rejected_reason = :skipReason
+         WHERE request_id = :id AND status IN ('pending', 'waiting')`,
+        { id: item.id, skipReason: reason ? `申请人撤回：${reason}` : '申请人撤回' },
+      )
       await connection.execute(
         `UPDATE attendance_requests
-         SET status = 'withdrawn',
+         SET status = 'draft',
              withdrawn_by = :userId,
-             withdrawn_at = NOW()
+             withdrawn_at = NOW(),
+             withdraw_reason = :reason
          WHERE id = :id`,
-        { id: item.id, userId: req.user.id },
+        { id: item.id, userId: req.user.id, reason },
       )
+      await queueWithdrawnLeaveNotification(connection, item, currentStep, reason)
     }
   })
   res.json({ ok: true })
@@ -3817,6 +3983,7 @@ module.exports = {
   autoSyncNextYearHolidays,
   updateEmployee,
   createRequest,
+  updateRequest,
   submitRequest,
   listOvertimeServiceOrders,
   createServiceOrderOvertimeRequest,

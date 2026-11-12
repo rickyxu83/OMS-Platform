@@ -44,6 +44,7 @@ router.post('/employees/:id/adjust-balance', requirePermission('attendance.manag
 router.get('/requests', requirePermission('attendance.apply', 'attendance.approve', 'attendance.view', 'attendance.manage', 'attendance.admin.approve'), controller.listRequests)
 router.get('/requests/pending-count', requirePermission('attendance.approve', 'attendance.view', 'attendance.manage', 'attendance.admin.approve', 'attendance.hr.approve', 'attendance.vp.approve'), controller.pendingApprovalCount)
 router.post('/requests', requirePermission('attendance.apply'), controller.createRequest)
+router.put('/requests/:id', requirePermission('attendance.apply'), controller.updateRequest)
 router.post('/requests/:id/submit', requirePermission('attendance.apply'), controller.submitRequest)
 router.get('/overtime/service-orders', requirePermission('attendance.apply'), controller.listOvertimeServiceOrders)
 router.post('/overtime/service-orders/:id/apply', requirePermission('attendance.apply'), controller.createServiceOrderOvertimeRequest)
