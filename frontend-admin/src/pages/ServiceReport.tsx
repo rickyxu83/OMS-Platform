@@ -4211,9 +4211,8 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 	                      </div>
                       {visiblePartEntries.length ? (
                         <div className="overflow-visible rounded-md border">
-                          <div className="hidden border-b bg-muted/30 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground md:grid md:grid-cols-[minmax(150px,1fr)_120px_minmax(0,1fr)_minmax(0,1fr)_90px_80px_40px] md:gap-3">
+                          <div className="hidden border-b bg-muted/30 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground md:grid md:grid-cols-[minmax(150px,1fr)_minmax(0,1fr)_minmax(0,1fr)_90px_80px_40px] md:gap-3">
                             <div>关联设备</div>
-	                            <div>处理动作</div>
                             <div>备件或硬件部件名称</div>
                             <div>料号 / PN</div>
                             <div>数量</div>
@@ -4221,7 +4220,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                             <div />
                           </div>
                           {visiblePartEntries.map(({ part, index }) => (
-                            <div key={index} className="grid gap-3 border-b p-3 last:border-b-0 md:grid-cols-[minmax(150px,1fr)_120px_minmax(0,1fr)_minmax(0,1fr)_90px_80px_40px] md:items-center">
+                            <div key={index} className="grid gap-3 border-b p-3 last:border-b-0 md:grid-cols-[minmax(150px,1fr)_minmax(0,1fr)_minmax(0,1fr)_90px_80px_40px] md:items-center">
                               <DenseField label="关联设备">
                                 <div className="flex items-center gap-1">
                                   <Select
@@ -4289,17 +4288,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                                   <p className="text-xs text-muted-foreground md:col-span-3">提交后自动为该客户建设备档案（维保类型「待确认」），并关联到这条备件记录。</p>
                                 </div>
                               ) : null}
-	                              <DenseField label="处理动作">
-                                {/* 2026-11-06 佬裁决：备件更换模块动作固定，不再用下拉选择，只读徽章展示（历史行的安装/部件记录原样显示） */}
-                                <div className="flex h-9 items-center">
-                                  <Badge variant={(() => {
-                                    const action = part.actionType || partActionFor(form.serviceMode, form.serviceType, form.timesheetCategory);
-                                    return action === "installation" ? "success" : action === "replacement" ? "warning" : "outline";
-                                  })()}>
-                                    {optionText(PART_ACTION_OPTIONS, part.actionType || partActionFor(form.serviceMode, form.serviceType, form.timesheetCategory))}
-                                  </Badge>
-                                </div>
-                              </DenseField>
+	                              
                               <DenseField label="备件或硬件部件名称">
                                 <Input value={part.partName} onChange={(event) => updatePart(index, { partName: event.target.value })} />
                               </DenseField>
