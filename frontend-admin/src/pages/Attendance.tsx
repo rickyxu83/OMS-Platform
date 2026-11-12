@@ -967,9 +967,10 @@ export function Attendance() {
 
       {activeTab === "approve" ? (
         <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+          {/* 卡片按内容自适应宽度、靠左紧凑排列（佬 2026-11-12：grid 等分拉宽后右侧留白不协调） */}
+          <div className="flex flex-wrap gap-3">
             {statTiles.map((stat) => (
-              <div key={stat.label} className={`flex items-center gap-3 rounded-xl border bg-card px-4 py-3.5 shadow-sm ${stat.warn ? "border-amber-300 bg-amber-50/40" : ""}`}>
+              <div key={stat.label} className={`flex w-fit min-w-44 items-center gap-3 rounded-xl border bg-card py-3 pl-4 pr-6 shadow-sm ${stat.warn ? "border-amber-300 bg-amber-50/40" : ""}`}>
                 <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${stat.iconBox}`}>
                   <stat.icon className="h-5 w-5" />
                 </span>
