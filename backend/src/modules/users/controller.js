@@ -370,6 +370,15 @@ async function update(req, res) {
   res.status(204).end()
 }
 
+// 删除/恢复账号级联启停考勤员工档案（表不存在时容错，考勤未初始化的环境不影响用户管理）
+async function syncAttendanceProfileEnabled(userId, enabled) {
+  try {
+    await query('UPDATE attendance_employee_profiles SET attendance_enabled = :enabled WHERE user_id = :userId', { enabled: enabled ? 1 : 0, userId })
+  } catch (error) {
+    if (!/doesn't exist/i.test(String(error?.message || ''))) throw error
+  }
+}
+
 // 改名同步考勤员工档案（2026-11-12 事故：司机改名只改了 users.real_name，
 // 假勤页面与审批邮件取 attendance_employee_profiles.employee_name 快照，仍显示旧名）
 async function syncAttendanceProfileName(userId, realName) {
@@ -498,6 +507,8 @@ async function remove(req, res) {
        AND username NOT LIKE '%__deleted_%'`,
     { id },
   )
+  // 级联停用考勤员工档案（2026-11-12 事故：账号删除后档案仍 enabled，考勤设置/余额/团队日历残留显示）
+  await syncAttendanceProfileEnabled(id, false)
 
   res.status(204).end()
 }
@@ -525,6 +536,8 @@ async function restore(req, res) {
      WHERE id = :id`,
     { id, username },
   )
+  // 考勤档案不自动恢复启用：该员工可能本就处于管理员停用状态，误启用风险大于手动恢复成本；
+  // 恢复账号后如需考勤，由管理员到考勤设置手动启用（remove 的级联停用是确定正确的，无此问题）
 
   res.status(204).end()
 }

@@ -108,6 +108,19 @@ async function loadController({ queryHandler = null } = {}) {
     assert.equal(calls.some((call) => /UPDATE attendance_employee_profiles/.test(call.sql)), false)
   }
 
+  {
+    // 删除账号级联停用考勤档案（2026-11-12 事故回归：测试账号删除后考勤档案残留显示）
+    const { controller, calls } = await loadController()
+    const req = { user: { id: 1, role: 'admin' }, params: { id: '13' }, body: {} }
+    const res = createResponse()
+    await controller.remove(req, res)
+    assert.equal(res.statusCode, 204)
+    const cascade = calls.find((call) => /UPDATE attendance_employee_profiles/.test(call.sql) && /attendance_enabled/.test(call.sql))
+    assert.ok(cascade, '删除账号应级联停用考勤档案')
+    assert.equal(cascade.params.enabled, 0)
+    assert.equal(Number(cascade.params.userId), 13)
+  }
+
   console.log('users-controller tests passed')
 })().catch((error) => {
   console.error(error)

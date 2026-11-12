@@ -1,5 +1,6 @@
+import type React from "react";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, CalendarClock, Check, Loader2, RotateCcw, Send, TriangleAlert, Upload, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, Check, Loader2, RotateCcw, Send, TriangleAlert, Upload, X, Info } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,21 @@ const REQUEST_TYPE_CARDS: Array<{ value: RequestType; label: string; description
   { value: "overtime", label: "加班", description: "从工单带入时段", icon: Send, roles: ["engineer", "driver"] },
   { value: "comp_time", label: "调休", description: "使用已有调休余额", icon: RotateCcw, roles: ["engineer", "driver"] },
 ];
+
+/** 申请过程关键提醒（2026-11-12 佬要求视觉加重）：带图标的色块提示，info=规则说明 / warn=注意警示 */
+function HintBox({ tone = "info", children }: { tone?: "info" | "warn"; children: React.ReactNode }) {
+  const tones = {
+    info: "border-violet-200 bg-violet-50/70 text-violet-900",
+    warn: "border-amber-300 bg-amber-50/70 text-amber-900",
+  }
+  const Icon = tone === "warn" ? TriangleAlert : Info
+  return (
+    <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs leading-5 ${tones[tone]}`}>
+      <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <div>{children}</div>
+    </div>
+  )
+}
 
 /** 时段腿展示的紧凑时间：'2026-10-01 11:10' → '10-01 11:10' */
 function shortDateTime(value?: string) {
@@ -513,7 +529,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
               <div className="space-y-4">
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>工单</Label>
+                    <Label>工单<span className="ml-1.5 text-xs font-normal text-muted-foreground">近 5 个工作日</span></Label>
                     <Select
                       value={selectedOvertimeOrderId}
                       onValueChange={(value) => setSelectedOvertimeOrderId(value)}
@@ -523,7 +539,9 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       <SelectContent>
                         {overtimeOrders.map((order) => (
                           <SelectItem key={order.id} value={String(order.id)}>
-                            {order.orderNo || `#${order.id}`} {order.customerName ? ` / ${order.customerName}` : ""} {order.deviceName ? ` / ${order.deviceName}` : ""}
+                            {order.orderNo || `#${order.id}`}
+                            {order.customerName ? ` / ${order.customerName}` : ""}
+                            {order.issueDescription ? <span className="text-muted-foreground"> / {order.issueDescription}</span> : null}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -892,11 +910,11 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    所选时段请假冲突的人员不可选择；提交后需代理人确认，确认后进入配置的审批链；代理人确认后在代理时段内将无法申请休假。
+                  <HintBox tone="info">
+                    所选时段请假冲突的人员不可选择；提交后需代理人确认，确认后进入配置的审批链；<b>代理人确认后在代理时段内将无法申请休假</b>。
                     {userRole === "engineer" ? "代理人仅限工程师或工程主管。" : ""}
                     {userRole === "sales" ? "代理人仅限销售或销售主管。" : ""}
-                  </p>
+                  </HintBox>
                 </div>
                 ) : null}
 
@@ -1074,19 +1092,21 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                         {proofFiles.length > 0 ? proofFiles.length + " 个文件" : existingProofCount > 0 ? `已上传 ${existingProofCount} 个` : proofRequired ? "未上传（必填）" : "无需附件"}
                       </span>
                     </div>
-                    <div className="pt-1 text-xs leading-5 text-muted-foreground">
-                      {naturalDayLeave ? "该假别按自然日计算，包含周末和国定假日" : "已排除周末和国定假日"}
+                    <div className="pt-1">
+                      <HintBox tone={naturalDayLeave ? "warn" : "info"}>
+                        {naturalDayLeave ? "注意：该假别按自然日计算，包含周末和国定假日" : "已自动排除周末和国定假日"}
+                      </HintBox>
                     </div>
                   </>
                 )}
               </div>
-              <div className="rounded-lg border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+              <HintBox tone={form.requestType === "overtime" || delegateExempt ? "info" : "warn"}>
                 {form.requestType === "overtime"
                   ? "提交后进入配置的审批链"
                   : delegateExempt
                     ? "提交后直接进入配置的审批链，无需代理人"
-                    : "提交后先由代理人确认，确认后进入配置的审批链"}
-              </div>
+                    : "提交后先由代理人确认，确认后进入配置的审批链；代理人确认后其在代理时段将无法申请休假。"}
+              </HintBox>
             </div>
           ) : null}
         </div>

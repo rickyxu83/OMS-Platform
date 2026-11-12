@@ -95,6 +95,30 @@ const { BUILTIN_LEGAL_HOLIDAYS } = require('./legal-holidays-data')
 const { fetchYearHolidays } = require('./holiday-sync')
 const legalHolidayCache = new Map()
 const makeupWorkdayCache = new Set()
+
+// 加班申请窗口（2026-11-12 佬裁决）：仅可申请当前日期往前 5 个工作日内的加班，
+// 候选列表同步只显示窗口内工单，替代按人忽略候选的功能。
+function overtimeApplyWindowStart(now = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0')
+  const cursor = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  let count = 0
+  // 含今天在内往前数 5 个工作日（今天不是工作日则不计入，继续往前）
+  while (count < 5) {
+    const day = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}-${pad(cursor.getDate())}`
+    const dow = cursor.getDay()
+    const isWorkday = (!legalHolidayCache.has(day) && dow !== 0 && dow !== 6) || makeupWorkdayCache.has(day)
+    if (isWorkday) count += 1
+    if (count >= 5) break
+    cursor.setDate(cursor.getDate() - 1)
+  }
+  return cursor
+}
+
+function overtimeServiceAtInWindow(serviceAt, now = new Date()) {
+  const value = serviceAt instanceof Date ? serviceAt : new Date(String(serviceAt || '').replace(' ', 'T'))
+  if (!Number.isFinite(value.getTime())) return false
+  return value >= overtimeApplyWindowStart(now)
+}
 const holidaySources = new Set(['builtin', 'manual', 'auto'])
 const holidayDayTypes = new Set(['legal_holiday', 'makeup_workday'])
 
@@ -2036,8 +2060,10 @@ async function listOvertimeServiceOrders(req, res) {
   const employee = await currentEmployee(req.user.id)
   if (!employee) throw forbidden('当前账号没有启用的员工档案')
   const rows = await serviceOrderOvertimeRows(req.user.id)
-  const usedMap = await usedOvertimeSegments(rows.map((row) => row.id), req.user.id)
-  const items = rows
+  // 窗口过滤（2026-11-12 佬裁决）：仅显示近 5 个工作日内的工单
+  const windowRows = rows.filter((row) => overtimeServiceAtInWindow(row.service_at))
+  const usedMap = await usedOvertimeSegments(windowRows.map((row) => row.id), req.user.id)
+  const items = windowRows
     .map((row) => {
       const used = usedMap.get(Number(row.id)) || new Set()
       return {
@@ -2159,6 +2185,8 @@ async function createServiceOrderOvertimeRequest(req, res) {
     if (!order) throw notFound('没有可申请的工单')
     const orderSnapshot = serviceOrderSnapshot(order)
     if (!orderSnapshot) throw notFound('没有可申请的工单')
+    // 窗口硬校验（2026-11-12 佬裁决）：超出近 5 个工作日的加班不可再申请
+    if (!overtimeServiceAtInWindow(order.service_at)) throw badRequest('仅可申请近 5 个工作日内的加班')
 
     // 路上时间允许工程师自报去程出发、回程返回时间（默认带工单值），只落在本条申请上，
     // 工单侧不改。工作段锁死按工单，不接受覆盖。参见 docs/adr/0002。
@@ -3242,15 +3270,35 @@ async function withdrawRequest(req, res) {
   await transaction(async (connection) => {
     const request = await requestForUpdate(connection, id)
     if (!request) throw notFound('申请不存在')
-    // spec 020：撤回回到草稿（可修改后原条重新提交），不再终态；草稿本身不能再撤回
-    if (!['pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin'].includes(request.status)) {
+    // spec 020：审批中撤回回到草稿（可修改后原条重新提交），不再终态
+    const withdrawable = ['pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin']
+    // 草稿丢弃（2026-11-12 补充）：draft 无待审步骤，撤回即终态 withdrawn，不通知任何人；
+    // 覆盖加班草稿场景——加班由工单带入不支持编辑，撤回/驳回回草稿后只能重提或丢弃
+    if (request.status === 'draft') {
+      if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以撤回')
+      const draftGroup = await batchRequestsForUpdate(connection, request)
+      for (const item of draftGroup) {
+        if (item.status !== 'draft') continue
+        await connection.execute(
+          `UPDATE attendance_requests
+           SET status = 'withdrawn',
+               withdrawn_by = :userId,
+               withdrawn_at = NOW(),
+               withdraw_reason = :reason
+           WHERE id = :id`,
+          { id: item.id, userId: req.user.id, reason },
+        )
+      }
+      return
+    }
+    if (!withdrawable.includes(request.status)) {
       throw badRequest('当前状态不能撤回')
     }
     if (Number(request.submitted_by) !== Number(req.user.id)) throw forbidden('只有申请人可以撤回')
     // 组联动：同批申请中可撤回的条目一并撤回（终态/不可撤回状态跳过）
     const group = await batchRequestsForUpdate(connection, request)
     for (const item of group) {
-      if (!['pending_delegate', 'pending_approval', 'pending_supervisor', 'pending_hr', 'pending_vp', 'pending_admin'].includes(item.status)) continue
+      if (!withdrawable.includes(item.status)) continue
       // 通知当前环节处理人（标 skipped 前取出 pending 步骤）
       const currentStep = await pendingApprovalStep(connection, item.id)
       await connection.execute(
@@ -3986,6 +4034,7 @@ module.exports = {
   updateRequest,
   submitRequest,
   listOvertimeServiceOrders,
+  overtimeApplyWindowStart,
   createServiceOrderOvertimeRequest,
   listRequests,
   pendingApprovalCount,

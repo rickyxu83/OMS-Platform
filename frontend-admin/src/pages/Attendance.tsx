@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Eye, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X, BellRing } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, CalendarOff, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Eye, Hourglass, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X, BellRing } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -573,6 +573,27 @@ export function Attendance() {
     });
   }
 
+  // 加班草稿一键重提（2026-11-12：加班撤回/驳回回草稿后不支持编辑，给直接重提入口）
+  function resubmitDraft(item: AttendanceRequest) {
+    setPendingAction({
+      title: "重新提交",
+      description: <>加班申请按原时段重新进入审批链。</>,
+      confirmLabel: "重新提交",
+      run: () => action(`/attendance/requests/${item.id}/submit`, "已重新提交"),
+    });
+  }
+
+  // 草稿丢弃：draft 撤回为终态（不可再编辑），与审批中撤回（回草稿可重提）区分
+  function discardDraft(item: AttendanceRequest) {
+    setPendingAction({
+      title: "丢弃草稿",
+      description: <>{requestTypeLabel(item.requestType)} · 丢弃后不可再编辑提交；如需申请请重新新建。</>,
+      confirmLabel: "确认丢弃",
+      destructive: true,
+      run: () => action(`/attendance/requests/${item.id}/withdraw`, "已丢弃"),
+    });
+  }
+
   // 代理人确认（2026-11-12 规范）：确认前明确提醒——确认后代理人在该时段将无法申请休假/调休
   function confirmDelegate(item: AttendanceRequest) {
     const range = `${String(item.startAt || "").replace("T", " ").slice(0, 16)} ~ ${String(item.endAt || "").replace("T", " ").slice(0, 16)}`;
@@ -888,13 +909,14 @@ export function Attendance() {
   );
 
 
+  // 关键指标卡（2026-11-12 佬要求视觉加强）：大数字 + 图标色块，不足/待办用警示色
   const statTiles = [
     ...(canApply ? [
-      { label: "可用特休", value: `${days(annualBalanceDays(myProfile))} 天`, warn: annualBalanceDays(myProfile) <= 1 },
-      ...(canCompTime ? [{ label: "可用调休", value: `${hours(myProfile?.compTimeBalanceHours)} 小时`, warn: false }] : []),
-      { label: "我的进行中", value: String(pendingMine), warn: false },
+      { label: "可用特休", value: `${days(annualBalanceDays(myProfile))} 天`, warn: annualBalanceDays(myProfile) <= 1, icon: CalendarOff, iconBox: "bg-violet-100 text-violet-600" },
+      ...(canCompTime ? [{ label: "可用调休", value: `${hours(myProfile?.compTimeBalanceHours)} 小时`, warn: false, icon: RotateCcw, iconBox: "bg-teal-100 text-teal-600" }] : []),
+      { label: "我的进行中", value: String(pendingMine), warn: false, icon: Hourglass, iconBox: "bg-amber-100 text-amber-600" },
     ] : []),
-    ...(isApprover ? [{ label: "待我审批", value: String(approvalTodos.length), warn: false }] : []),
+    ...(isApprover ? [{ label: "待我审批", value: String(approvalTodos.length), warn: approvalTodos.length > 0, icon: BellRing, iconBox: "bg-rose-100 text-rose-600" }] : []),
   ];
   // 报表假别列动态化（spec 004）：特休独立列，其余按假别表出列；后端老响应无 meta 时回退内置四假别
   const reportLeaveColumns: LeaveTypeItem[] = reportLeaveTypes.length
@@ -966,12 +988,16 @@ export function Attendance() {
 
       {activeTab === "approve" ? (
         <div className="space-y-6">
+          {/* 原始横条样式 + 每项左侧图标色块（2026-11-12 佬定稿） */}
           <div className="flex flex-wrap items-center gap-x-8 gap-y-2 rounded-lg border bg-card px-5 py-3 text-sm">
             {statTiles.map((stat) => (
-              <span key={stat.label} className="flex items-center gap-1.5 text-muted-foreground">
+              <span key={stat.label} className="flex items-center gap-2 text-muted-foreground">
+                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${stat.iconBox}`}>
+                  <stat.icon className="h-4 w-4" />
+                </span>
                 {stat.label}
-                <b className={`font-semibold ${stat.warn ? "text-amber-600" : "text-foreground"}`}>{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : formatCount(stat.value)}</b>
-                {stat.warn && !loading ? <span className="text-xs text-amber-600">不足</span> : null}
+                <b className={`text-base font-semibold ${stat.warn ? "text-amber-600" : "text-foreground"}`}>{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : formatCount(stat.value)}</b>
+                {stat.warn && !loading ? <span className="text-xs font-medium text-amber-600">不足</span> : null}
               </span>
             ))}
           </div>
@@ -1117,9 +1143,11 @@ export function Attendance() {
               const status = item.status || "";
               const isPending = status.startsWith("pending_");
               // spec 020：撤回/驳回回草稿，草稿/已撤回/已驳回均可原条修改后重新提交（加班由工单带入不支持）
+              const isDraft = status === "draft";
               const canEditResubmit = item.requestType !== "overtime" && ["draft", "withdrawn", "rejected"].includes(status);
+              const canResubmitOvertime = item.requestType === "overtime" && isDraft;
               const canWithdraw = ["pending_delegate", "pending_approval", "pending_supervisor", "pending_hr", "pending_vp", "pending_admin"].includes(status);
-              if (!isPending && !canWithdraw && !canEditResubmit) return null;
+              if (!isPending && !canWithdraw && !canEditResubmit && !canResubmitOvertime && !isDraft) return null;
               const reminded = remindedRecently(item);
               return (
                 <>
@@ -1130,7 +1158,17 @@ export function Attendance() {
                   ) : null}
                   {canEditResubmit ? (
                     <Button size="sm" onClick={() => { setEditingRequest(item); setApplyOpen(true); }}>
-                      <Pencil className="mr-1 h-4 w-4" /> {status === "draft" ? "编辑提交" : "修改重提"}
+                      <Pencil className="mr-1 h-4 w-4" /> {isDraft ? "编辑提交" : "修改重提"}
+                    </Button>
+                  ) : null}
+                  {canResubmitOvertime ? (
+                    <Button size="sm" onClick={() => resubmitDraft(item)}>
+                      <Send className="mr-1 h-4 w-4" /> 重新提交
+                    </Button>
+                  ) : null}
+                  {isDraft ? (
+                    <Button size="sm" variant="outline" onClick={() => discardDraft(item)}>
+                      <Trash2 className="mr-1 h-4 w-4" /> 丢弃
                     </Button>
                   ) : null}
                   {canWithdraw ? (

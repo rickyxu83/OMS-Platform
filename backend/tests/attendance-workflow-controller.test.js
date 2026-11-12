@@ -150,6 +150,13 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
 }
 
 ;(async () => {
+  // 加班窗口（2026-11-12：仅近 5 个工作日可申请）：工单时间字段统一用「本周一」动态日期——
+  // 保证落在申请窗口内且避开周末语义（部分用例依赖工作日加班口径）
+  const monday = new Date()
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
+  const todayStamp = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`
+  // 本周六：原 07-18（周六）用例全天计加班语义，窗口内同样覆盖
+  const saturdayStamp = (() => { const d = new Date(); d.setDate(d.getDate() + ((6 - d.getDay()) % 7)); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` })()
   {
     const result = await createLeave()
     assert.equal(result.thrown, null)
@@ -351,8 +358,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
             request_type: 'leave',
             leave_type: 'annual',
             working_days: 3,
-            start_at: '2026-07-10 09:00:00',
-            end_at: '2026-07-14 18:00:00',
+            start_at: `${todayStamp} 09:00`,
+            end_at: `${todayStamp} 18:00`,
             supervisor_role: 'engineering_supervisor',
             status: 'draft',
             submitted_by: 42,
@@ -408,8 +415,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
             request_type: 'leave',
             leave_type: 'personal',
             working_days: 0.5,
-            start_at: '2026-07-10 09:00:00',
-            end_at: '2026-07-10 13:00:00',
+            start_at: `${todayStamp} 09:00`,
+            end_at: `${todayStamp} 13:00`,
             supervisor_role: 'administrative_supervisor',
             status: 'draft',
             submitted_by: 42,
@@ -486,8 +493,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
             request_type: 'leave',
             leave_type: 'annual',
             working_days: 1,
-            start_at: '2026-07-14 09:00:00',
-            end_at: '2026-07-14 18:00:00',
+            start_at: `${todayStamp} 09:00`,
+            end_at: `${todayStamp} 18:00`,
             supervisor_role: 'engineering_supervisor',
             status: 'draft',
             submitted_by: 42,
@@ -647,8 +654,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
             request_type: 'leave',
             leave_type: 'annual',
             working_days: 5,
-            start_at: '2026-07-14 09:00:00',
-            end_at: '2026-07-18 18:00:00',
+            start_at: `${todayStamp} 09:00`,
+            end_at: `${todayStamp} 18:00`,
             applicant_role: 'assistant',
             status: 'draft',
             submitted_by: 42,
@@ -865,11 +872,12 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       service_mode: 'onsite',
       service_type: 'repair',
       issue_description: '存储控制器告警',
-      service_at: '2026-07-14 18:00:00',
-      departure_at: '2026-07-14 17:00:00',
-      actual_start_at: '2026-07-14 18:00:00',
-      actual_end_at: '2026-07-14 21:00:00',
-      return_at: '2026-07-14 22:00:00',
+      // 服务时间取当天（2026-11-12 加班窗口：仅近 5 个工作日可申请，固定历史日期会被拦）
+      service_at: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')} 18:00:00`,
+      departure_at: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')} 17:00:00`,
+      actual_start_at: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')} 18:00:00`,
+      actual_end_at: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')} 21:00:00`,
+      return_at: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')} 22:00:00`,
     }
     const { controller } = await loadController({
       connectionExecute: async (sql, params = {}) => {
@@ -909,7 +917,13 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const approvalInsert = executeCalls.find((call) => /INSERT INTO attendance_request_approvals/.test(call.sql))
     assert.equal(approvalInsert?.params.stepType, 'role')
     assert.equal(approvalInsert?.params.assigneeRole, 'engineering_supervisor')
-    assert.deepEqual(JSON.parse(insert.params.sourceSnapshot), {
+    const snapshot = JSON.parse(insert.params.sourceSnapshot)
+    // 时间字段为当天动态值（加班窗口限制），只断言形状与其余字段
+    for (const key of ['serviceAt', 'departureAt', 'actualStartAt', 'actualEndAt', 'returnAt']) {
+      assert.ok(snapshot[key] && String(snapshot[key]).startsWith(`${new Date().getFullYear()}-`), `${key} 应为当天`)
+    }
+    assert.deepEqual({ ...snapshot, serviceAt: null, departureAt: null, actualStartAt: null, actualEndAt: null, returnAt: null }, {
+      serviceAt: null, departureAt: null, actualStartAt: null, actualEndAt: null, returnAt: null,
       id: 88,
       orderNo: 'SO-20260713-088',
       customerName: '测试客户',
@@ -919,11 +933,6 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       serviceMode: 'onsite',
       serviceType: 'repair',
       issueDescription: '存储控制器告警',
-      serviceAt: '2026-07-14 18:00',
-      departureAt: '2026-07-14 17:00',
-      actualStartAt: '2026-07-14 18:00',
-      actualEndAt: '2026-07-14 21:00',
-      returnAt: '2026-07-14 22:00',
     })
   }
 
@@ -943,11 +952,11 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       service_mode: 'onsite',
       service_type: 'repair',
       issue_description: '存储控制器告警',
-      service_at: '2026-07-14 18:00:00',
-      departure_at: '2026-07-14 16:00:00',
-      actual_start_at: '2026-07-14 18:00:00',
-      actual_end_at: '2026-07-14 21:00:00',
-      return_at: '2026-07-14 22:00:00',
+      service_at: `${todayStamp} 18:00`,
+      departure_at: `${todayStamp} 16:00`,
+      actual_start_at: `${todayStamp} 18:00`,
+      actual_end_at: `${todayStamp} 21:00`,
+      return_at: `${todayStamp} 22:00`,
     }
     const { controller } = await loadController({
       connectionExecute: async (sql, params = {}) => {
@@ -974,7 +983,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const req = {
       user: { id: 42, role: 'engineer' },
       params: { id: '88' },
-      body: { segmentKey: 'travel', overtimeResult: 'comp_time', departureAt: '2026-07-14 15:00', returnAt: '2026-07-14 23:00' },
+      body: { segmentKey: 'travel', overtimeResult: 'comp_time', departureAt: `${todayStamp} 15:00`, returnAt: `${todayStamp} 23:00` },
     }
     const res = createResponse()
     await controller.createServiceOrderOvertimeRequest(req, res)
@@ -989,12 +998,12 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     // 回程 21:00->23:00 计 2h，生成 travel_back
     assert.equal(insert.params.hours, 2)
     const snapshot = JSON.parse(insert.params.sourceSnapshot)
-    assert.equal(snapshot.reportedReturnAt, '2026-07-14 23:00')
+    assert.equal(snapshot.reportedReturnAt, `${todayStamp} 23:00`)
     // travel_back 段快照只留回程自报；去程自报随 travel_out 未生成不留痕
     assert.equal(Object.hasOwn(snapshot, 'reportedDepartureAt'), false)
     // 工单原始时间不被覆盖
-    assert.equal(snapshot.departureAt, '2026-07-14 16:00')
-    assert.equal(snapshot.returnAt, '2026-07-14 22:00')
+    assert.equal(snapshot.departureAt, `${todayStamp} 16:00`)
+    assert.equal(snapshot.returnAt, `${todayStamp} 22:00`)
   }
 
   // 路上时间零差异：提交与工单相同的默认时间，不应写入 reported* 留痕（避免污染无差异快照）
@@ -1002,8 +1011,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const executeCalls = []
     const orderRow = {
       id: 88, order_no: 'SO-1', status: 'completed', customer_name: 'C', engineer_count: 2,
-      service_at: '2026-07-14 18:00:00', departure_at: '2026-07-14 16:00:00',
-      actual_start_at: '2026-07-14 18:00:00', actual_end_at: '2026-07-14 21:00:00', return_at: '2026-07-14 23:00:00',
+      service_at: `${todayStamp} 18:00`, departure_at: `${todayStamp} 16:00`,
+      actual_start_at: `${todayStamp} 18:00`, actual_end_at: `${todayStamp} 21:00`, return_at: `${todayStamp} 23:00`,
     }
     const { controller } = await loadController({
       connectionExecute: async (sql, params = {}) => {
@@ -1030,7 +1039,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const req = {
       user: { id: 42, role: 'engineer' },
       params: { id: '88' },
-      body: { segmentKey: 'travel', overtimeResult: 'comp_time', departureAt: '2026-07-14 16:00', returnAt: '2026-07-14 23:00' },
+      body: { segmentKey: 'travel', overtimeResult: 'comp_time', departureAt: `${todayStamp} 16:00`, returnAt: `${todayStamp} 23:00` },
     }
     const res = createResponse()
     await controller.createServiceOrderOvertimeRequest(req, res)
@@ -1046,8 +1055,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const executeCalls = []
     const orderRow = {
       id: 88, order_no: 'SO-1', status: 'completed', customer_name: 'C', engineer_count: 1,
-      service_at: '2026-07-14 09:00:00', departure_at: '2026-07-14 08:00:00',
-      actual_start_at: '2026-07-14 09:00:00', actual_end_at: '2026-07-14 15:00:00', return_at: '2026-07-14 15:30:00',
+      service_at: `${todayStamp} 09:00`, departure_at: `${todayStamp} 08:00`,
+      actual_start_at: `${todayStamp} 09:00`, actual_end_at: `${todayStamp} 15:00`, return_at: `${todayStamp} 15:30`,
     }
     const { controller } = await loadController({
       connectionExecute: async (sql, params = {}) => {
@@ -1090,8 +1099,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
   {
     const orderRow = {
       id: 88, order_no: 'SO-1', status: 'completed', customer_name: 'C', engineer_count: 2,
-      service_at: '2026-07-14 18:00:00', departure_at: '2026-07-14 16:00:00',
-      actual_start_at: '2026-07-14 18:00:00', actual_end_at: '2026-07-14 21:00:00', return_at: '2026-07-14 22:00:00',
+      service_at: `${todayStamp} 18:00`, departure_at: `${todayStamp} 16:00`,
+      actual_start_at: `${todayStamp} 18:00`, actual_end_at: `${todayStamp} 21:00`, return_at: `${todayStamp} 22:00`,
     }
     const { controller } = await loadController({
       connectionExecute: async (sql) => {
@@ -1105,7 +1114,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const req = {
       user: { id: 42, role: 'engineer' },
       params: { id: '88' },
-      body: { segmentKey: 'travel', overtimeResult: 'comp_time', departureAt: '2026-07-14 19:00' },
+      body: { segmentKey: 'travel', overtimeResult: 'comp_time', departureAt: `${todayStamp} 19:00` },
     }
     const res = createResponse()
     let thrown = null
@@ -1122,8 +1131,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
   {
     const orderRow = {
       id: 88, order_no: 'SO-1', status: 'completed', customer_name: 'C', engineer_count: 2,
-      service_at: '2026-07-14 18:00:00', departure_at: '2026-07-14 16:00:00',
-      actual_start_at: '2026-07-14 18:00:00', actual_end_at: '2026-07-14 21:00:00', return_at: '2026-07-14 22:00:00',
+      service_at: `${todayStamp} 18:00`, departure_at: `${todayStamp} 16:00`,
+      actual_start_at: `${todayStamp} 18:00`, actual_end_at: `${todayStamp} 21:00`, return_at: `${todayStamp} 22:00`,
     }
     const { controller } = await loadController({
       connectionExecute: async (sql) => {
@@ -1137,7 +1146,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const req = {
       user: { id: 42, role: 'engineer' },
       params: { id: '88' },
-      body: { segmentKey: 'travel', overtimeResult: 'comp_time', returnAt: '2026-07-14 20:00' },
+      body: { segmentKey: 'travel', overtimeResult: 'comp_time', returnAt: `${todayStamp} 20:00` },
     }
     const res = createResponse()
     let thrown = null
@@ -1154,8 +1163,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
   {
     const orderRow = {
       id: 88, order_no: 'SO-LEGACY', status: 'completed', customer_name: 'C',
-      service_at: '2026-07-18 06:00:00', departure_at: '2026-07-18 05:00:00',
-      actual_start_at: '2026-07-18 06:00:00', actual_end_at: '2026-07-18 13:00:00', return_at: '2026-07-18 14:00:00',
+      service_at: `${saturdayStamp} 06:00`, departure_at: `${saturdayStamp} 05:00`,
+      actual_start_at: `${saturdayStamp} 06:00`, actual_end_at: `${saturdayStamp} 13:00`, return_at: `${saturdayStamp} 14:00`,
     }
     const { controller } = await loadController({
       connectionExecute: async (sql, params = {}) => {
@@ -1188,8 +1197,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const executeCalls = []
     const orderRow = {
       id: 88, order_no: 'SO-MIN', status: 'completed', customer_name: 'C',
-      service_at: '2026-07-18 11:35:00', departure_at: '2026-07-18 11:10:00',
-      actual_start_at: '2026-07-18 11:35:00', actual_end_at: '2026-07-18 14:50:00', return_at: '2026-07-18 20:35:00',
+      service_at: `${saturdayStamp} 11:35`, departure_at: `${saturdayStamp} 11:10`,
+      actual_start_at: `${saturdayStamp} 11:35`, actual_end_at: `${saturdayStamp} 14:50`, return_at: `${saturdayStamp} 20:35`,
     }
     let insertId = 1200
     const { controller } = await loadController({
@@ -1218,8 +1227,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const travelOut = inserts.find((call) => call.params.sourceDetail === 'travel_out')
     assert.ok(travelOut, '去程应按保底生成')
     assert.equal(travelOut.params.hours, 0.5)
-    assert.equal(travelOut.params.startAt, '2026-07-18 11:10')
-    assert.equal(travelOut.params.endAt, '2026-07-18 11:35')
+    assert.equal(travelOut.params.startAt, `${saturdayStamp} 11:10`)
+    assert.equal(travelOut.params.endAt, `${saturdayStamp} 11:35`)
     assert.equal(inserts.find((call) => call.params.sourceDetail === 'work').params.hours, 2)
     assert.equal(inserts.find((call) => call.params.sourceDetail === 'travel_back').params.hours, 5)
   }
@@ -1228,8 +1237,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
   {
     const orderRow = {
       id: 88, order_no: 'SO-EARLY', status: 'completed', customer_name: 'C',
-      service_at: '2026-07-14 16:35:00', departure_at: '2026-07-14 16:10:00',
-      actual_start_at: '2026-07-14 16:35:00', actual_end_at: '2026-07-14 17:40:00', return_at: '2026-07-14 17:55:00',
+      service_at: `${todayStamp} 16:35`, departure_at: `${todayStamp} 16:10`,
+      actual_start_at: `${todayStamp} 16:35`, actual_end_at: `${todayStamp} 17:40`, return_at: `${todayStamp} 17:55`,
     }
     const { controller } = await loadController({
       connectionExecute: async (sql) => {
@@ -1258,8 +1267,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const executeCalls = []
     const orderRow = {
       id: 88, order_no: 'SO-SOLO', status: 'completed', customer_name: 'C', engineer_count: 1,
-      service_at: '2026-07-18 06:00:00', departure_at: '2026-07-18 05:00:00',
-      actual_start_at: '2026-07-18 06:00:00', actual_end_at: '2026-07-18 13:00:00', return_at: '2026-07-18 14:00:00',
+      service_at: `${todayStamp} 06:00`, departure_at: `${todayStamp} 05:00`,
+      actual_start_at: `${todayStamp} 06:00`, actual_end_at: `${todayStamp} 13:00`, return_at: `${todayStamp} 14:00`,
     }
     const { controller } = await loadController({
       connectionExecute: async (sql, params = {}) => {
@@ -1280,7 +1289,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const req = {
       user: { id: 42, role: 'engineer' },
       params: { id: '88' },
-      body: { segmentKey: 'travel_out', overtimeResult: 'comp_time', departureAt: '2026-07-18 03:00', returnAt: '2026-07-18 23:00' },
+      body: { segmentKey: 'travel_out', overtimeResult: 'comp_time', departureAt: `${todayStamp} 03:00`, returnAt: `${todayStamp} 23:00` },
     }
     const res = createResponse()
     await controller.createServiceOrderOvertimeRequest(req, res)
@@ -1299,8 +1308,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       const executeCalls = []
       const orderRow = {
         id: 88, order_no: 'SO-LEG', status: 'completed', customer_name: 'C',
-        service_at: '2026-07-18 06:00:00', departure_at: '2026-07-18 05:00:00',
-        actual_start_at: '2026-07-18 06:00:00', actual_end_at: '2026-07-18 13:00:00', return_at: '2026-07-18 14:00:00',
+        service_at: `${saturdayStamp} 06:00`, departure_at: `${saturdayStamp} 05:00`,
+        actual_start_at: `${saturdayStamp} 06:00`, actual_end_at: `${saturdayStamp} 13:00`, return_at: `${saturdayStamp} 14:00`,
       }
       const { controller } = await loadController({
         connectionExecute: async (sql, params = {}) => {
@@ -1339,8 +1348,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const executeCalls = []
     const orderRow = {
       id: 88, order_no: 'SO-BOTH', status: 'completed', customer_name: 'C',
-      service_at: '2026-07-18 06:00:00', departure_at: '2026-07-18 05:00:00',
-      actual_start_at: '2026-07-18 06:00:00', actual_end_at: '2026-07-18 13:00:00', return_at: '2026-07-18 14:00:00',
+      service_at: `${saturdayStamp} 06:00`, departure_at: `${saturdayStamp} 05:00`,
+      actual_start_at: `${saturdayStamp} 06:00`, actual_end_at: `${saturdayStamp} 13:00`, return_at: `${saturdayStamp} 14:00`,
     }
     let insertId = 1000
     const { controller } = await loadController({
@@ -1390,8 +1399,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const executeCalls = []
     const orderRow = {
       id: 88, order_no: 'SO-HALF', status: 'completed', customer_name: 'C',
-      service_at: '2026-07-18 06:00:00', departure_at: '2026-07-18 05:00:00',
-      actual_start_at: '2026-07-18 06:00:00', actual_end_at: '2026-07-18 13:00:00', return_at: '2026-07-18 14:00:00',
+      service_at: `${saturdayStamp} 06:00`, departure_at: `${saturdayStamp} 05:00`,
+      actual_start_at: `${saturdayStamp} 06:00`, actual_end_at: `${saturdayStamp} 13:00`, return_at: `${saturdayStamp} 14:00`,
     }
     const { controller } = await loadController({
       connectionExecute: async (sql, params = {}) => {
@@ -1428,9 +1437,9 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     const executeCalls = []
     const orderRow = {
       id: 88, order_no: 'SO-NONE', status: 'completed', customer_name: 'C',
-      service_at: '2026-07-14 09:30:00', departure_at: '2026-07-14 09:00:00',
+      service_at: `${todayStamp} 09:30`, departure_at: `${todayStamp} 09:00`,
       // 全程落在平日 9:00–18:00 正常时段内（早段 9:00 前/晚段 18:00 后均无），无任何可计加班时段
-      actual_start_at: '2026-07-14 09:00:00', actual_end_at: '2026-07-14 17:00:00', return_at: '2026-07-14 17:00:00',
+      actual_start_at: `${todayStamp} 09:00`, actual_end_at: `${todayStamp} 17:00`, return_at: `${todayStamp} 17:00`,
     }
     const { controller } = await loadController({
       connectionExecute: async (sql) => {
@@ -1468,11 +1477,11 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       serviceMode: 'onsite',
       serviceType: 'repair',
       issueDescription: '首次申请问题',
-      serviceAt: '2026-07-14 18:00',
-      departureAt: '2026-07-14 17:00',
-      actualStartAt: '2026-07-14 18:00',
-      actualEndAt: '2026-07-14 21:00',
-      returnAt: '2026-07-14 22:00',
+      serviceAt: `${todayStamp} 18:00`,
+      departureAt: `${todayStamp} 17:00`,
+      actualStartAt: `${todayStamp} 18:00`,
+      actualEndAt: `${todayStamp} 21:00`,
+      returnAt: `${todayStamp} 22:00`,
     }
     const secondSnapshot = {
       id: 88,
@@ -1484,22 +1493,22 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       serviceMode: 'remote',
       serviceType: 'support',
       issueDescription: '二次申请问题',
-      serviceAt: '2026-07-15 19:00',
-      departureAt: '2026-07-15 18:00',
-      actualStartAt: '2026-07-15 19:00',
-      actualEndAt: '2026-07-15 22:00',
-      returnAt: '2026-07-15 23:00',
+      serviceAt: `${todayStamp} 19:00`,
+      departureAt: `${todayStamp} 18:00`,
+      actualStartAt: `${todayStamp} 19:00`,
+      actualEndAt: `${todayStamp} 22:00`,
+      returnAt: `${todayStamp} 23:00`,
     }
     const { controller } = await loadController({
       queryHandler: async (sql) => {
         if (isRequestListQuery(sql)) return [
           {
             id: 902, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 88,
-            source_snapshot: JSON.stringify(firstSnapshot), start_at: '2026-07-14 18:00:00', end_at: '2026-07-14 21:00:00', hours: 3,
+            source_snapshot: JSON.stringify(firstSnapshot), start_at: `${todayStamp} 18:00`, end_at: `${todayStamp} 21:00`, hours: 3,
           },
           {
             id: 906, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 88,
-            source_snapshot: secondSnapshot, start_at: '2026-07-15 19:00:00', end_at: '2026-07-15 22:00:00', hours: 3,
+            source_snapshot: secondSnapshot, start_at: `${todayStamp} 19:00`, end_at: `${todayStamp} 22:00`, hours: 3,
           },
         ]
         if (isServiceOrderSnapshotFallbackQuery(sql)) {
@@ -1532,10 +1541,10 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       serviceMode: 'remote',
       serviceType: 'support',
       issueDescription: '当前问题 89',
-      serviceAt: '2026-07-15 18:00',
+      serviceAt: `${todayStamp} 18:00`,
       departureAt: '',
-      actualStartAt: '2026-07-15 18:00',
-      actualEndAt: '2026-07-15 20:00',
+      actualStartAt: `${todayStamp} 18:00`,
+      actualEndAt: `${todayStamp} 20:00`,
       returnAt: '',
     }
     const currentOrder91 = {
@@ -1548,26 +1557,26 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       serviceMode: 'onsite',
       serviceType: 'repair',
       issueDescription: '当前问题 91',
-      serviceAt: '2026-07-16 19:00',
-      departureAt: '2026-07-16 18:00',
-      actualStartAt: '2026-07-16 19:00',
-      actualEndAt: '2026-07-16 22:00',
-      returnAt: '2026-07-16 23:00',
+      serviceAt: `${todayStamp} 19:00`,
+      departureAt: `${todayStamp} 18:00`,
+      actualStartAt: `${todayStamp} 19:00`,
+      actualEndAt: `${todayStamp} 22:00`,
+      returnAt: `${todayStamp} 23:00`,
     }
     const { controller } = await loadController({
       queryHandler: async (sql, params) => {
         if (isRequestListQuery(sql)) return [
           {
             id: 903, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 89,
-            source_snapshot: null, start_at: '2026-07-15 18:00:00', end_at: '2026-07-15 20:00:00', hours: 2,
+            source_snapshot: null, start_at: `${todayStamp} 18:00`, end_at: `${todayStamp} 20:00`, hours: 2,
           },
           {
             id: 907, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 91,
-            source_snapshot: null, start_at: '2026-07-16 19:00:00', end_at: '2026-07-16 22:00:00', hours: 3,
+            source_snapshot: null, start_at: `${todayStamp} 19:00`, end_at: `${todayStamp} 22:00`, hours: 3,
           },
           {
             id: 908, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 89,
-            source_snapshot: null, start_at: '2026-07-17 18:00:00', end_at: '2026-07-17 20:00:00', hours: 2,
+            source_snapshot: null, start_at: `${todayStamp} 18:00`, end_at: `${todayStamp} 20:00`, hours: 2,
           },
         ]
         if (isServiceOrderSnapshotFallbackQuery(sql)) {
@@ -1579,16 +1588,16 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
               contact_name: '当前联系人 89', contact_phone: '13900000089',
               device_name: '当前设备 89', service_mode: 'remote',
               service_type: 'support', issue_description: '当前问题 89',
-              service_at: '2026-07-15 18:00:00', departure_at: null,
-              actual_start_at: '2026-07-15 18:00:00', actual_end_at: '2026-07-15 20:00:00', return_at: null,
+              service_at: `${todayStamp} 18:00`, departure_at: null,
+              actual_start_at: `${todayStamp} 18:00`, actual_end_at: `${todayStamp} 20:00`, return_at: null,
             },
             {
               id: 91, order_no: 'SO-CURRENT-91', customer_name: '当前客户 91',
               contact_name: '当前联系人 91', contact_phone: '13900000091',
               device_name: '当前设备 91', service_mode: 'onsite',
               service_type: 'repair', issue_description: '当前问题 91',
-              service_at: '2026-07-16 19:00:00', departure_at: '2026-07-16 18:00:00',
-              actual_start_at: '2026-07-16 19:00:00', actual_end_at: '2026-07-16 22:00:00', return_at: '2026-07-16 23:00:00',
+              service_at: `${todayStamp} 19:00`, departure_at: `${todayStamp} 18:00`,
+              actual_start_at: `${todayStamp} 19:00`, actual_end_at: `${todayStamp} 22:00`, return_at: `${todayStamp} 23:00`,
             },
           ]
         }
@@ -1618,23 +1627,23 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
         if (isRequestListQuery(sql)) return [
           {
             id: 904, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 90,
-            source_snapshot: '{invalid-json', start_at: '2026-07-16 18:00:00', end_at: '2026-07-16 20:00:00', hours: 2,
+            source_snapshot: '{invalid-json', start_at: `${todayStamp} 18:00`, end_at: `${todayStamp} 20:00`, hours: 2,
           },
           {
             id: 909, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 92,
-            source_snapshot: [], start_at: '2026-07-17 18:00:00', end_at: '2026-07-17 20:00:00', hours: 2,
+            source_snapshot: [], start_at: `${todayStamp} 18:00`, end_at: `${todayStamp} 20:00`, hours: 2,
           },
           {
             id: 910, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 93,
-            source_snapshot: { orderNo: 'SO-MISSING-ID' }, start_at: '2026-07-18 18:00:00', end_at: '2026-07-18 20:00:00', hours: 2,
+            source_snapshot: { orderNo: 'SO-MISSING-ID' }, start_at: `${todayStamp} 18:00`, end_at: `${todayStamp} 20:00`, hours: 2,
           },
           {
             id: 911, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 94,
-            source_snapshot: { id: 999, orderNo: 'SO-WRONG-SOURCE' }, start_at: '2026-07-19 18:00:00', end_at: '2026-07-19 20:00:00', hours: 2,
+            source_snapshot: { id: 999, orderNo: 'SO-WRONG-SOURCE' }, start_at: `${todayStamp} 18:00`, end_at: `${todayStamp} 20:00`, hours: 2,
           },
           {
             id: 912, employee_id: 5, request_type: 'overtime', source_type: 'service_order', source_id: 95,
-            source_snapshot: { id: 95, customerName: { name: '嵌套客户' } }, start_at: '2026-07-20 18:00:00', end_at: '2026-07-20 20:00:00', hours: 2,
+            source_snapshot: { id: 95, customerName: { name: '嵌套客户' } }, start_at: `${todayStamp} 18:00`, end_at: `${todayStamp} 20:00`, hours: 2,
           },
         ]
         if (isServiceOrderSnapshotFallbackQuery(sql)) {
@@ -1672,7 +1681,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       queryHandler: async (sql) => {
         if (/FROM attendance_requests r/.test(sql)) return [{
           id: 905, employee_id: 5, request_type: 'leave', leave_type: 'annual', source_type: null, source_id: null,
-          source_snapshot: null, start_at: '2026-07-17 09:00:00', end_at: '2026-07-17 18:00:00', hours: 8,
+          source_snapshot: null, start_at: `${todayStamp} 09:00`, end_at: `${todayStamp} 18:00`, hours: 8,
         }]
         return undefined
       },
@@ -1925,8 +1934,8 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
             applicant_email: 'applicant@example.test',
             request_type: 'leave',
             leave_type: 'personal',
-            start_at: '2026-07-14 09:00:00',
-            end_at: '2026-07-14 18:00:00',
+            start_at: `${todayStamp} 09:00`,
+            end_at: `${todayStamp} 18:00`,
             status: 'pending_approval',
             submitted_by: 42,
           }], []]
@@ -2160,7 +2169,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
             id: 501, workflow_version: 4, employee_id: 5,
             applicant_role: 'engineer',
             delegate_employee_id: 9, request_type: 'leave', leave_type: 'personal',
-            start_at: '2026-07-10 09:00:00', end_at: '2026-07-10 18:00:00',
+            start_at: `${todayStamp} 09:00`, end_at: `${todayStamp} 18:00`,
             status: 'pending_delegate', submitted_by: 42, submit_count: 1,
             employee_name: '申请人', applicant_email: 'a@example.test',
           }], []]
@@ -2187,11 +2196,13 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
   }
 
   {
-    // 草稿状态不能再撤回
+    // 草稿丢弃 → withdrawn 终态（2026-11-12 补充：覆盖加班草稿只能重提或丢弃的场景）
+    const executeCalls = []
     const { controller } = await loadController({
-      connectionExecute: async (sql) => {
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
         if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
-          return [[{ id: 502, workflow_version: 4, employee_id: 5, status: 'draft', submitted_by: 42, request_type: 'leave' }], []]
+          return [[{ id: 502, workflow_version: 4, employee_id: 5, status: 'draft', submitted_by: 42, request_type: 'overtime', batch_id: null }], []]
         }
         return [[], []]
       },
@@ -2204,7 +2215,12 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     } catch (error) {
       thrown = error
     }
-    assert.equal(thrown?.status, 400)
+    assert.equal(thrown, null, '草稿应可丢弃: ' + (thrown && thrown.message))
+    const upd = executeCalls.find((call) => /UPDATE attendance_requests/.test(call.sql) && /status = 'withdrawn'/.test(call.sql))
+    assert.ok(upd, '草稿撤回应落 withdrawn 终态')
+    // 草稿无待审步骤，不应有 skipped 标记与通知
+    assert.equal(executeCalls.some((call) => /'skipped'/.test(call.sql)), false)
+    assert.equal(executeCalls.some((call) => /attendance_email_notifications/.test(call.sql)), false)
   }
 
   {
@@ -2218,7 +2234,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
             id: 503, workflow_version: 4, employee_id: 5,
             applicant_role: 'engineer',
             delegate_employee_id: 9, request_type: 'leave', leave_type: 'annual',
-            start_at: '2026-07-10 09:00:00', end_at: '2026-07-14 18:00:00',
+            start_at: `${todayStamp} 09:00`, end_at: `${todayStamp} 18:00`,
             status: 'pending_approval', submitted_by: 42, submit_count: 1,
             employee_name: '申请人', applicant_email: 'a@example.test',
           }], []]
@@ -2268,7 +2284,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
             applicant_role: 'engineer',
             delegate_employee_id: 9, request_type: 'leave', leave_type: 'annual',
             working_days: 3,
-            start_at: '2026-07-10 09:00:00', end_at: '2026-07-14 18:00:00',
+            start_at: `${todayStamp} 09:00`, end_at: `${todayStamp} 18:00`,
             status: 'draft', submitted_by: 42, submit_count: 1,
             employee_name: '申请人', applicant_email: 'a@example.test',
           }], []]
@@ -2345,6 +2361,19 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
       thrown = error
     }
     assert.equal(thrown?.status, 403, '非本人修改应 403')
+  }
+
+  {
+    // 加班窗口（2026-11-12 佬裁决）：近 5 个工作日，含今天
+    const { controller } = await loadController()
+    // 周三 → 窗口起点为上周三（周三/周二/周一/上周五/上周四 共 5 个工作日）
+    const start = controller.overtimeApplyWindowStart(new Date(2026, 10, 11)) // 2026-11-11 周三
+    const pad = (n) => String(n).padStart(2, '0')
+    const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    assert.equal(fmt(start), '2026-11-05') // 11/5 周四（11/11,10,9,6,5 五个工作日）
+    // 周六 → 窗口含周五起往前 5 个工作日
+    const sat = controller.overtimeApplyWindowStart(new Date(2026, 10, 14)) // 2026-11-14 周六
+    assert.equal(fmt(sat), '2026-11-09') // 11/13,12,11,10,9 五个工作日 → 起点 11/9 周一
   }
 
 })().catch((error) => {
