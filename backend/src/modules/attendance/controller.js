@@ -65,6 +65,15 @@ const leaveConflictStatuses = Object.freeze([
 const leaveConflictStatusSql = leaveConflictStatuses.map((status) => "'" + status + "'").join(', ')
 const roleSet = new Set(ALL_ROLES)
 const attendanceApplicantRoleSet = new Set(ATTENDANCE_APPLICANT_ROLES)
+// 代理人规则（2026-11-06 佬裁决）：
+// - 司机不需要代理人，请假/调休直接进审批链
+// - 工程师的代理人只能选工程师/工程主管；销售同理（销售/销售主管）
+const DELEGATE_EXEMPT_ROLES = new Set(['driver'])
+const DELEGATE_ROLE_SCOPE = Object.freeze({
+  engineer: Object.freeze(['engineer', 'engineering_supervisor']),
+  sales: Object.freeze(['sales', 'sales_supervisor']),
+})
+
 const defaultSupervisorRoleRules = Object.freeze({
   assistant: 'operations_director',
   engineering_supervisor: 'operations_director',
@@ -865,7 +874,8 @@ async function currentEmployeeForConnection(connection, userId) {
 
 async function enabledEmployeeById(employeeId) {
   const rows = await query(
-    `SELECT p.id, p.user_id, p.employee_name, p.attendance_enabled
+    `SELECT p.id, p.user_id, p.employee_name, p.attendance_enabled,
+            (SELECT u.role FROM users u WHERE u.id = p.user_id) AS user_role
      FROM attendance_employee_profiles p
      WHERE p.id = :employeeId
        AND p.attendance_enabled = 1
@@ -1269,12 +1279,19 @@ async function listDelegates(req, res) {
     'WHERE p.attendance_enabled = 1',
     "  AND u.status = 'active'",
     '  AND p.id <> :employeeId',
-    'ORDER BY p.employee_name ASC, p.id ASC',
-  ].join('\n')
+  ]
   const params = { employeeId: employee.id }
+  // 工程师/销售的代理人仅限同岗位（2026-11-06 佬裁决）
+  const scope = DELEGATE_ROLE_SCOPE[req.user.role]
+  if (scope) {
+    sql.push('  AND u.role IN (:scopeRoles)')
+    params.scopeRoles = scope
+  }
+  sql.push('ORDER BY p.employee_name ASC, p.id ASC')
+  const finalSql = sql.join('\n')
   if (startAt && endAt) Object.assign(params, { startAt, endAt })
   const rows = await query(
-    sql,
+    finalSql,
     params,
   )
   res.json({ items: rows.map((row) => ({
@@ -1450,11 +1467,20 @@ async function createRequest(req, res) {
   let delegateEmployeeId = null
   let workingDays = null
   if (input.requestType === 'leave' || input.requestType === 'comp_time') {
-    delegateEmployeeId = Number(req.body?.delegateEmployeeId)
-    if (!delegateEmployeeId) throw badRequest('请选择代理人')
-    if (delegateEmployeeId === Number(employee.id)) throw badRequest('代理人不能是本人')
-    const delegate = await enabledEmployeeById(delegateEmployeeId)
-    if (!delegate) throw badRequest('代理人不存在或未启用考勤')
+    if (DELEGATE_EXEMPT_ROLES.has(req.user.role)) {
+      // 司机不需要代理人（2026-11-06 佬裁决），直接进审批链
+      delegateEmployeeId = null
+    } else {
+      delegateEmployeeId = Number(req.body?.delegateEmployeeId)
+      if (!delegateEmployeeId) throw badRequest('请选择代理人')
+      if (delegateEmployeeId === Number(employee.id)) throw badRequest('代理人不能是本人')
+      const delegate = await enabledEmployeeById(delegateEmployeeId)
+      if (!delegate) throw badRequest('代理人不存在或未启用考勤')
+      const scope = DELEGATE_ROLE_SCOPE[req.user.role]
+      if (scope && !scope.includes(delegate.user_role)) {
+        throw badRequest(req.user.role === 'engineer' ? '代理人只能选工程师或工程主管' : '代理人只能选销售或销售主管')
+      }
+    }
 
     if (input.requestType === 'leave') {
       try {

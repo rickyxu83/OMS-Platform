@@ -83,6 +83,11 @@ async function loadController({
   const calls = []
   async function query(sql, params = {}) {
     calls.push({ sql, params })
+    // queryHandler 优先于默认 mock，便于各用例覆盖特定查询（如代理人角色）
+    if (queryHandler) {
+      const handled = await queryHandler(sql, params)
+      if (handled !== undefined) return handled
+    }
     if (/information_schema\.COLUMNS/.test(sql) && /attendance_requests/.test(sql)) return requestColumns
     if (/information_schema\.STATISTICS/.test(sql)) return [{ indexName: 'idx_attendance_requests_source' }]
     if (/FROM attendance_schema_migrations/.test(sql)) return [{ migration_key: 'annual_leave_ledger_days_v1' }]
@@ -95,7 +100,7 @@ async function loadController({
     }
     if (/SELECT p\.id, p\.user_id/.test(sql) && /p\.id = :employeeId/.test(sql)) {
       if (Number(params.employeeId) !== Number(delegateEmployeeId)) return []
-      return [{ id: delegateEmployeeId, user_id: 77, employee_name: '代理人', attendance_enabled: 1 }]
+      return [{ id: delegateEmployeeId, user_id: 77, employee_name: '代理人', attendance_enabled: 1, user_role: 'engineer' }]
     }
     // 申请提交前置余额校验（特休按天、调休按小时）：mock 默认给足余额，避免拦截正常流程
     if (/^\s*SELECT COALESCE\(SUM\(delta_hours\)/.test(sql) && /FROM attendance_balance_ledger/.test(sql)) {
@@ -103,10 +108,6 @@ async function loadController({
     }
     if (/FROM attendance_supervisor_role_rules/.test(sql) && /LIMIT 1/.test(sql)) {
       return [{ supervisor_role: 'engineering_supervisor' }]
-    }
-    if (queryHandler) {
-      const handled = await queryHandler(sql, params)
-      if (handled !== undefined) return handled
     }
     if (/INSERT INTO attendance_requests/.test(sql)) return { insertId: 321 }
     return []
@@ -175,6 +176,52 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.equal(result.thrown, null, `${role} should be able to create leave`)
     assert.equal(result.response.statusCode, 201)
     assert.ok(result.calls.some((call) => /INSERT INTO attendance_requests/.test(call.sql)))
+  }
+
+  // 代理人规则（2026-11-06）：司机豁免代理人；工程师代理人仅限工程师/工程主管；销售仅限销售/销售主管
+  {
+    const result = await createLeave({ delegateEmployeeId: null }, {}, 'driver')
+    assert.equal(result.thrown, null, 'driver 不传代理人也应能提交')
+    const insert = result.calls.find((call) => /INSERT INTO attendance_requests/.test(call.sql))
+    assert.ok(insert)
+    assert.equal(insert.params.delegateEmployeeId, null)
+  }
+  {
+    // 工程师的代理人是销售 → 拒绝
+    const result = await createLeave({}, {
+      queryHandler: async (sql, params) => {
+        if (/SELECT p\.id, p\.user_id/.test(sql) && /p\.id = :employeeId/.test(sql) && Number(params.employeeId) === 9) {
+          return [{ id: 9, user_id: 77, employee_name: '代理人', attendance_enabled: 1, user_role: 'sales' }]
+        }
+        return undefined
+      },
+    }, 'engineer')
+    assert.equal(result.thrown?.message, '代理人只能选工程师或工程主管')
+  }
+  {
+    // 工程师的代理人是工程主管 → 通过
+    const result = await createLeave({}, {
+      queryHandler: async (sql, params) => {
+        if (/SELECT p\.id, p\.user_id/.test(sql) && /p\.id = :employeeId/.test(sql) && Number(params.employeeId) === 9) {
+          return [{ id: 9, user_id: 77, employee_name: '代理人', attendance_enabled: 1, user_role: 'engineering_supervisor' }]
+        }
+        return undefined
+      },
+    }, 'engineer')
+    assert.equal(result.thrown, null)
+    assert.equal(result.response.statusCode, 201)
+  }
+  {
+    // 销售的代理人是工程师 → 拒绝
+    const result = await createLeave({}, {
+      queryHandler: async (sql, params) => {
+        if (/SELECT p\.id, p\.user_id/.test(sql) && /p\.id = :employeeId/.test(sql) && Number(params.employeeId) === 9) {
+          return [{ id: 9, user_id: 77, employee_name: '代理人', attendance_enabled: 1, user_role: 'engineer' }]
+        }
+        return undefined
+      },
+    }, 'sales')
+    assert.equal(result.thrown?.message, '代理人只能选销售或销售主管')
   }
 
   {
@@ -316,7 +363,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
           ], []]
         }
         if (/FROM attendance_employee_profiles p/.test(sql) && /p\.id = :employeeId/.test(sql)) {
-          return [[{ id: 9, employee_name: '代理人', user_id: 77, email: 'delegate@example.test' }], []]
+          return [[{ id: 9, employee_name: '代理人', user_id: 77, email: 'delegate@example.test', user_role: 'engineer' }], []]
         }
         return [{ affectedRows: 1, insertId: 1 }, []]
       },
