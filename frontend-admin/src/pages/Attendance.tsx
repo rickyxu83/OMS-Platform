@@ -27,6 +27,7 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { ReasonConfirmDialog } from "@/components/ReasonConfirmDialog";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 import { RequestList, requestTypeLabel } from "@/components/attendance/RequestList";
+import { BalanceLedgerTooltip } from "@/components/attendance/BalanceLedgerTooltip";
 import { TeamCalendar } from "@/components/attendance/TeamCalendar";
 import { HolidayPanel } from "@/components/attendance/HolidayPanel";
 import { SettingsHolidays, type HolidayDraft, type HolidaySyncPreview } from "@/components/attendance/SettingsHolidays";
@@ -912,8 +913,8 @@ export function Attendance() {
   // 关键指标卡（2026-11-12 佬要求视觉加强）：大数字 + 图标色块，不足/待办用警示色
   const statTiles = [
     ...(canApply ? [
-      { label: "可用特休", value: `${days(annualBalanceDays(myProfile))} 天`, warn: annualBalanceDays(myProfile) <= 1, icon: CalendarOff, iconBox: "bg-violet-100 text-violet-600" },
-      ...(canCompTime ? [{ label: "可用调休", value: `${hours(myProfile?.compTimeBalanceHours)} 小时`, warn: false, icon: RotateCcw, iconBox: "bg-teal-100 text-teal-600" }] : []),
+      { label: "可用特休", value: `${days(annualBalanceDays(myProfile))} 天`, warn: annualBalanceDays(myProfile) <= 1, icon: CalendarOff, iconBox: "bg-violet-100 text-violet-600", balanceType: "annual_leave" as const },
+      ...(canCompTime ? [{ label: "可用调休", value: `${hours(myProfile?.compTimeBalanceHours)} 小时`, warn: false, icon: RotateCcw, iconBox: "bg-teal-100 text-teal-600", balanceType: "comp_time" as const }] : []),
       { label: "我的进行中", value: String(pendingMine), warn: false, icon: Hourglass, iconBox: "bg-amber-100 text-amber-600" },
     ] : []),
     ...(isApprover ? [{ label: "待我审批", value: String(approvalTodos.length), warn: approvalTodos.length > 0, icon: BellRing, iconBox: "bg-rose-100 text-rose-600" }] : []),
@@ -996,7 +997,13 @@ export function Attendance() {
                   <stat.icon className="h-4 w-4" />
                 </span>
                 {stat.label}
-                <b className={`text-base font-semibold ${stat.warn ? "text-amber-600" : "text-foreground"}`}>{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : formatCount(stat.value)}</b>
+                <b className={`text-base font-semibold ${stat.warn ? "text-amber-600" : "text-foreground"}`}>
+                  {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : stat.balanceType ? (
+                    <BalanceLedgerTooltip balanceType={stat.balanceType}>
+                      <span className="underline decoration-dotted underline-offset-4">{formatCount(stat.value)}</span>
+                    </BalanceLedgerTooltip>
+                  ) : formatCount(stat.value)}
+                </b>
                 {stat.warn && !loading ? <span className="text-xs font-medium text-amber-600">不足</span> : null}
               </span>
             ))}
