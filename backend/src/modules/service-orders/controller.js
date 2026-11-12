@@ -2382,7 +2382,9 @@ function normalizeServiceParts(parts = [], { fallbackActionType = 'general', fal
       if (!partName) return null
       const installDeviceDraftId = String(part?.installDeviceDraftId || part?.install_device_draft_id || '').trim()
       const mappedInstallDeviceId = installDeviceDraftId ? installDeviceIdMap.get(installDeviceDraftId) : null
-      const deviceId = Number(part?.deviceId || part?.device_id || mappedInstallDeviceId || (!installDeviceDraftId ? fallbackDeviceId : null) || 0) || null
+      // 现场登记新设备（客户设备未录入时）：有 newDeviceModel 则不 fallback 主设备，保存时先建设备档案
+      const newDeviceModel = String(part?.newDeviceModel || '').trim()
+      const deviceId = Number(part?.deviceId || part?.device_id || mappedInstallDeviceId || (!installDeviceDraftId && !newDeviceModel ? fallbackDeviceId : null) || 0) || null
       return {
         deviceId,
         actionType: normalizePartActionType(part?.actionType || part?.action_type, fallbackActionType),
@@ -2391,6 +2393,10 @@ function normalizeServiceParts(parts = [], { fallbackActionType = 'general', fal
         quantity: Number(part?.quantity || 1) || 1,
         unit: String(part?.unit || '').trim() || null,
         remark: String(part?.remark || '').trim() || null,
+        newDeviceName: String(part?.newDeviceName || '').trim() || null,
+        newDeviceModel: newDeviceModel || null,
+        newDeviceSerialNo: String(part?.newDeviceSerialNo || '').trim() || null,
+        newDeviceRemark: String(part?.newDeviceRemark || '').trim() || null,
       }
     })
     .filter(Boolean)
@@ -2398,13 +2404,52 @@ function normalizeServiceParts(parts = [], { fallbackActionType = 'general', fal
 
 async function saveServiceParts(connection, orderId, parts, { customerId, fallbackActionType = 'general', fallbackDeviceId = null, installDeviceIdMap = new Map() } = {}) {
   await ensureServicePartsColumns(connection)
+  await ensureDeviceMaintenanceTypeEnum(connection)
+  const linkedDeviceIds = []
   const normalizedParts = normalizeServiceParts(parts, { fallbackActionType, fallbackDeviceId, installDeviceIdMap })
+  const newDeviceIdBySerial = new Map()
   for (const part of normalizedParts) {
+    // 现场登记新设备：先为客户建设备档案（维保类型待确认），再关联备件记录（2026-11-06 佬裁决）
+    // 设备登记不收集 PN（PN 是配件/部件字段），型号+序列号必填；
+    // 同一台新设备换多个备件：按序列号去重，同单共享设备 id；客户已有同序列号设备则直接复用，不重复建档
+    if (!part.deviceId && part.newDeviceModel) {
+      if (!part.newDeviceSerialNo) throw badRequest('登记新设备的序列号不能为空')
+      const serialKey = part.newDeviceSerialNo
+      if (newDeviceIdBySerial.has(serialKey)) {
+        part.deviceId = newDeviceIdBySerial.get(serialKey)
+      } else {
+        const [existingRows] = await connection.execute(
+          'SELECT id FROM devices WHERE customer_id = :customerId AND serial_no = :serialNo ORDER BY id ASC LIMIT 1',
+          { customerId, serialNo: serialKey },
+        )
+        if (existingRows.length) {
+          part.deviceId = Number(existingRows[0].id)
+        } else {
+          const [deviceResult] = await connection.execute(
+            `INSERT INTO devices (
+               customer_id, name, model, serial_no, remark, maintenance_type, installation_source_service_order_id
+             )
+             VALUES (:customerId, :deviceName, :deviceModel, :deviceSerialNo, :deviceRemark, 'pending_confirmation', :orderId)`,
+            {
+              customerId,
+              deviceName: part.newDeviceName || null,
+              deviceModel: part.newDeviceModel,
+              deviceSerialNo: part.newDeviceSerialNo || null,
+              deviceRemark: part.newDeviceRemark || null,
+              orderId,
+            },
+          )
+          part.deviceId = deviceResult.insertId
+        }
+        newDeviceIdBySerial.set(serialKey, part.deviceId)
+      }
+    }
     if (['replacement', 'installation'].includes(part.actionType) && !part.deviceId) {
       throw badRequest('请选择备件或硬件部件关联设备')
     }
     if (part.deviceId) {
       await assertDeviceBelongsToCustomer(connection, part.deviceId, customerId)
+      linkedDeviceIds.push(part.deviceId)
     }
     await connection.execute(
       `INSERT INTO service_parts (service_order_id, device_id, action_type, part_name, part_no, quantity, unit, remark)
@@ -2419,6 +2464,22 @@ async function saveServiceParts(connection, orderId, parts, { customerId, fallba
         unit: part.unit,
         remark: part.remark,
       },
+    )
+  }
+  return linkedDeviceIds
+}
+
+// 反向联动（2026-11-06 佬裁决）：备件/部件关联的设备自动补进目标设备（service_order_devices），
+// 换件场景只需填备件行，目标设备自动生成；只增不删，不影响手填的目标设备。
+async function syncPartDevicesToTargetDevices(connection, orderId, partDeviceIds = []) {
+  const uniqueIds = [...new Set(partDeviceIds.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0))]
+  if (!uniqueIds.length) return
+  await ensureServiceOrderDevicesTable(connection)
+  for (const deviceId of uniqueIds) {
+    await connection.execute(
+      `INSERT IGNORE INTO service_order_devices (service_order_id, device_id)
+       VALUES (:orderId, :deviceId)`,
+      { orderId, deviceId },
     )
   }
 }
@@ -2887,10 +2948,11 @@ async function createSelfReport(req, res) {
       },
     )
 
-    await saveServiceParts(connection, orderResult.insertId, parts, {
+    const createdPartDeviceIds = await saveServiceParts(connection, orderResult.insertId, parts, {
       customerId: effectiveCustomerId,
       ...partSaveOptions,
     })
+    await syncPartDevicesToTargetDevices(connection, orderResult.insertId, createdPartDeviceIds)
 
     await writeAudit(connection, req.user.id, orderResult.insertId, 'self_report_submit')
     const submittedDraftKey = normalizeDraftKey(req.body?.draftKey || req.body?.draftId || req.body?.selfReportDraftKey)
@@ -4021,10 +4083,11 @@ async function updateSelfReport(req, res) {
     )
 
     await connection.execute('DELETE FROM service_parts WHERE service_order_id = :id', { id: req.params.id })
-    await saveServiceParts(connection, req.params.id, parts, {
+    const editedPartDeviceIds = await saveServiceParts(connection, req.params.id, parts, {
       customerId: effectiveCustomerId,
       ...partSaveOptions,
     })
+    await syncPartDevicesToTargetDevices(connection, req.params.id, editedPartDeviceIds)
     if (shouldManageInstallDevice) {
       // 编辑时移出列表的安装设备:未被其他单据引用的随工单删除,仍被引用的仅解除来源标记
       const [sourcedRows] = await connection.execute(
