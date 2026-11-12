@@ -407,6 +407,9 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   const [loadingCustomerDevices, setLoadingCustomerDevices] = useState(false);
   const [customerOptionsOpen, setCustomerOptionsOpen] = useState(false);
   const [targetDeviceOpenId, setTargetDeviceOpenId] = useState<string | null>(null);
+  // 备件行「关联设备」可输入过滤的浮层（2026-11-12 佬裁决：设备多时纯下拉不便）
+  const [partDeviceOpenIndex, setPartDeviceOpenIndex] = useState<number | null>(null);
+  const [partDeviceFilter, setPartDeviceFilter] = useState("");
   const [installTargetOpenId, setInstallTargetOpenId] = useState<string | null>(null);
   const [installModelSuggestionDeviceId, setInstallModelSuggestionDeviceId] = useState<string | null>(null);
   const [installModelSuggestions, setInstallModelSuggestions] = useState<ModelSuggestion[]>([]);
@@ -4229,51 +4232,101 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                             <div>数量</div>
                             <div />
                           </div>
-                          {visiblePartEntries.map(({ part, index }) => (
+                          {visiblePartEntries.map(({ part, index }) => {
+                            const selectedPartDevice = part.deviceId
+                              ? selectedCustomerDevices.find((device) => String(device.id) === String(part.deviceId)) || null
+                              : null;
+                            const filteredPartDevices = selectedCustomerDevices.filter((device) => !partDeviceFilter.trim() || deviceMatchesKeyword(device, partDeviceFilter));
+                            const partNewDeviceRefs = form.parts.filter((other) => other.draftId && other.draftId !== part.draftId && other.deviceInputMode === "new" && !other.newDeviceRefDraftId && Boolean(other.newDeviceModel?.trim()));
+                            const partDeviceInputValue = partDeviceOpenIndex === index
+                              ? partDeviceFilter
+                              : part.deviceInputMode === "new"
+                                ? part.newDeviceRefDraftId ? "＋ 本单已登记的新设备" : "＋ 登记新设备"
+                                : selectedPartDevice ? deviceSelectLabel(selectedPartDevice) : "";
+                            return (
                             <div key={index} className="grid gap-3 border-b p-3 last:border-b-0 md:grid-cols-[minmax(150px,1fr)_minmax(0,1fr)_minmax(0,1fr)_90px_40px] md:items-center">
                               <DenseField label="关联设备">
                                 <div className="flex items-center gap-1">
-                                  <Select
-                                    value={part.deviceInputMode === "new" ? (part.newDeviceRefDraftId ? `newref:${part.newDeviceRefDraftId}` : "__new__") : part.deviceId || "none"}
-                                    onValueChange={(value) => {
-                                      if (value === "__new__") {
-                                        updatePart(index, { deviceInputMode: "new", deviceId: "", newDeviceRefDraftId: "" });
-                                      } else if (value.startsWith("newref:")) {
-                                        // 引用同单其他行已登记的新设备：同一台新设备换多个备件只登记一次
-                                        updatePart(index, { deviceInputMode: "new", newDeviceRefDraftId: value.slice(7), deviceId: "", newDeviceModel: "", newDeviceSerialNo: "", newDeviceName: "", newDeviceRemark: "" });
-                                      } else {
-                                        updatePart(index, { deviceInputMode: "existing", newDeviceRefDraftId: "" });
-                                        choosePartDevice(index, value);
-                                      }
-                                    }}
-                                    disabled={loadingCustomerDevices}
-                                  >
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="none">
-                                        {loadingCustomerDevices
-                                          ? "正在加载设备…"
-                                          : !form.customerId
-                                            ? "请先选择客户"
-                                            : part.deviceId
-                                              ? "— 清除选择 —"
-                                              : selectedCustomerDevices.length
-                                                ? "请选择设备"
-                                                : "该客户暂无设备"}
-                                      </SelectItem>
-                                      {selectedCustomerDevices.map((device) => (
-                                        <SelectItem key={device.id} value={String(device.id)}>{deviceSelectLabel(device)}</SelectItem>
-                                      ))}
-                                      <SelectItem value="__new__">＋ 登记新设备（设备未录入时）</SelectItem>
-                                      {form.parts
-                                        .filter((other) => other.draftId && other.draftId !== part.draftId && other.deviceInputMode === "new" && !other.newDeviceRefDraftId && Boolean(other.newDeviceModel?.trim()))
-                                        .map((other) => (
-                                          <SelectItem key={other.draftId} value={`newref:${other.draftId}`}>
-                                            ＋ 同「{other.newDeviceModel}{other.newDeviceSerialNo ? ` / ${other.newDeviceSerialNo}` : ""}」（本单已登记的新设备）
-                                          </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                  </Select>
+                                  <div className="relative flex-1">
+                                    <Input
+                                      value={partDeviceInputValue}
+                                      placeholder={!form.customerId ? "请先选择客户" : "输入关键词过滤，或点击选择设备"}
+                                      autoComplete="off"
+                                      disabled={loadingCustomerDevices}
+                                      onFocus={() => { setPartDeviceOpenIndex(index); setPartDeviceFilter(""); }}
+                                      onBlur={() => window.setTimeout(() => {
+                                        setPartDeviceOpenIndex((current) => current === index ? null : current);
+                                      }, 160)}
+                                      onChange={(event) => { setPartDeviceOpenIndex(index); setPartDeviceFilter(event.target.value); }}
+                                    />
+                                    {partDeviceOpenIndex === index ? (
+                                      <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
+                                        {loadingCustomerDevices ? (
+                                          <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
+                                            <span className="btn-loader" aria-hidden="true" />
+                                            正在加载客户设备…
+                                          </div>
+                                        ) : null}
+                                        {!form.customerId ? (
+                                          <div className="px-3 py-2 text-muted-foreground">请先选择客户；设备未录入时可选「登记新设备」。</div>
+                                        ) : null}
+                                        {filteredPartDevices.length ? (
+                                          <div className="border-b p-1">
+                                            <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">客户已有设备</div>
+                                            {filteredPartDevices.map((device) => (
+                                              <button
+                                                key={device.id}
+                                                type="button"
+                                                className="flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left hover:bg-accent"
+                                                onMouseDown={(event) => {
+                                                  event.preventDefault();
+                                                  updatePart(index, { deviceInputMode: "existing", newDeviceRefDraftId: "" });
+                                                  choosePartDevice(index, String(device.id));
+                                                  setPartDeviceOpenIndex(null);
+                                                  setPartDeviceFilter("");
+                                                }}
+                                              >
+                                                <span className="font-medium">{deviceSelectLabel(device)}</span>
+                                                <span className="text-xs text-muted-foreground">{deviceMeta(device) || "客户已有设备"}</span>
+                                              </button>
+                                            ))}
+                                          </div>
+                                        ) : null}
+                                        <div className="p-1">
+                                          <button
+                                            type="button"
+                                            className="flex w-full rounded-md px-2 py-2 text-left font-medium text-primary hover:bg-accent"
+                                            onMouseDown={(event) => {
+                                              event.preventDefault();
+                                              updatePart(index, { deviceInputMode: "new", deviceId: "", newDeviceRefDraftId: "" });
+                                              setPartDeviceOpenIndex(null);
+                                              setPartDeviceFilter("");
+                                            }}
+                                          >
+                                            ＋ 登记新设备（设备未录入时）
+                                          </button>
+                                          {partNewDeviceRefs.map((other) => (
+                                            <button
+                                              key={other.draftId}
+                                              type="button"
+                                              className="flex w-full rounded-md px-2 py-2 text-left text-primary hover:bg-accent"
+                                              onMouseDown={(event) => {
+                                                event.preventDefault();
+                                                updatePart(index, { deviceInputMode: "new", newDeviceRefDraftId: other.draftId || "", deviceId: "", newDeviceModel: "", newDeviceSerialNo: "", newDeviceName: "", newDeviceRemark: "" });
+                                                setPartDeviceOpenIndex(null);
+                                                setPartDeviceFilter("");
+                                              }}
+                                            >
+                                              ＋ 同「{other.newDeviceModel}{other.newDeviceSerialNo ? ` / ${other.newDeviceSerialNo}` : ""}」（本单已登记的新设备）
+                                            </button>
+                                          ))}
+                                        </div>
+                                        {form.customerId && !loadingCustomerDevices && !filteredPartDevices.length ? (
+                                          <div className="border-t px-3 py-2 text-muted-foreground">没有匹配的客户设备，可换关键词或选「登记新设备」。</div>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
+                                  </div>
                                   {part.deviceId || part.deviceInputMode === "new" ? (
                                     <Button
                                       type="button"
@@ -4338,7 +4391,8 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                                 </div>
                               ) : null}
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
 	                        <div className="rounded-lg border border-dashed py-6 text-center text-sm text-muted-foreground">暂无备件或硬件部件记录</div>
