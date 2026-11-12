@@ -1849,7 +1849,7 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.ok(executeCalls.some((call) => /SET status = 'approved'/.test(call.sql) && call.params.id === 31))
     assert.ok(executeCalls.some((call) => /SET status = 'pending'/.test(call.sql) && call.params.id === 32))
     const notification = executeCalls.find((call) => /INSERT IGNORE INTO attendance_email_notifications/.test(call.sql))
-    assert.equal(notification?.params.eventKey, 'request:390:approval:2')
+    assert.equal(notification?.params.eventKey, 'request:390:approval:2:c1')
     assert.deepEqual(JSON.parse(notification.params.recipientEmails), ['operations@example.test'])
   }
 
@@ -2148,6 +2148,205 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.equal(res.body.ok, true)
     assert.ok(executeCalls.some((call) => /FROM attendance_employee_profiles/.test(call.sql) && /FOR UPDATE/.test(call.sql)))
   }
+  // ===== spec 020：撤回/驳回回草稿 + 原条修改重提 =====
+  {
+    // 撤回（待代理人确认中）→ 回 draft + 步骤 skipped + 撤回原因落库 + 通知当前环节
+    const executeCalls = []
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 501, workflow_version: 4, employee_id: 5,
+            applicant_role: 'engineer',
+            delegate_employee_id: 9, request_type: 'leave', leave_type: 'personal',
+            start_at: '2026-07-10 09:00:00', end_at: '2026-07-10 18:00:00',
+            status: 'pending_delegate', submitted_by: 42, submit_count: 1,
+            employee_name: '申请人', applicant_email: 'a@example.test',
+          }], []]
+        }
+        if (/FROM attendance_request_approvals/.test(sql) && /a\.status = 'pending'/.test(sql)) {
+          return [[{ id: 901, request_id: 501, step_type: 'delegate', step_order: 1, assignee_employee_id: 9, assignee_role: null, status: 'pending', assignee_user_id: 77 }], []]
+        }
+        return [[], []]
+      },
+    })
+    const req = { user: { id: 42, role: 'engineer' }, params: { id: '501' }, body: { reason: '时间填错了' } }
+    const res = createResponse()
+    await controller.withdrawRequest(req, res)
+    assert.equal(res.body.ok, true)
+    const skip = executeCalls.find((call) => /UPDATE attendance_request_approvals/.test(call.sql) && /'skipped'/.test(call.sql))
+    assert.ok(skip, '待审步骤应标 skipped')
+    assert.match(skip.params.skipReason, /申请人撤回：时间填错了/)
+    const upd = executeCalls.find((call) => /UPDATE attendance_requests/.test(call.sql) && /status = 'draft'/.test(call.sql))
+    assert.ok(upd, '撤回应回到草稿')
+    assert.equal(upd.params.reason, '时间填错了')
+    const notify = executeCalls.find((call) => /INSERT IGNORE INTO attendance_email_notifications/.test(call.sql))
+    assert.ok(notify, '撤回应给当前环节发通知')
+    assert.match(notify.params.eventKey, /request:501:withdrawn:1:c1/)
+  }
+
+  {
+    // 草稿状态不能再撤回
+    const { controller } = await loadController({
+      connectionExecute: async (sql) => {
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{ id: 502, workflow_version: 4, employee_id: 5, status: 'draft', submitted_by: 42, request_type: 'leave' }], []]
+        }
+        return [[], []]
+      },
+    })
+    const req = { user: { id: 42, role: 'engineer' }, params: { id: '502' }, body: {} }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.withdrawRequest(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 400)
+  }
+
+  {
+    // 驳回 → 回 draft（不再终态 rejected）+ 驳回原因保留 + 其余待审步骤 skipped
+    const executeCalls = []
+    const { controller } = await loadController({
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 503, workflow_version: 4, employee_id: 5,
+            applicant_role: 'engineer',
+            delegate_employee_id: 9, request_type: 'leave', leave_type: 'annual',
+            start_at: '2026-07-10 09:00:00', end_at: '2026-07-14 18:00:00',
+            status: 'pending_approval', submitted_by: 42, submit_count: 1,
+            employee_name: '申请人', applicant_email: 'a@example.test',
+          }], []]
+        }
+        if (/FROM attendance_request_approvals/.test(sql) && /a\.status = 'pending'/.test(sql)) {
+          return [[{ id: 902, request_id: 503, step_type: 'role', step_order: 2, assignee_employee_id: null, assignee_role: 'engineering_supervisor', status: 'pending', assignee_user_id: null }], []]
+        }
+        return [[], []]
+      },
+    })
+    // 审批人是工程主管角色
+    const req = { user: { id: 88, role: 'engineering_supervisor' }, params: { id: '503' }, body: { reason: '时段与实际不符' } }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.rejectRequest(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown, null, '驳回不应报错: ' + (thrown && thrown.message))
+    const upd = executeCalls.find((call) => /UPDATE attendance_requests/.test(call.sql) && /status = 'draft'/.test(call.sql))
+    assert.ok(upd, '驳回应回到草稿')
+    assert.equal(upd.params.reason, '时段与实际不符')
+    const skip = executeCalls.find((call) => /UPDATE attendance_request_approvals/.test(call.sql) && /'skipped'/.test(call.sql))
+    assert.ok(skip, '其余待审步骤应标 skipped')
+  }
+
+  {
+    // 编辑重提全流程：update（改时段/代理人）→ draft → submit → 步骤重新生成 + 轮次 c2
+    const executeCalls = []
+    const { controller } = await loadController({
+      queryHandler: async (sql, params = {}) => {
+        if (/SELECT \* FROM attendance_requests WHERE id = :id/.test(sql)) {
+          return [{
+            id: 504, workflow_version: 4, employee_id: 5,
+            delegate_employee_id: 9, request_type: 'leave', leave_type: 'annual',
+            status: 'withdrawn', submitted_by: 42, submit_count: 1,
+          }]
+        }
+        return undefined
+      },
+      connectionExecute: async (sql, params = {}) => {
+        executeCalls.push({ sql, params })
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 504, workflow_version: 4, employee_id: 5,
+            applicant_role: 'engineer',
+            delegate_employee_id: 9, request_type: 'leave', leave_type: 'annual',
+            working_days: 3,
+            start_at: '2026-07-10 09:00:00', end_at: '2026-07-14 18:00:00',
+            status: 'draft', submitted_by: 42, submit_count: 1,
+            employee_name: '申请人', applicant_email: 'a@example.test',
+          }], []]
+        }
+        if (/FROM files/.test(sql)) return [[{ proof_count: 0 }], []]
+        if (/FROM users/.test(sql) && /role IN \(:approverRole/.test(sql)) {
+          return [[
+            { role: 'engineering_supervisor', user_count: 1 },
+            { role: 'administrative_supervisor', user_count: 1 },
+            { role: 'operations_director', user_count: 1 },
+          ], []]
+        }
+        if (/FROM users/.test(sql) && /role = :role/.test(sql)) {
+          return [[{ id: 88, name: '工程主管甲', email: 'sup@example.test' }], []]
+        }
+        return [[], []]
+      },
+    })
+    // 1) 修改（已撤回条目可编辑）
+    const updateReq = {
+      user: { id: 42, role: 'engineer' },
+      params: { id: '504' },
+      body: {
+        requestType: 'leave', leaveType: 'annual', delegateEmployeeId: 9,
+        startAt: '2026-07-10T09:00', endAt: '2026-07-14T18:00', hours: 40,
+      },
+    }
+    const updateRes = createResponse()
+    let thrown = null
+    try {
+      await controller.updateRequest(updateReq, updateRes)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown, null, '已撤回条目应可修改: ' + (thrown && thrown.message))
+    assert.equal(updateRes.body.status, 'draft')
+    // 2) 重新提交
+    const submitReq = { user: { id: 42, role: 'engineer' }, params: { id: '504' }, body: {} }
+    const submitRes = createResponse()
+    thrown = null
+    try {
+      await controller.submitRequest(submitReq, submitRes)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown, null, '重提不应报错: ' + (thrown && thrown.message))
+    assert.equal(submitRes.body.ok, true)
+    // 轮次累加到 2
+    const cycleUpd = executeCalls.find((call) => /UPDATE attendance_requests/.test(call.sql) && /submit_count = :cycle/.test(call.sql))
+    assert.ok(cycleUpd)
+    assert.equal(cycleUpd.params.cycle, 2)
+    // 审批步骤重新生成（第一步为代理人确认）
+    const stepInserts = executeCalls.filter((call) => /INSERT INTO attendance_request_approvals/.test(call.sql))
+    assert.ok(stepInserts.length >= 1, '重提应重新生成审批步骤')
+    assert.equal(stepInserts[0].params.stepType, 'delegate')
+  }
+
+  {
+    // update 越权与非可编辑状态
+    const { controller } = await loadController({
+      queryHandler: async (sql) => {
+        if (/SELECT \* FROM attendance_requests WHERE id = :id/.test(sql)) {
+          return [{ id: 505, request_type: 'leave', status: 'pending_approval', submitted_by: 99 }]
+        }
+        return undefined
+      },
+    })
+    const req = { user: { id: 42, role: 'engineer' }, params: { id: '505' }, body: { requestType: 'leave' } }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.updateRequest(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown?.status, 403, '非本人修改应 403')
+  }
+
 })().catch((error) => {
   console.error(error)
   process.exit(1)

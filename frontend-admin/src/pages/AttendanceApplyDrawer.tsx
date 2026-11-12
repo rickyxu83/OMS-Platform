@@ -41,6 +41,7 @@ import {
   type LegalHolidayItem,
   type OvertimeServiceOrder,
   type RequestType,
+  formFromDraft,
   type ResumableDraft,
 } from "@/pages/attendance-shared";
 
@@ -54,6 +55,8 @@ interface AttendanceApplyDrawerProps {
   myProfile: EmployeeProfile | null;
   /** 法定节假日日期集合（用于工作日核算） */
   holidayDates: Set<string>;
+  /** 编辑重提（spec 020）：撤回/驳回/草稿条目原条修改，非空时预填并锁定类型，提交走 update+submit */
+  editingRequest?: ResumableDraft | null;
 }
 
 const REQUEST_TYPE_CARDS: Array<{ value: RequestType; label: string; description: string; icon: typeof CalendarClock; roles: string[] | null }> = [
@@ -69,7 +72,7 @@ function shortDateTime(value?: string) {
 }
 
 /** 新建申请三步向导：选类型 → 填表单 → 确认提交。表单状态与提交逻辑自原考勤页内嵌表单迁入。 */
-export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfile, holidayDates }: AttendanceApplyDrawerProps) {
+export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfile, holidayDates, editingRequest = null }: AttendanceApplyDrawerProps) {
   const { user } = useAuth();
   const userRole = String(user?.role || "");
   const canCompTime = ["engineer", "driver"].includes(userRole);
@@ -80,6 +83,8 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   const [form, setForm] = useState<ApplyForm>(createBlankForm);
   const [submitting, setSubmitting] = useState(false);
   const [proofFiles, setProofFiles] = useState<File[]>([]);
+  // 编辑重提：服务端已绑定的证明附件数（病/婚假校验时视为已上传）
+  const existingProofCount = Number(editingRequest?.proofFileCount || editingRequest?.proofFiles?.length || 0);
   const [proofDragging, setProofDragging] = useState(false);
   const [delegates, setDelegates] = useState<EmployeeProfile[]>([]);
   const leaveTypes = useLeaveTypes();
@@ -90,15 +95,25 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   const [travelDepartureAt, setTravelDepartureAt] = useState("");
   const [travelReturnAt, setTravelReturnAt] = useState("");
 
-  // 打开时重置为初始草稿与第一步；继续提交场景用草稿预填并直达表单步
+  // 打开时重置为初始草稿与第一步；编辑重提（spec 020）用原单预填并直达表单步（类型锁定）
   useEffect(() => {
     if (open) {
-      setStep(1);
-      setForm(createBlankForm());
       setProofFiles([]);
       setSelectedOvertimeOrderId("");
       setTravelDepartureAt("");
       setTravelReturnAt("");
+      if (editingRequest) {
+        setForm(formFromDraft(editingRequest));
+        setStep(2);
+        if (editingRequest.requestType === "comp_time") {
+          setCompDate(dateValue(editingRequest.startAt));
+          setCompStartTime(String(editingRequest.startAt || "").slice(11, 16) || "09:00");
+          setCompHours(String(Number(editingRequest.hours || 1)));
+        }
+      } else {
+        setStep(1);
+        setForm(createBlankForm());
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -311,7 +326,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
       if (!compTimeValid) return "调休时长必须以 1 小时为单位（最小 1 小时）";
     }
     if (form.requestType === "leave" && ["personal", "other"].includes(form.leaveType) && !String(form.reason || "").trim()) return form.leaveType === "personal" ? "请填写事假事由" : "请填写请假原因";
-    if (proofRequired && proofFiles.length === 0) {
+    if (proofRequired && proofFiles.length === 0 && existingProofCount === 0) {
       return `${leaveTypeLabelOf(form.leaveType, leaveTypes)}必须上传证明`;
     }
     if (annualPreview && !annualPreview.workingDays) {
@@ -337,7 +352,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
         });
       } else {
         if (!form.delegateEmployeeId && !delegateExempt) throw new Error("请选择代理人");
-        if (requestType === "leave" && ["sick", "marriage"].includes(form.leaveType) && proofFiles.length === 0) {
+        if (requestType === "leave" && ["sick", "marriage"].includes(form.leaveType) && proofFiles.length === 0 && existingProofCount === 0) {
           throw new Error(form.leaveType === "sick" ? "病假必须上传证明" : "婚假必须上传证明");
         }
         let payloadStartAt: string;
@@ -357,18 +372,33 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
           payloadEndAt = leaveRange.endAt;
           payloadHours = leaveRange.hours;
         }
-        // 草稿功能已下线：一律新建申请（create + 传附件 + submit 连续完成）
-        const draft = await api.post("/attendance/requests", {
+        const submitReason = requestType === "leave" && ["personal", "annual", "other"].includes(form.leaveType) ? String(form.reason || "").trim() || undefined : undefined;
+        // spec 020 编辑重提：原条 update（草稿/已撤回/已驳回）+ 传新附件 + submit；否则新建（create + 传附件 + submit）
+        let draftId: number | string;
+        if (editingRequest) {
+          draftId = editingRequest.id;
+          await api.put(`/attendance/requests/${draftId}`, {
             requestType,
             leaveType: requestType === "leave" ? form.leaveType : undefined,
             delegateEmployeeId: delegateExempt ? undefined : form.delegateEmployeeId,
             startAt: payloadStartAt,
             endAt: payloadEndAt,
             hours: payloadHours,
-            reason: requestType === "leave" && ["personal", "annual", "other"].includes(form.leaveType) ? String(form.reason || "").trim() || undefined : undefined,
+            reason: submitReason,
           });
-        const draftId: number | string = draft.id;
-        // 附件阶段独立捕获：失败自动撤回刚建的申请，提示重填重提（不留草稿续传）
+        } else {
+          const draft = await api.post("/attendance/requests", {
+            requestType,
+            leaveType: requestType === "leave" ? form.leaveType : undefined,
+            delegateEmployeeId: delegateExempt ? undefined : form.delegateEmployeeId,
+            startAt: payloadStartAt,
+            endAt: payloadEndAt,
+            hours: payloadHours,
+            reason: submitReason,
+          });
+          draftId = draft.id;
+        }
+        // 附件阶段独立捕获：新建失败自动撤回申请；编辑重提失败保留修改，可继续编辑
         try {
           for (const file of proofFiles) {
             const body = new FormData();
@@ -379,14 +409,18 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
             await api.postForm("/files", body);
           }
         } catch (uploadError) {
-          try { await api.post(`/attendance/requests/${draftId}/withdraw`); } catch { /* 撤回失败不阻断错误提示 */ }
-          toast.error(`证明附件上传失败：${uploadError instanceof Error ? uploadError.message : "未知错误"}，申请已自动撤回，请重新提交。`);
+          if (editingRequest) {
+            toast.error(`证明附件上传失败：${uploadError instanceof Error ? uploadError.message : "未知错误"}，修改已保存，可继续编辑后提交。`);
+          } else {
+            try { await api.post(`/attendance/requests/${draftId}/withdraw`); } catch { /* 撤回失败不阻断错误提示 */ }
+            toast.error(`证明附件上传失败：${uploadError instanceof Error ? uploadError.message : "未知错误"}，申请已自动撤回，请重新提交。`);
+          }
           return;
         }
-        // 事由随提交落库：新建申请与建单值一致
+        // 事由随提交落库：与建单/修改值一致
         await api.post(`/attendance/requests/${draftId}/submit`, requestType === "leave" && ["personal", "other"].includes(form.leaveType) ? { reason: String(form.reason || "").trim() } : undefined);
       }
-      toast.success("申请已提交");
+      toast.success(editingRequest ? "申请已重新提交" : "申请已提交");
       onOpenChange(false);
       await onSubmitted();
     } catch (e) {
@@ -416,7 +450,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     <Dialog open={open} onOpenChange={(next) => { if (!submitting) onOpenChange(next); }}>
       <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden sm:max-w-[720px]">
         <DialogHeader className="border-b pb-4">
-          <DialogTitle>新建申请</DialogTitle>
+          <DialogTitle>{editingRequest ? "修改申请" : "新建申请"}</DialogTitle>
           <DialogDescription>
             {step === 1 ? "选择申请类型" : step === 2 ? `填写${typeLabel}信息` : "确认并提交"}
           </DialogDescription>
@@ -1036,8 +1070,8 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                     ) : null}
                     <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 text-sm">
                       <span className="text-muted-foreground">证明附件</span>
-                      <span className={proofRequired && proofFiles.length === 0 ? "font-medium text-destructive" : "font-medium"}>
-                        {proofFiles.length > 0 ? proofFiles.length + " 个文件" : proofRequired ? "未上传（必填）" : "无需附件"}
+                      <span className={proofRequired && proofFiles.length === 0 && existingProofCount === 0 ? "font-medium text-destructive" : "font-medium"}>
+                        {proofFiles.length > 0 ? proofFiles.length + " 个文件" : existingProofCount > 0 ? `已上传 ${existingProofCount} 个` : proofRequired ? "未上传（必填）" : "无需附件"}
                       </span>
                     </div>
                     <div className="pt-1 text-xs leading-5 text-muted-foreground">
@@ -1059,12 +1093,12 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
 
         <DialogFooter className="border-t pt-4">
           <div className="flex w-full items-center justify-between gap-3">
-            {step > 1 ? (
+            {step > 1 && !(editingRequest && step === 2) ? (
               <Button variant="outline" onClick={() => setStep((current) => Math.max(1, current - 1))} disabled={submitting}>
                 <ArrowLeft className="mr-1 h-4 w-4" />上一步
               </Button>
             ) : (
-              <span className="text-xs text-muted-foreground">选择类型后继续</span>
+              <span className="text-xs text-muted-foreground">{editingRequest ? "编辑重提：类型不可变更" : "选择类型后继续"}</span>
             )}
             {step < 3 ? (
               <Button onClick={nextStep} disabled={step === 1 && !form.requestType}>

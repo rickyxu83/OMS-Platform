@@ -1087,6 +1087,7 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
     approval_pending: `请假待审批：${payload.applicantName || '-'} / ${leaveType}`,
     delegate_info: `请假代理通知：${payload.applicantName || '-'} / ${leaveType}`,
     rejected: `请假申请已驳回：${payload.applicantName || '-'} / ${leaveType}`,
+    request_withdrawn: `请假申请已撤回：${payload.applicantName || '-'} / ${leaveType}`,
     completed: `请假流程已完成：${payload.applicantName || '-'} / ${leaveType}`,
     duty_pending_admin: `值班津贴待终审：${payload.month || '-'}（${payload.total || 0} 条）`,
     reminder: `催办提醒：${payload.applicantName || '-'} 的${payload.requestTypeLabel || '申请'}待您审批`,
@@ -1097,6 +1098,7 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
     approval_pending: '请假待审批',
     delegate_info: '请假代理通知',
     rejected: '请假申请已驳回',
+    request_withdrawn: '请假申请已撤回',
     completed: '请假流程已完成',
     duty_pending_admin: '值班津贴待终审',
     reminder: '审批催办提醒',
@@ -1128,6 +1130,9 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
   if (eventType === 'rejected') {
     rows.push(['驳回人', payload.rejectedByName || '-'])
     rows.push(['驳回原因', payload.rejectedReason || '未填写'])
+  }
+  if (eventType === 'request_withdrawn' && payload.withdrawReason) {
+    rows.push(['撤回原因', payload.withdrawReason])
   }
   if (eventType === 'completed') {
     if (payload.leaveType === 'annual') {
@@ -1161,6 +1166,7 @@ async function sendAttendanceNotificationMail(payload = {}, recipients = []) {
     approval_pending: '当前请假申请已进入你的审批步骤，请登录 OMS 处理。',
     delegate_info: '你被指定为本次请假期间的工作代理人，请提前做好工作交接；此邮件不需要你在系统中确认。',
     rejected: '本次请假申请未通过审批，请查看驳回原因并按需重新提交。',
+    request_withdrawn: '申请人已撤回本次请假申请（可修改后重新提交），你无需再处理该待办。',
     completed: '本次请假申请已完成审批，以下为最终结果和结算后的余额信息。',
     duty_pending_admin: '本月值班津贴（7×24 值班 + 法定节假日值班）已自动提交，请在假勤页「审批」中完成终审。',
     comp_expiry_reminder: '您有即将到期的调休余额，请在清零日期前安排调休。',
