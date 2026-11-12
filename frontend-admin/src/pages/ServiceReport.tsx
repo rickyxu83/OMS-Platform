@@ -4150,26 +4150,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 	                                          <Button type="button" variant="ghost" size="icon" onClick={() => removePart(index)} aria-label="删除新配件">
 	                                            <X className="h-4 w-4" />
 	                                          </Button>
-                              {part.deviceInputMode === "new" ? (
-                                <div className="grid gap-3 rounded-md border border-dashed border-primary/40 bg-primary/5 p-3 md:col-span-full md:grid-cols-3">
-                                  <Field label="新设备型号" required>
-                                    {renderModelCatalogSuggestionInput({
-                                      inputId: `part-${index}-new-device-model`,
-                                      value: part.newDeviceModel || "",
-                                      valueMode: "model",
-                                      placeholder: "必填；输入可从型号库补全",
-                                      onChange: (newDeviceModel) => updatePart(index, { newDeviceModel }),
-                                    })}
-                                  </Field>
-                                  <Field label="序列号" required>
-                                    <Input value={part.newDeviceSerialNo || ""} placeholder="必填" onChange={(event) => updatePart(index, { newDeviceSerialNo: event.target.value })} />
-                                  </Field>
-                                  <Field label="设备名称 / 位置备注">
-                                    <Input value={part.newDeviceName || ""} placeholder="选填" onChange={(event) => updatePart(index, { newDeviceName: event.target.value })} />
-                                  </Field>
-                                  <p className="text-xs text-muted-foreground md:col-span-3">提交后自动为该客户建设备档案（维保类型「待确认」），并关联到这条备件记录。</p>
-                                </div>
-                              ) : null}
+                              
 	                                        </div>
 	                                        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_96px]">
 	                                          <Field label="名称" required>
@@ -4308,6 +4289,26 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                               <Button type="button" variant="ghost" size="icon" className="self-end md:self-center" onClick={() => removePart(index)} aria-label="删除部件明细">
                                 <Trash2 className="h-4 w-4" />
                               </Button>
+                              {part.deviceInputMode === "new" ? (
+                                <div className="grid gap-3 rounded-md border border-dashed border-primary/40 bg-primary/5 p-3 md:col-span-full md:grid-cols-3">
+                                  <Field label="新设备型号" required>
+                                    {renderModelCatalogSuggestionInput({
+                                      inputId: `part-${index}-new-device-model`,
+                                      value: part.newDeviceModel || "",
+                                      valueMode: "model",
+                                      placeholder: "必填；输入可从型号库补全",
+                                      onChange: (newDeviceModel) => updatePart(index, { newDeviceModel }),
+                                    })}
+                                  </Field>
+                                  <Field label="序列号" required>
+                                    <Input value={part.newDeviceSerialNo || ""} placeholder="必填" onChange={(event) => updatePart(index, { newDeviceSerialNo: event.target.value })} />
+                                  </Field>
+                                  <Field label="设备名称 / 位置备注">
+                                    <Input value={part.newDeviceName || ""} placeholder="选填" onChange={(event) => updatePart(index, { newDeviceName: event.target.value })} />
+                                  </Field>
+                                  <p className="text-xs text-muted-foreground md:col-span-3">提交后自动为该客户建设备档案（维保类型「待确认」），并关联到这条备件记录。</p>
+                                </div>
+                              ) : null}
                             </div>
                           ))}
                         </div>
