@@ -569,6 +569,23 @@ export function Attendance() {
     });
   }
 
+  // 代理人确认（2026-11-12 规范）：确认前明确提醒——确认后代理人在该时段将无法申请休假/调休
+  function confirmDelegate(item: AttendanceRequest) {
+    const range = `${String(item.startAt || "").replace("T", " ").slice(0, 16)} ~ ${String(item.endAt || "").replace("T", " ").slice(0, 16)}`;
+    setPendingAction({
+      title: "确认代理",
+      description: (
+        <>
+          确认代理 {item.employeeName || "-"} 的{requestTypeLabel(item.requestType)}（{range}）。
+          <br />
+          确认后，您在该时段将无法申请休假/调休。
+        </>
+      ),
+      confirmLabel: "确认代理",
+      run: () => action(`/attendance/requests/${item.id}/approve-delegate`, "代理人已通过"),
+    });
+  }
+
   // 催一下（spec 007）：给当前环节审批人发提醒邮件，同一申请 24h 内只能催一次（后端同样节流）
   function remindRequest(item: AttendanceRequest) {
     setPendingAction({
@@ -1033,7 +1050,7 @@ export function Attendance() {
                 const busy = rowActionId === String(item.id);
                 if (current) return (
                   <>
-                    <Button size="sm" disabled={busy} onClick={() => approveRow(item, current.path, current.success)}>
+                    <Button size="sm" disabled={busy} onClick={() => item.status === "pending_delegate" ? confirmDelegate(item) : approveRow(item, current.path, current.success)}>
                       {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />} 通过
                     </Button>
                     <Button size="sm" variant="outline" disabled={busy} onClick={() => reject(item)}>
