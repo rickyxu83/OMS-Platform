@@ -1282,10 +1282,11 @@ async function listDelegates(req, res) {
   ]
   const params = { employeeId: employee.id }
   // 工程师/销售的代理人仅限同岗位（2026-11-06 佬裁决）
+  // 注意：mysql2 namedPlaceholders+execute 不会展开数组为多个占位符，IN (:arr) 会触发
+  // ER_WRONG_ARGUMENTS（2026-11-12 生产事故）；scope 为后端写死常量，直接拼字面量。
   const scope = DELEGATE_ROLE_SCOPE[req.user.role]
   if (scope) {
-    sql.push('  AND u.role IN (:scopeRoles)')
-    params.scopeRoles = scope
+    sql.push(`  AND u.role IN (${scope.map((role) => `'${role}'`).join(', ')})`)
   }
   sql.push('ORDER BY p.employee_name ASC, p.id ASC')
   const finalSql = sql.join('\n')
@@ -2637,7 +2638,8 @@ async function submitRequest(req, res) {
       await connection.execute('UPDATE attendance_requests SET reason = :reason WHERE id = :id', { id, reason: nullableText(req.body.reason) })
     }
 
-    if (request.request_type !== 'overtime' && !request.delegate_employee_id) throw badRequest('请选择代理人')
+    // 司机豁免代理人（2026-11-06 佬裁决；2026-11-12 补上 submit 环节的豁免，此前只在 create 豁免导致司机卡提交）
+    if (request.request_type !== 'overtime' && !request.delegate_employee_id && !DELEGATE_EXEMPT_ROLES.has(req.user.role)) throw badRequest('请选择代理人')
     if (['leave', 'comp_time'].includes(request.request_type)) {
       // 代理期间禁止休假：提交草稿时复核（草稿可能创建于规则生效前）
       const [agencyRows] = await connection.execute(

@@ -292,6 +292,9 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.match(delegateQuery.sql, /pending_supervisor/)
     assert.match(delegateQuery.sql, /approved/)
     assert.doesNotMatch(delegateQuery.sql, /status IN \([^)]*draft/)
+    // 2026-11-12 生产事故回归：mysql2 namedPlaceholders+execute 不展开数组，IN 必须拼字面量
+    assert.match(delegateQuery.sql, /u\.role IN \('engineer', 'engineering_supervisor'\)/)
+    assert.equal('scopeRoles' in delegateQuery.params, false)
   }
 
   {
@@ -387,6 +390,47 @@ async function createLeave(bodyOverrides = {}, loadOptions = {}, userRole = 'eng
     assert.equal(notificationInserts[0].params.eventType, 'approval_pending')
     assert.deepEqual(JSON.parse(notificationInserts[1].params.recipientEmails), ['delegate@example.test'])
     assert.equal(notificationInserts[1].params.eventType, 'delegate_info')
+  }
+
+  {
+    // 司机提交无代理人草稿（2026-11-12 生产事故回归：create 豁免了司机，submit 漏豁免导致卡提交）
+    const { controller } = await loadController({
+      connectionExecute: async (sql) => {
+        if (/FROM attendance_requests r/.test(sql) && /FOR UPDATE/.test(sql)) {
+          return [[{
+            id: 322,
+            workflow_version: 4,
+            employee_id: 5,
+            delegate_employee_id: null,
+            employee_name: '司机甲',
+            applicant_email: 'driver@example.test',
+            request_type: 'leave',
+            leave_type: 'personal',
+            working_days: 0.5,
+            start_at: '2026-07-10 09:00:00',
+            end_at: '2026-07-10 13:00:00',
+            supervisor_role: 'administrative_supervisor',
+            status: 'draft',
+            submitted_by: 42,
+          }], []]
+        }
+        if (/FROM files/.test(sql)) return [[{ proof_count: 0 }], []]
+        if (/FROM users/.test(sql) && /role = :role/.test(sql)) {
+          return [[{ id: 88, name: '行政主管甲', email: 'admin-sup@example.test' }], []]
+        }
+        return [[], []]
+      },
+    })
+    const req = { user: { id: 42, role: 'driver' }, params: { id: '322' }, body: {} }
+    const res = createResponse()
+    let thrown = null
+    try {
+      await controller.submitRequest(req, res)
+    } catch (error) {
+      thrown = error
+    }
+    assert.equal(thrown, null, '司机无代理人草稿应能提交')
+    assert.equal(res.body.ok, true)
   }
 
   {
