@@ -54,6 +54,7 @@ export function emptyTargetDevice(patch: Partial<TargetDeviceDraft> = {}): Targe
 
 export function emptyPart(actionType = "replacement", deviceId = "", installDeviceDraftIdValue = ""): ServicePartDraft {
   return {
+    draftId: `part-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     deviceId,
     installDeviceDraftId: installDeviceDraftIdValue,
     actionType,

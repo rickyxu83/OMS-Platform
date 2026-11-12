@@ -2407,26 +2407,42 @@ async function saveServiceParts(connection, orderId, parts, { customerId, fallba
   await ensureDeviceMaintenanceTypeEnum(connection)
   const linkedDeviceIds = []
   const normalizedParts = normalizeServiceParts(parts, { fallbackActionType, fallbackDeviceId, installDeviceIdMap })
+  const newDeviceIdBySerial = new Map()
   for (const part of normalizedParts) {
     // 现场登记新设备：先为客户建设备档案（维保类型待确认），再关联备件记录（2026-11-06 佬裁决）
-    // 设备登记不收集 PN（PN 是配件/部件字段），型号+序列号必填
+    // 设备登记不收集 PN（PN 是配件/部件字段），型号+序列号必填；
+    // 同一台新设备换多个备件：按序列号去重，同单共享设备 id；客户已有同序列号设备则直接复用，不重复建档
     if (!part.deviceId && part.newDeviceModel) {
       if (!part.newDeviceSerialNo) throw badRequest('登记新设备的序列号不能为空')
-      const [deviceResult] = await connection.execute(
-        `INSERT INTO devices (
-           customer_id, name, model, serial_no, remark, maintenance_type, installation_source_service_order_id
-         )
-         VALUES (:customerId, :deviceName, :deviceModel, :deviceSerialNo, :deviceRemark, 'pending_confirmation', :orderId)`,
-        {
-          customerId,
-          deviceName: part.newDeviceName || null,
-          deviceModel: part.newDeviceModel,
-          deviceSerialNo: part.newDeviceSerialNo || null,
-          deviceRemark: part.newDeviceRemark || null,
-          orderId,
-        },
-      )
-      part.deviceId = deviceResult.insertId
+      const serialKey = part.newDeviceSerialNo
+      if (newDeviceIdBySerial.has(serialKey)) {
+        part.deviceId = newDeviceIdBySerial.get(serialKey)
+      } else {
+        const [existingRows] = await connection.execute(
+          'SELECT id FROM devices WHERE customer_id = :customerId AND serial_no = :serialNo ORDER BY id ASC LIMIT 1',
+          { customerId, serialNo: serialKey },
+        )
+        if (existingRows.length) {
+          part.deviceId = Number(existingRows[0].id)
+        } else {
+          const [deviceResult] = await connection.execute(
+            `INSERT INTO devices (
+               customer_id, name, model, serial_no, remark, maintenance_type, installation_source_service_order_id
+             )
+             VALUES (:customerId, :deviceName, :deviceModel, :deviceSerialNo, :deviceRemark, 'pending_confirmation', :orderId)`,
+            {
+              customerId,
+              deviceName: part.newDeviceName || null,
+              deviceModel: part.newDeviceModel,
+              deviceSerialNo: part.newDeviceSerialNo || null,
+              deviceRemark: part.newDeviceRemark || null,
+              orderId,
+            },
+          )
+          part.deviceId = deviceResult.insertId
+        }
+        newDeviceIdBySerial.set(serialKey, part.deviceId)
+      }
     }
     if (['replacement', 'installation'].includes(part.actionType) && !part.deviceId) {
       throw badRequest('请选择备件或硬件部件关联设备')

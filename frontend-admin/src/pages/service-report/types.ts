@@ -221,6 +221,8 @@ export interface CustomerSignatureRequestInfo {
 }
 
 export interface ServicePartDraft {
+  // 行稳定 id（新增行时生成）：供同单其他备件行引用本行登记的新设备
+  draftId?: string;
   deviceId: string;
   installDeviceDraftId: string;
   actionType: string;
@@ -231,6 +233,8 @@ export interface ServicePartDraft {
   remark: string;
   // 关联设备登记模式：existing=从客户现有设备选；new=现场登记新设备（型号+序列号必填），提交时自动建设备档案
   deviceInputMode?: "existing" | "new";
+  // 引用同单其他备件行已登记的新设备（该行的 draftId）：同一台新设备换多个备件时只登记一次
+  newDeviceRefDraftId?: string;
   newDeviceName?: string;
   newDeviceModel?: string;
   newDeviceSerialNo?: string;
