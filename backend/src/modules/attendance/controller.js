@@ -95,6 +95,30 @@ const { BUILTIN_LEGAL_HOLIDAYS } = require('./legal-holidays-data')
 const { fetchYearHolidays } = require('./holiday-sync')
 const legalHolidayCache = new Map()
 const makeupWorkdayCache = new Set()
+
+// 加班申请窗口（2026-11-12 佬裁决）：仅可申请当前日期往前 5 个工作日内的加班，
+// 候选列表同步只显示窗口内工单，替代按人忽略候选的功能。
+function overtimeApplyWindowStart(now = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0')
+  const cursor = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  let count = 0
+  // 含今天在内往前数 5 个工作日（今天不是工作日则不计入，继续往前）
+  while (count < 5) {
+    const day = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}-${pad(cursor.getDate())}`
+    const dow = cursor.getDay()
+    const isWorkday = (!legalHolidayCache.has(day) && dow !== 0 && dow !== 6) || makeupWorkdayCache.has(day)
+    if (isWorkday) count += 1
+    if (count >= 5) break
+    cursor.setDate(cursor.getDate() - 1)
+  }
+  return cursor
+}
+
+function overtimeServiceAtInWindow(serviceAt, now = new Date()) {
+  const value = serviceAt instanceof Date ? serviceAt : new Date(String(serviceAt || '').replace(' ', 'T'))
+  if (!Number.isFinite(value.getTime())) return false
+  return value >= overtimeApplyWindowStart(now)
+}
 const holidaySources = new Set(['builtin', 'manual', 'auto'])
 const holidayDayTypes = new Set(['legal_holiday', 'makeup_workday'])
 
@@ -369,16 +393,6 @@ async function ensureSchema() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
       )
 
-      await query(
-        `CREATE TABLE IF NOT EXISTS attendance_overtime_dismissals (
-          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-          user_id BIGINT UNSIGNED NOT NULL,
-          service_order_id BIGINT UNSIGNED NOT NULL,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          PRIMARY KEY (id),
-          UNIQUE KEY uniq_attendance_overtime_dismissal (user_id, service_order_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-      )
       await query(
         `CREATE TABLE IF NOT EXISTS attendance_request_approvals (
           id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -2046,15 +2060,10 @@ async function listOvertimeServiceOrders(req, res) {
   const employee = await currentEmployee(req.user.id)
   if (!employee) throw forbidden('当前账号没有启用的员工档案')
   const rows = await serviceOrderOvertimeRows(req.user.id)
-  // 本人已忽略的工单（2026-11-12 佬需求：几分钟的短单不想申请也不想占候选位）
-  const dismissedRows = await query(
-    'SELECT service_order_id AS orderId FROM attendance_overtime_dismissals WHERE user_id = :userId',
-    { userId: req.user.id },
-  )
-  const dismissedIds = new Set(dismissedRows.map((row) => Number(row.orderId)))
-  const activeRows = rows.filter((row) => !dismissedIds.has(Number(row.id)))
-  const usedMap = await usedOvertimeSegments(activeRows.map((row) => row.id), req.user.id)
-  const items = activeRows
+  // 窗口过滤（2026-11-12 佬裁决）：仅显示近 5 个工作日内的工单
+  const windowRows = rows.filter((row) => overtimeServiceAtInWindow(row.service_at))
+  const usedMap = await usedOvertimeSegments(windowRows.map((row) => row.id), req.user.id)
+  const items = windowRows
     .map((row) => {
       const used = usedMap.get(Number(row.id)) || new Set()
       return {
@@ -2068,37 +2077,7 @@ async function listOvertimeServiceOrders(req, res) {
       }
     })
     .filter((item) => item.segments.length)
-  // 已忽略简要列表：供前端「已忽略 N 个工单」恢复入口
-  const dismissed = rows
-    .filter((row) => dismissedIds.has(Number(row.id)))
-    .map((row) => {
-      const snapshot = serviceOrderSnapshot(row)
-      return { id: snapshot.id, orderNo: snapshot.orderNo, customerName: snapshot.customerName, issueDescription: snapshot.issueDescription }
-    })
-  res.json({ items, dismissed })
-}
-
-// 忽略/恢复候选工单（仅影响本人候选列表，不影响工单本身与他人）
-async function dismissOvertimeServiceOrder(req, res) {
-  await ensureSchema()
-  const id = Number(req.params.id)
-  if (!id) throw badRequest('工单 ID 不正确')
-  await query(
-    'INSERT IGNORE INTO attendance_overtime_dismissals (user_id, service_order_id) VALUES (:userId, :id)',
-    { userId: req.user.id, id },
-  )
-  res.json({ ok: true })
-}
-
-async function restoreOvertimeServiceOrder(req, res) {
-  await ensureSchema()
-  const id = Number(req.params.id)
-  if (!id) throw badRequest('工单 ID 不正确')
-  await query(
-    'DELETE FROM attendance_overtime_dismissals WHERE user_id = :userId AND service_order_id = :id',
-    { userId: req.user.id, id },
-  )
-  res.json({ ok: true })
+  res.json({ items })
 }
 
 // 校验并归一化一个时段的加班结果。路上固定转调休，工作段按 body 的 overtimeResult。
@@ -2206,6 +2185,8 @@ async function createServiceOrderOvertimeRequest(req, res) {
     if (!order) throw notFound('没有可申请的工单')
     const orderSnapshot = serviceOrderSnapshot(order)
     if (!orderSnapshot) throw notFound('没有可申请的工单')
+    // 窗口硬校验（2026-11-12 佬裁决）：超出近 5 个工作日的加班不可再申请
+    if (!overtimeServiceAtInWindow(order.service_at)) throw badRequest('仅可申请近 5 个工作日内的加班')
 
     // 路上时间允许工程师自报去程出发、回程返回时间（默认带工单值），只落在本条申请上，
     // 工单侧不改。工作段锁死按工单，不接受覆盖。参见 docs/adr/0002。
@@ -4053,8 +4034,7 @@ module.exports = {
   updateRequest,
   submitRequest,
   listOvertimeServiceOrders,
-  dismissOvertimeServiceOrder,
-  restoreOvertimeServiceOrder,
+  overtimeApplyWindowStart,
   createServiceOrderOvertimeRequest,
   listRequests,
   pendingApprovalCount,

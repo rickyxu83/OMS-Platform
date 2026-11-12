@@ -106,9 +106,6 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
   const leaveTypes = useLeaveTypes();
   const [delegatesLoading, setDelegatesLoading] = useState(false);
   const [overtimeOrders, setOvertimeOrders] = useState<OvertimeServiceOrder[]>([]);
-  // 已忽略的候选工单（2026-11-12 佬需求：短单不想申请也不占候选位，可恢复）
-  const [dismissedOrders, setDismissedOrders] = useState<Array<{ id: number | string; orderNo?: string | null; customerName?: string | null; issueDescription?: string | null }>>([]);
-  const [showDismissed, setShowDismissed] = useState(false);
   const [overtimeLoading, setOvertimeLoading] = useState(false);
   const [selectedOvertimeOrderId, setSelectedOvertimeOrderId] = useState("");
   const [travelDepartureAt, setTravelDepartureAt] = useState("");
@@ -176,7 +173,6 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
     try {
       const data = await api.get("/attendance/overtime/service-orders");
       const items = (data?.items || []) as OvertimeServiceOrder[];
-      setDismissedOrders(data?.dismissed || []);
       const keepId = items.some((item) => String(item.id) === selectedOvertimeOrderId)
         ? selectedOvertimeOrderId
         : (items[0] ? String(items[0].id) : "");
@@ -186,26 +182,6 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
       toast.error(e instanceof Error ? e.message : "加载可申请工单失败");
     } finally {
       setOvertimeLoading(false);
-    }
-  }
-
-  async function dismissOrder(orderId: number | string) {
-    try {
-      await api.post(`/attendance/overtime/service-orders/${orderId}/dismiss`);
-      toast.success("已从候选中忽略，可在下方恢复");
-      await loadOvertimeOrders();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "操作失败");
-    }
-  }
-
-  async function restoreOrder(orderId: number | string) {
-    try {
-      await api.delete(`/attendance/overtime/service-orders/${orderId}/dismiss`);
-      toast.success("已恢复到候选列表");
-      await loadOvertimeOrders();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "操作失败");
     }
   }
 
@@ -553,27 +529,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
               <div className="space-y-4">
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label>工单</Label>
-                      {dismissedOrders.length > 0 ? (
-                        <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setShowDismissed((v) => !v)}>
-                          已忽略 {dismissedOrders.length} 个{showDismissed ? "（收起）" : ""}
-                        </button>
-                      ) : null}
-                    </div>
-                    {showDismissed && dismissedOrders.length > 0 ? (
-                      <div className="space-y-1 rounded-lg border bg-muted/30 p-2">
-                        {dismissedOrders.map((order) => (
-                          <div key={order.id} className="flex items-center justify-between gap-2 text-xs">
-                            <span className="min-w-0 truncate text-muted-foreground">
-                              {order.orderNo || `#${order.id}`}
-                              {order.customerName ? ` / ${order.customerName}` : ""}
-                            </span>
-                            <button type="button" className="shrink-0 text-primary hover:underline" onClick={() => restoreOrder(order.id)}>恢复</button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
+                    <Label>工单<span className="ml-1.5 text-xs font-normal text-muted-foreground">近 5 个工作日</span></Label>
                     <Select
                       value={selectedOvertimeOrderId}
                       onValueChange={(value) => setSelectedOvertimeOrderId(value)}
@@ -582,24 +538,10 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                       <SelectTrigger className="h-11"><SelectValue placeholder={overtimeLoading ? "载入中" : "选择工单"} /></SelectTrigger>
                       <SelectContent>
                         {overtimeOrders.map((order) => (
-                          <SelectItem key={order.id} value={String(order.id)} className="pr-2">
-                            <span className="flex w-full items-center justify-between gap-3">
-                              <span className="min-w-0 truncate">
-                                {order.orderNo || `#${order.id}`}
-                                {order.customerName ? ` / ${order.customerName}` : ""}
-                                {order.issueDescription ? <span className="text-muted-foreground"> / {order.issueDescription}</span> : null}
-                              </span>
-                              <span
-                                role="button"
-                                tabIndex={0}
-                                title="不想申请，从候选中忽略"
-                                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                                onPointerDown={(e) => e.stopPropagation()}
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); dismissOrder(order.id); }}
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </span>
-                            </span>
+                          <SelectItem key={order.id} value={String(order.id)}>
+                            {order.orderNo || `#${order.id}`}
+                            {order.customerName ? ` / ${order.customerName}` : ""}
+                            {order.issueDescription ? <span className="text-muted-foreground"> / {order.issueDescription}</span> : null}
                           </SelectItem>
                         ))}
                       </SelectContent>

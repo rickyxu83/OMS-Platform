@@ -48,8 +48,6 @@ router.put('/requests/:id', requirePermission('attendance.apply'), controller.up
 router.post('/requests/:id/submit', requirePermission('attendance.apply'), controller.submitRequest)
 router.get('/overtime/service-orders', requirePermission('attendance.apply'), controller.listOvertimeServiceOrders)
 router.post('/overtime/service-orders/:id/apply', requirePermission('attendance.apply'), controller.createServiceOrderOvertimeRequest)
-router.post('/overtime/service-orders/:id/dismiss', requirePermission('attendance.apply'), controller.dismissOvertimeServiceOrder)
-router.delete('/overtime/service-orders/:id/dismiss', requirePermission('attendance.apply'), controller.restoreOvertimeServiceOrder)
 // 代理确认入口不卡 attendance.approve（2026-09-03）：被指定的代理人多为工程师/司机（无审批角色权限），
 // 真正的门禁在 assertWorkflowStepApprover 里严格比对 assignee_user_id
 router.post('/requests/:id/approve-delegate', requirePermission('attendance.apply'), controller.approveDelegate)
