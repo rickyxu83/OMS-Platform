@@ -70,6 +70,11 @@ export function BalanceLedgerTooltip({ balanceType, children }: { balanceType: "
                     </div>
                     {item.note ? <div className="mt-0.5 line-clamp-2 text-muted-foreground">{item.note}</div> : null}
                     <div className="mt-0.5 text-muted-foreground/80">{String(item.createdAt || "").replace("T", " ").slice(0, 16)}</div>
+                    {item.balanceAfter !== undefined ? (
+                      <div className="mt-0.5 text-muted-foreground">
+                        余额 {Number((item.balanceAfter - delta).toFixed(2))} → {item.balanceAfter} {unit}
+                      </div>
+                    ) : null}
                   </li>
                 );
               })}
