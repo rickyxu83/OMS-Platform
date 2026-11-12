@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Briefcase, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Eye, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X, BellRing } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, CalendarOff, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Download, ExternalLink, Eye, Hourglass, Loader2, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Save, Search, Send, Settings2, ShieldCheck, Trash2, Users, Wallet, X, BellRing } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -888,13 +888,14 @@ export function Attendance() {
   );
 
 
+  // 关键指标卡（2026-11-12 佬要求视觉加强）：大数字 + 图标色块，不足/待办用警示色
   const statTiles = [
     ...(canApply ? [
-      { label: "可用特休", value: `${days(annualBalanceDays(myProfile))} 天`, warn: annualBalanceDays(myProfile) <= 1 },
-      ...(canCompTime ? [{ label: "可用调休", value: `${hours(myProfile?.compTimeBalanceHours)} 小时`, warn: false }] : []),
-      { label: "我的进行中", value: String(pendingMine), warn: false },
+      { label: "可用特休", value: `${days(annualBalanceDays(myProfile))} 天`, warn: annualBalanceDays(myProfile) <= 1, icon: CalendarOff, iconBox: "bg-violet-100 text-violet-600" },
+      ...(canCompTime ? [{ label: "可用调休", value: `${hours(myProfile?.compTimeBalanceHours)} 小时`, warn: false, icon: RotateCcw, iconBox: "bg-teal-100 text-teal-600" }] : []),
+      { label: "我的进行中", value: String(pendingMine), warn: false, icon: Hourglass, iconBox: "bg-amber-100 text-amber-600" },
     ] : []),
-    ...(isApprover ? [{ label: "待我审批", value: String(approvalTodos.length), warn: false }] : []),
+    ...(isApprover ? [{ label: "待我审批", value: String(approvalTodos.length), warn: approvalTodos.length > 0, icon: BellRing, iconBox: "bg-rose-100 text-rose-600" }] : []),
   ];
   // 报表假别列动态化（spec 004）：特休独立列，其余按假别表出列；后端老响应无 meta 时回退内置四假别
   const reportLeaveColumns: LeaveTypeItem[] = reportLeaveTypes.length
@@ -966,13 +967,20 @@ export function Attendance() {
 
       {activeTab === "approve" ? (
         <div className="space-y-6">
-          <div className="flex flex-wrap items-center gap-x-8 gap-y-2 rounded-lg border bg-card px-5 py-3 text-sm">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {statTiles.map((stat) => (
-              <span key={stat.label} className="flex items-center gap-1.5 text-muted-foreground">
-                {stat.label}
-                <b className={`font-semibold ${stat.warn ? "text-amber-600" : "text-foreground"}`}>{loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : formatCount(stat.value)}</b>
-                {stat.warn && !loading ? <span className="text-xs text-amber-600">不足</span> : null}
-              </span>
+              <div key={stat.label} className={`flex items-center gap-3 rounded-xl border bg-card px-4 py-3.5 shadow-sm ${stat.warn ? "border-amber-300 bg-amber-50/40" : ""}`}>
+                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${stat.iconBox}`}>
+                  <stat.icon className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <div className={`text-2xl font-bold leading-none tracking-tight ${stat.warn ? "text-amber-600" : "text-foreground"}`}>
+                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : formatCount(stat.value)}
+                    {stat.warn && !loading ? <span className="ml-1.5 align-middle text-xs font-medium">不足</span> : null}
+                  </div>
+                  <div className="mt-1 truncate text-xs text-muted-foreground">{stat.label}</div>
+                </div>
+              </div>
             ))}
           </div>
 
