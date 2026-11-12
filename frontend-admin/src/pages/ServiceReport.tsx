@@ -3043,7 +3043,9 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 const serviceLabels = serviceItemLabels(previewOrder);
                 const serviceTime = reportOrderServiceTime(previewOrder);
                 const serviceTimeText = serviceTime.start === "-" && serviceTime.end === "-" ? "-" : `${serviceTime.start} 至 ${serviceTime.end}`;
-                const installedDeviceRows = previewOrder.installedDevices || [];
+                // 2026-11-12 佬反馈：备件更换登记的新设备会同时进目标设备（反向联动）和安装设备（来源标记），
+                // 概要里同一台设备重复展示——非安装工单下，安装设备区过滤掉已在目标设备里的设备
+                const installedDeviceAll = previewOrder.installedDevices || [];
                 const targetDeviceRows = previewOrder.targetDevices?.length
                   ? previewOrder.targetDevices
                   : previewOrder.deviceName || previewOrder.deviceModel || previewOrder.deviceSerialNo
@@ -3056,6 +3058,10 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                         remark: previewOrder.deviceRemark,
                       }]
                     : [];
+                const targetDeviceIdSet = new Set(targetDeviceRows.map((device) => Number(device?.id)).filter(Boolean));
+                const installedDeviceRows = previewOrder.serviceType === "install"
+                  ? installedDeviceAll
+                  : installedDeviceAll.filter((device) => !device?.id || !targetDeviceIdSet.has(Number(device.id)));
                 const partRows = (previewOrder.parts || []).filter((part) => (
                   [part.deviceName, part.partName || part.part_name, part.partNo || part.part_no, part.quantity, part.unit, part.remark]
                     .some((value) => String(value || "").trim())
