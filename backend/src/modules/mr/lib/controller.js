@@ -87,6 +87,7 @@ const {
   assistantSetting,
   updateAssistantSetting,
   mrDocument,
+  ensureWorkflowTables,
 } = require('./workflow')
 const { PDF_FORMAT_VERSION } = require('./mr-pdf')
 
