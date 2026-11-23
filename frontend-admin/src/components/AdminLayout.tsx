@@ -23,10 +23,8 @@ import {
   TriangleAlert,
   Sparkles,
   Menu,
-  Search,
 } from "lucide-react";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import {
   Dialog,
@@ -329,9 +327,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [announcementSubmitting, setAnnouncementSubmitting] = useState(false);
   const [mobileNavVisible, setMobileNavVisible] = useState(true);
   const [mySettingsOpen, setMySettingsOpen] = useState(false);
-  const [quickNavOpen, setQuickNavOpen] = useState(false);
-  const [quickNavQuery, setQuickNavQuery] = useState("");
-  const [quickNavActiveIndex, setQuickNavActiveIndex] = useState(0);
   const [pendingTaskCount, setPendingTaskCount] = useState(0);
   const [mrPendingCount, setMrPendingCount] = useState(0);
   const strings = STRINGS[lang];
@@ -490,31 +485,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const allNavItems = navGroups.flatMap(g => g.items).filter(item => hasAccess(item.requiredPermissions));
 
-  const quickNavResults = useMemo(() => {
-    const keyword = quickNavQuery.trim().toLowerCase();
-    if (!keyword) return allNavItems;
-    return allNavItems.filter((item) => (
-      item.label.toLowerCase().includes(keyword) || item.path.toLowerCase().includes(keyword)
-    ));
-  }, [allNavItems, quickNavQuery]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setQuickNavQuery("");
-        setQuickNavActiveIndex(0);
-        setQuickNavOpen((open) => !open);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
-  useEffect(() => {
-    setQuickNavActiveIndex(0);
-  }, [quickNavQuery, quickNavOpen]);
-
   const mobileNavPriority = MOBILE_NAV_PRIORITY_BY_ROLE[user?.role || ""] || MOBILE_NAV_PRIORITY_DEFAULT;
   const mobileNavItems = mobileNavPriority
     .map((path) => allNavItems.find((item) => item.path === path))
@@ -660,27 +630,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             </div>
           )}
 
-          {/* 快速跳转触发条（Cmd/Ctrl + K） */}
-          <div className="px-3 pt-3">
-            <button
-              type="button"
-              onClick={() => {
-                setQuickNavQuery("");
-                setQuickNavActiveIndex(0);
-                setQuickNavOpen(true);
-              }}
-              className="flex w-full items-center justify-between gap-2 rounded-lg border border-sidebar-border bg-background/80 px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-            >
-              <span className="flex items-center gap-2 truncate">
-                <Search className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{strings.common.quickNav}</span>
-              </span>
-              <kbd className="hidden rounded border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground lg:inline-block">⌘K</kbd>
-            </button>
-          </div>
-
           {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto py-3 px-3">
+          <nav className="flex-1 overflow-y-auto py-4 px-3">
             {navGroups.map((group) => {
               const visibleItems = group.items.filter(item => hasAccess(item.requiredPermissions));
               if (visibleItems.length === 0) return null;
@@ -915,69 +866,6 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         onOpenChange={setMySettingsOpen}
         roleLabel={currentRoleLabel}
       />
-
-      <Dialog open={quickNavOpen} onOpenChange={setQuickNavOpen}>
-        <DialogContent className="gap-3 p-4 sm:max-w-[440px]">
-          <DialogHeader>
-            <DialogTitle className="text-base">{strings.common.quickNavTitle}</DialogTitle>
-          </DialogHeader>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              autoFocus
-              value={quickNavQuery}
-              onChange={(event) => setQuickNavQuery(event.target.value)}
-              placeholder={strings.common.quickNavPlaceholder}
-              className="pl-9"
-              onKeyDown={(event) => {
-                if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  setQuickNavActiveIndex((idx) => (quickNavResults.length ? (idx + 1) % quickNavResults.length : 0));
-                } else if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  setQuickNavActiveIndex((idx) => (quickNavResults.length ? (idx - 1 + quickNavResults.length) % quickNavResults.length : 0));
-                } else if (event.key === "Enter" && quickNavResults[quickNavActiveIndex]) {
-                  event.preventDefault();
-                  const target = quickNavResults[quickNavActiveIndex];
-                  setQuickNavOpen(false);
-                  navigateTo(target.path);
-                }
-              }}
-            />
-          </div>
-          <div className="max-h-[50vh] space-y-1 overflow-y-auto">
-            {quickNavResults.length === 0 ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">{strings.common.quickNavEmpty}</div>
-            ) : quickNavResults.map((item, idx) => {
-              const Icon = item.icon;
-              const isCurrent = currentPage === item.path;
-              const isHighlighted = idx === quickNavActiveIndex;
-              return (
-                <button
-                  key={item.path}
-                  type="button"
-                  onMouseEnter={() => setQuickNavActiveIndex(idx)}
-                  onClick={() => {
-                    setQuickNavOpen(false);
-                    navigateTo(item.path);
-                  }}
-                  className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                    isHighlighted
-                      ? "bg-primary-soft text-primary"
-                      : "text-foreground hover:bg-accent"
-                  }`}
-                >
-                  <span className="flex min-w-0 items-center gap-2.5">
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate font-medium">{item.label}</span>
-                  </span>
-                  {isCurrent ? <span className="shrink-0 text-xs text-primary">当前页</span> : null}
-                </button>
-              );
-            })}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
