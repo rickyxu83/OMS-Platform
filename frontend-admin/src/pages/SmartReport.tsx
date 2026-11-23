@@ -470,10 +470,10 @@ export function SmartReport() {
                     )}
                     {t.subscription?.enabled && <Mail className="h-3 w-3 shrink-0 text-primary" aria-label="已订阅" />}
                   </button>
-                  <button type="button" className="rounded p-1 text-muted-foreground opacity-0 transition hover:text-primary group-hover:opacity-100" title="订阅推送" onClick={() => openSubscribe(t)}>
+                  <button type="button" className="rounded p-1 text-muted-foreground opacity-100 transition hover:text-primary lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100" title="订阅推送" aria-label={`订阅推送：${t.name}`} onClick={() => openSubscribe(t)}>
                     <Mail className="h-3.5 w-3.5" />
                   </button>
-                  <button type="button" className="rounded p-1 text-muted-foreground opacity-0 transition hover:text-destructive group-hover:opacity-100" title="删除" onClick={() => void removeTemplate(t)}>
+                  <button type="button" className="rounded p-1 text-muted-foreground opacity-100 transition hover:text-destructive lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100" title="删除" aria-label={`删除报表：${t.name}`} onClick={() => void removeTemplate(t)}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>

@@ -123,35 +123,76 @@ function agingInfo(createdAt?: string | null) {
   return { text, overdue: hours >= 48 }
 }
 
-/** 状态 hover 悬浮卡（fixed 定位，防表格遮挡）：发起/完成时间线 + 签核步骤链 */
+/** 状态 hover / 触屏点击悬浮卡（fixed + Portal 定位，防表格遮挡与视口底部溢出）：发起/完成时间线 + 签核步骤链 */
 function TaskStatusHover({ task }: { task: ApprovalTask }) {
   const [hover, setHover] = useState(false)
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
-  const ref = useRef<HTMLSpanElement>(null)
+  const [pinned, setPinned] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number; flipped: boolean } | null>(null)
+  const ref = useRef<HTMLButtonElement>(null)
   const segs = ([
     { label: '发起', at: task.createdAt },
     { label: '完成', at: task.completedAt },
   ]).filter((seg) => seg.at)
   const steps = task.approvalSteps || []
+
+  const show = () => {
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect()
+      const cardWidth = Math.min(250, window.innerWidth - 16)
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - cardWidth - 8))
+      const flipped = window.innerHeight - rect.bottom < 180 && rect.top > 180
+      setPos({ top: flipped ? rect.top - 4 : rect.bottom + 4, left, flipped })
+    }
+    setHover(true)
+  }
+
+  useEffect(() => {
+    if (!pinned) return
+    const onDown = (event: MouseEvent) => {
+      if (ref.current?.contains(event.target as Node)) return
+      setPinned(false)
+      setHover(false)
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setPinned(false); setHover(false) }
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [pinned])
+
   if (!segs.length && !steps.length) return statusIndicator(task)
   return (
-    <span
+    <button
       ref={ref}
-      className="inline-block cursor-default"
-      onMouseEnter={() => {
-        if (ref.current) {
-          const rect = ref.current.getBoundingClientRect()
-          setPos({ top: rect.bottom + 4, left: Math.min(rect.left, Math.max(8, window.innerWidth - 240)) })
+      type="button"
+      className="inline-flex cursor-default items-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+      onMouseEnter={show}
+      onMouseLeave={() => { if (!pinned) setHover(false) }}
+      onFocus={show}
+      onBlur={() => { if (!pinned) setHover(false) }}
+      onClick={(event) => {
+        event.stopPropagation()
+        if (pinned && hover) {
+          setPinned(false)
+          setHover(false)
+        } else {
+          setPinned(true)
+          show()
         }
-        setHover(true)
       }}
-      onMouseLeave={() => setHover(false)}
     >
       {statusIndicator(task)}
       {/* createPortal 到 body：行入场动画 list-row-enter 的 transform 会让行成为 fixed 包含块，
           直接渲染在行内会整体错位（踩过的坑） */}
       {hover && pos ? createPortal(
-        <div className="pointer-events-none fixed z-[100] min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ top: pos.top, left: pos.left }}>
+        <div
+          className="pointer-events-none fixed z-[100] min-w-[190px] max-w-[min(260px,calc(100vw-16px))] rounded-lg border border-slate-200 bg-white p-2.5 text-left text-xs shadow-lg"
+          style={{ top: pos.top, left: pos.left, transform: pos.flipped ? 'translateY(-100%)' : undefined }}
+        >
           {segs.map((seg) => (
             <div key={seg.label} className="flex items-center gap-1.5 text-muted-foreground">
               <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/10 text-primary"><CircleDot className="h-2.5 w-2.5" /></span>
@@ -182,7 +223,7 @@ function TaskStatusHover({ task }: { task: ApprovalTask }) {
         </div>,
         document.body,
       ) : null}
-    </span>
+    </button>
   )
 }
 

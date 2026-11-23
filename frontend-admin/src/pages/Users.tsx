@@ -21,7 +21,8 @@ import { HelpTooltip } from "@/components/HelpTooltip";
 import { PageContainer, PageHeader } from "@/components/PageHeader";
 import { ReasonConfirmDialog } from "@/components/ReasonConfirmDialog";
 import { api } from "@/services/api";
-import { Skeleton } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
+import { Skeleton, SkeletonList } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { matchesSearchText } from "@/lib/text-i18n";
 import { useUrlParam } from "@/lib/use-url-param";
@@ -526,11 +527,15 @@ export function Users() {
         <CardContent>
           <div>
             {loading ? (
-              <div className="flex h-full items-center justify-center text-muted-foreground">
-                <span className="btn-loader mr-2" aria-hidden="true" /> 正在加载…
-              </div>
+              <SkeletonList rows={5} columns={4} />
             ) : filtered.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无用户</div>
+              <EmptyState
+                title={searchQuery.trim() || roleFilter !== "all" || statusFilter !== "all" ? "无匹配当前筛选的成员" : "暂无成员"}
+                actionLabel={searchQuery.trim() || roleFilter !== "all" || statusFilter !== "all" ? "重置筛选" : undefined}
+                onAction={searchQuery.trim() || roleFilter !== "all" || statusFilter !== "all"
+                  ? () => { setSearchQuery(""); setRoleFilter("all"); setStatusFilter("all"); }
+                  : undefined}
+              />
             ) : (
               <div className="space-y-3">
               {filtered.map((user) => {
@@ -542,9 +547,10 @@ export function Users() {
                     key={user.id}
                     className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 border border-border rounded-lg hover:border-primary transition-colors"
                   >
-                    <div className="flex items-center gap-4 flex-1">
+                    <div className="flex items-start md:items-center gap-3.5 flex-1 min-w-0">
                       {canDeleteUsers ? (
                         <Checkbox
+                          className="mt-1 md:mt-0"
                           checked={selected}
                           onCheckedChange={(checked) => toggleUserSelection(user.id, checked)}
                           disabled={saving || !selectable}
@@ -558,29 +564,29 @@ export function Users() {
                           <UserX className="w-5 h-5 text-muted-foreground" />
                         )}
                       </div>
-                      <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-3">
-                        <div>
-                          <div className="font-medium">{displayName(user)}</div>
+                      <div className="min-w-0 flex-1 grid grid-cols-2 md:grid-cols-5 gap-3">
+                        <div className="col-span-2 md:col-span-1 min-w-0">
+                          <div className="font-medium truncate">{displayName(user)}</div>
                           <div title={user.email || user.username || "-"} className="text-sm text-muted-foreground truncate">{user.email || user.username || "-"}</div>
                           {user.loginAlias ? (
                             <div className="text-xs text-muted-foreground">别名：{user.loginAlias}</div>
                           ) : null}
                         </div>
-                        <div>
+                        <div className="flex items-center">
                           <Badge variant={ROLE_VARIANT[user.role || ""] || "secondary"}>
                             {roleLabel}
                           </Badge>
                         </div>
-                        <div>
-                          <div className="text-sm text-muted-foreground">联系方式</div>
-                          <div className="text-sm">{user.phone || "-"}</div>
+                        <div className="min-w-0">
+                          <div className="text-xs text-muted-foreground">联系方式</div>
+                          <div className="text-sm truncate">{user.phone || "-"}</div>
                           <div className="text-xs text-muted-foreground truncate" title={user.loginAlias ? `可用别名登录：${user.loginAlias}` : "未设置别名"}>{user.loginAlias ? `可用别名登录：${user.loginAlias}` : "未设置别名"}</div>
                         </div>
-                        <div>
-                          <div className="text-sm text-muted-foreground">上次登录时间</div>
-                          <div className="text-sm">{formatDateTime(user.lastLoginAt)}</div>
+                        <div className="min-w-0">
+                          <div className="text-xs text-muted-foreground">上次登录时间</div>
+                          <div className="text-sm truncate">{formatDateTime(user.lastLoginAt)}</div>
                         </div>
-                        <div>
+                        <div className="flex items-center">
                           <Badge variant={STATUS_VARIANT[user.status || "active"] || "secondary"}>
                             {user.status === "active" ? "在岗" : "离岗"}
                           </Badge>

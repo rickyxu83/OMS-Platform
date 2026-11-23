@@ -22,6 +22,8 @@ import {
   ChevronUp,
   TriangleAlert,
   Sparkles,
+  Menu,
+  Search,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -327,6 +329,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const [announcementSubmitting, setAnnouncementSubmitting] = useState(false);
   const [mobileNavVisible, setMobileNavVisible] = useState(true);
   const [mySettingsOpen, setMySettingsOpen] = useState(false);
+  const [quickNavOpen, setQuickNavOpen] = useState(false);
+  const [quickNavQuery, setQuickNavQuery] = useState("");
+  const [quickNavActiveIndex, setQuickNavActiveIndex] = useState(0);
   const [pendingTaskCount, setPendingTaskCount] = useState(0);
   const [mrPendingCount, setMrPendingCount] = useState(0);
   const strings = STRINGS[lang];
@@ -485,6 +490,31 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const allNavItems = navGroups.flatMap(g => g.items).filter(item => hasAccess(item.requiredPermissions));
 
+  const quickNavResults = useMemo(() => {
+    const keyword = quickNavQuery.trim().toLowerCase();
+    if (!keyword) return allNavItems;
+    return allNavItems.filter((item) => (
+      item.label.toLowerCase().includes(keyword) || item.path.toLowerCase().includes(keyword)
+    ));
+  }, [allNavItems, quickNavQuery]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setQuickNavQuery("");
+        setQuickNavActiveIndex(0);
+        setQuickNavOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    setQuickNavActiveIndex(0);
+  }, [quickNavQuery, quickNavOpen]);
+
   const mobileNavPriority = MOBILE_NAV_PRIORITY_BY_ROLE[user?.role || ""] || MOBILE_NAV_PRIORITY_DEFAULT;
   const mobileNavItems = mobileNavPriority
     .map((path) => allNavItems.find((item) => item.path === path))
@@ -630,8 +660,27 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             </div>
           )}
 
+          {/* 快速跳转触发条（Cmd/Ctrl + K） */}
+          <div className="px-3 pt-3">
+            <button
+              type="button"
+              onClick={() => {
+                setQuickNavQuery("");
+                setQuickNavActiveIndex(0);
+                setQuickNavOpen(true);
+              }}
+              className="flex w-full items-center justify-between gap-2 rounded-lg border border-sidebar-border bg-background/80 px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            >
+              <span className="flex items-center gap-2 truncate">
+                <Search className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{strings.common.quickNav}</span>
+              </span>
+              <kbd className="hidden rounded border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground lg:inline-block">⌘K</kbd>
+            </button>
+          </div>
+
           {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto py-4 px-3">
+          <nav className="flex-1 overflow-y-auto py-3 px-3">
             {navGroups.map((group) => {
               const visibleItems = group.items.filter(item => hasAccess(item.requiredPermissions));
               if (visibleItems.length === 0) return null;
@@ -744,13 +793,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         />
       )}
 
+      {/* 左侧边缘展开柄：桌面收起侧栏时使用；移动端改为底部导航「菜单」入口，避免遮挡内容 */}
       {!sidebarOpen ? (
         <Button
           type="button"
           variant="outline"
           size="icon"
           onClick={() => setSidebarOpen(true)}
-          className="fixed left-0 top-1/2 z-40 h-12 w-8 -translate-y-1/2 rounded-l-none rounded-r-xl border-l-0 bg-background/95 text-muted-foreground shadow-md backdrop-blur hover:text-foreground"
+          className={`${hideMobileChrome || mobileNavItems.length === 0 ? "inline-flex" : "hidden lg:inline-flex"} fixed left-0 top-1/2 z-40 h-12 w-8 -translate-y-1/2 rounded-l-none rounded-r-xl border-l-0 bg-background/95 text-muted-foreground shadow-md backdrop-blur hover:text-foreground`}
           aria-label="展开侧边栏"
           title="展开侧边栏"
         >
@@ -783,8 +833,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             onFocusCapture={() => setMobileNavVisible(true)}
           >
             <div
-              className="mx-auto grid max-w-md gap-1.5"
-              style={{ gridTemplateColumns: `repeat(${mobileNavItems.length}, minmax(0, 1fr))` }}
+              className="mx-auto grid max-w-md gap-1"
+              style={{ gridTemplateColumns: `repeat(${mobileNavItems.length + 1}, minmax(0, 1fr))` }}
             >
               {mobileNavItems.map((item) => {
                 const Icon = item.icon;
@@ -795,7 +845,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                     key={item.path}
                     type="button"
                     onClick={() => navigateTo(item.path)}
-                    className={`flex min-w-0 items-center justify-center gap-1.5 rounded-full px-2.5 py-2 text-xs font-medium transition-colors ${
+                    className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 py-1.5 text-[11px] font-medium transition-colors sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-2.5 sm:py-2 sm:text-xs ${
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -806,6 +856,20 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={() => setSidebarOpen((open) => !open)}
+                aria-expanded={sidebarOpen}
+                aria-label="展开全部导航菜单"
+                className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 py-1.5 text-[11px] font-medium transition-colors sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-2.5 sm:py-2 sm:text-xs ${
+                  sidebarOpen
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                }`}
+              >
+                <Menu className="h-4 w-4 shrink-0" />
+                <span className="truncate">菜单</span>
+              </button>
             </div>
           </nav>
         )}
@@ -851,6 +915,69 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         onOpenChange={setMySettingsOpen}
         roleLabel={currentRoleLabel}
       />
+
+      <Dialog open={quickNavOpen} onOpenChange={setQuickNavOpen}>
+        <DialogContent className="gap-3 p-4 sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle className="text-base">{strings.common.quickNavTitle}</DialogTitle>
+          </DialogHeader>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              autoFocus
+              value={quickNavQuery}
+              onChange={(event) => setQuickNavQuery(event.target.value)}
+              placeholder={strings.common.quickNavPlaceholder}
+              className="pl-9"
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setQuickNavActiveIndex((idx) => (quickNavResults.length ? (idx + 1) % quickNavResults.length : 0));
+                } else if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setQuickNavActiveIndex((idx) => (quickNavResults.length ? (idx - 1 + quickNavResults.length) % quickNavResults.length : 0));
+                } else if (event.key === "Enter" && quickNavResults[quickNavActiveIndex]) {
+                  event.preventDefault();
+                  const target = quickNavResults[quickNavActiveIndex];
+                  setQuickNavOpen(false);
+                  navigateTo(target.path);
+                }
+              }}
+            />
+          </div>
+          <div className="max-h-[50vh] space-y-1 overflow-y-auto">
+            {quickNavResults.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">{strings.common.quickNavEmpty}</div>
+            ) : quickNavResults.map((item, idx) => {
+              const Icon = item.icon;
+              const isCurrent = currentPage === item.path;
+              const isHighlighted = idx === quickNavActiveIndex;
+              return (
+                <button
+                  key={item.path}
+                  type="button"
+                  onMouseEnter={() => setQuickNavActiveIndex(idx)}
+                  onClick={() => {
+                    setQuickNavOpen(false);
+                    navigateTo(item.path);
+                  }}
+                  className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                    isHighlighted
+                      ? "bg-primary-soft text-primary"
+                      : "text-foreground hover:bg-accent"
+                  }`}
+                >
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate font-medium">{item.label}</span>
+                  </span>
+                  {isCurrent ? <span className="shrink-0 text-xs text-primary">当前页</span> : null}
+                </button>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

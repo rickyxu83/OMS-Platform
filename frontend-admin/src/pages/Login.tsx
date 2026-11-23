@@ -716,20 +716,8 @@ export function Login() {
             <div className="mb-4 flex justify-center">
               <div className="relative flex h-24 w-24 items-center justify-center">
                 <div
-                  className="absolute h-20 w-20 rounded-full blur-2xl"
-                  style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.35) 0%, rgba(168, 85, 247, 0.18) 50%, transparent 70%)" }}
-                />
-                <div
-                  className="absolute h-24 w-24 rounded-full blur-3xl"
-                  style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.25) 0%, rgba(168, 85, 247, 0.12) 50%, transparent 70%)" }}
-                />
-                <div
-                  className="absolute h-28 w-28 rounded-full blur-3xl"
-                  style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.18) 0%, rgba(168, 85, 247, 0.08) 50%, transparent 70%)" }}
-                />
-                <div
-                  className="absolute h-[72px] w-[72px] rounded-full blur-xl"
-                  style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.4) 0%, rgba(168, 85, 247, 0.25) 40%, transparent 70%)" }}
+                  className="absolute h-24 w-24 rounded-full blur-2xl"
+                  style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.42) 0%, rgba(168, 85, 247, 0.20) 52%, transparent 74%)" }}
                 />
                 <img
                   src={logoSrc}
