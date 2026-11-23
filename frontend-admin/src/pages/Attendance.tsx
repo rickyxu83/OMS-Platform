@@ -1011,48 +1011,48 @@ export function Attendance() {
           </div>
 
           {canDutyApprove ? (
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/20">
+            <Card className="gap-0 overflow-hidden">
+              <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/20 py-4 [.border-b]:pb-4">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="size-4 text-primary" />
                   <CardTitle className="text-base">值班津贴待终审</CardTitle>
                   <Badge variant="secondary">{dutyPendingBatches.length} 月</Badge>
                 </div>
-                <Button variant="ghost" size="sm" onClick={loadDutyPendingBatches} disabled={dutyBatchSaving}>
-                  <RefreshCw className="size-4" />刷新
+                <Button variant="ghost" size="sm" className="h-8 text-muted-foreground hover:text-foreground" onClick={loadDutyPendingBatches} disabled={dutyBatchSaving}>
+                  <RefreshCw className="size-3.5" />刷新
                 </Button>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 [&:last-child]:pb-0">
                 {dutyPendingBatches.length ? (
                   <Table>
-                    <TableHeader>
+                    <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                       <TableRow>
-                        <TableHead>月份</TableHead>
+                        <TableHead className="pl-6">月份</TableHead>
                         <TableHead>记录</TableHead>
                         <TableHead>人次</TableHead>
                         <TableHead>提交时间</TableHead>
                         <TableHead>提交方式</TableHead>
-                        <TableHead className="text-right">操作</TableHead>
+                        <TableHead className="pr-6 text-right">操作</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {dutyPendingBatches.map((batch) => (
                         <TableRow key={batch.month}>
-                          <TableCell className="font-medium tabular-nums">{batch.month}</TableCell>
+                          <TableCell className="pl-6 font-medium tabular-nums">{batch.month}</TableCell>
                           <TableCell className="tabular-nums">{batch.recordCount} 条</TableCell>
                           <TableCell className="tabular-nums">{batch.unitsSum} 人次</TableCell>
-                          <TableCell className="text-muted-foreground">{batch.submittedAt ? new Date(batch.submittedAt).toLocaleString("zh-CN", { hour12: false }) : "-"}</TableCell>
+                          <TableCell className="text-muted-foreground tabular-nums">{batch.submittedAt ? new Date(batch.submittedAt).toLocaleString("zh-CN", { hour12: false }) : "-"}</TableCell>
                           <TableCell>{batch.autoSubmitted ? <Badge variant="outline">系统自动</Badge> : <Badge variant="secondary">工程主管</Badge>}</TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex flex-wrap justify-end gap-2">
-                              <Button size="sm" variant="outline" disabled={dutyBatchSaving} onClick={() => loadDutyDetail(batch.month)}>
-                                <Eye className="mr-1 size-4" />查看明细
+                          <TableCell className="pr-4 text-right">
+                            <div className="flex flex-wrap justify-end gap-1">
+                              <Button size="sm" variant="ghost" className="h-8 px-2.5 text-muted-foreground hover:text-foreground" disabled={dutyBatchSaving} onClick={() => loadDutyDetail(batch.month)}>
+                                <Eye className="size-3.5" />查看明细
                               </Button>
-                              <Button size="sm" disabled={dutyBatchSaving} onClick={() => dutyAction(batch.month, "approve")}>
-                                <Check className="mr-1 size-4" />终审通过
+                              <Button size="sm" variant="ghost" className="h-8 px-2.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700" disabled={dutyBatchSaving} onClick={() => dutyAction(batch.month, "approve")}>
+                                <Check className="size-3.5" />终审通过
                               </Button>
-                              <Button size="sm" variant="outline" disabled={dutyBatchSaving} onClick={() => rejectDutyBatch(batch.month)}>
-                                <X className="mr-1 size-4" />退回
+                              <Button size="sm" variant="ghost" className="h-8 px-2.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700" disabled={dutyBatchSaving} onClick={() => rejectDutyBatch(batch.month)}>
+                                <X className="size-3.5" />退回
                               </Button>
                             </div>
                           </TableCell>
@@ -1088,21 +1088,21 @@ export function Attendance() {
                 const busy = rowActionId === String(item.id);
                 if (current) return (
                   <>
-                    <Button size="sm" disabled={busy} onClick={() => item.status === "pending_delegate" ? confirmDelegate(item) : approveRow(item, current.path, current.success)}>
-                      {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />} 通过
+                    <Button size="sm" variant="ghost" className="h-8 px-2.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700" disabled={busy} onClick={() => item.status === "pending_delegate" ? confirmDelegate(item) : approveRow(item, current.path, current.success)}>
+                      {busy ? <span className="btn-loader btn-loader-sm mr-1" aria-hidden="true" /> : <Check className="h-3.5 w-3.5" />} 通过
                     </Button>
-                    <Button size="sm" variant="outline" disabled={busy} onClick={() => reject(item)}>
-                      <X className="mr-1 h-4 w-4" /> 驳回
+                    <Button size="sm" variant="ghost" className="h-8 px-2.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700" disabled={busy} onClick={() => reject(item)}>
+                      <X className="h-3.5 w-3.5" /> 驳回
                     </Button>
                   </>
                 );
                 if (item.status === "pending_admin" && canAdminApprove) return (
                   <>
-                    <Button size="sm" disabled={busy} onClick={() => approveRow(item, "approve-admin", "行政终审已通过")}>
-                      {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-1 h-4 w-4" />} 终审通过
+                    <Button size="sm" variant="ghost" className="h-8 px-2.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700" disabled={busy} onClick={() => approveRow(item, "approve-admin", "行政终审已通过")}>
+                      {busy ? <span className="btn-loader btn-loader-sm mr-1" aria-hidden="true" /> : <ShieldCheck className="h-3.5 w-3.5" />} 终审通过
                     </Button>
-                    <Button size="sm" variant="outline" disabled={busy} onClick={() => reject(item)}>
-                      <X className="mr-1 h-4 w-4" /> 驳回
+                    <Button size="sm" variant="ghost" className="h-8 px-2.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700" disabled={busy} onClick={() => reject(item)}>
+                      <X className="h-3.5 w-3.5" /> 驳回
                     </Button>
                   </>
                 );
