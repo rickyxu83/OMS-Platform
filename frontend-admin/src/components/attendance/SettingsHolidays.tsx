@@ -144,7 +144,7 @@ export function SettingsHolidays(props: SettingsHolidaysProps) {
                 ) : null}
               </div>
               {canManage ? (
-                <div className="grid gap-3 md:grid-cols-[160px_1fr_140px_auto]">
+                <div className="grid gap-3 md:grid-cols-[200px_1fr_140px_auto]">
                   <div className="space-y-2">
                     <Label>日期</Label>
                     <Input
