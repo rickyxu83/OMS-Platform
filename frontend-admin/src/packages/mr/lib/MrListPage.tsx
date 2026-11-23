@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Loader2, Plus, RefreshCw, RotateCcw, Save, Search, SlidersHorizontal, X, Pencil, Hourglass, CircleCheck, CircleX, CircleSlash, Package, PackageCheck, Minus, FileText, CircleDot, ArrowRight, BellRing, Ban, type LucideIcon } from 'lucide-react'
+import { Plus, RefreshCw, RotateCcw, Save, Search, SlidersHorizontal, X, Pencil, Hourglass, CircleCheck, CircleX, CircleSlash, Package, PackageCheck, Minus, FileText, CircleDot, ArrowRight, BellRing, Ban, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -10,12 +10,17 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { EmptyState } from '@/components/EmptyState'
 import { ErrorToast } from '@/components/ErrorToast'
+import { PageContainer, PageHeader } from '@/components/PageHeader'
+import { ReasonConfirmDialog } from '@/components/ReasonConfirmDialog'
+import { ResponsiveCard, ResponsiveList } from '@/components/ResponsiveList'
+import { SkeletonList } from '@/components/Skeleton'
+import { StatStrip, StatStripItem } from '@/components/StatStrip'
 import { useAuth } from '@/contexts/AuthContext'
 import { createMr, listMr, listSalespeople, remindMr } from '../client'
 import type { MrStatusCounts } from '../client'
 import { LayoutRulesDialog } from './LayoutRulesDialog'
-import { HelpTooltip } from '@/components/HelpTooltip'
 import type { MrOrder, MrStatus, UserOption } from '../types'
 import { MR_COMPANIES, mrCompanyOf } from './companies'
 
@@ -53,10 +58,17 @@ const PURCHASE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = 
   waiting_contract: { icon: FileText, color: 'text-sky-600' },
 }
 
-/** 状态按钮 + hover 悬浮时间线卡（fixed 定位，脱离表格层叠上下文，不被下行遮挡） */
-function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilter }: { orderStatus: MrStatus; order: { createdAt?: string | null; submittedAt?: string | null; approvedAt?: string | null; rejectedAt?: string | null; voidedAt?: string | null; voidRequestStatus?: string | null; voidRequestedAt?: string | null; approvalSteps?: Array<{ seq: number; stepKey: string; stepLabel: string; approverName: string | null; action: string | null; decidedAt: string | null }> }; stepLabel?: string; assigneeName?: string | null; onFilter: () => void }) {
+function calcHoverCardPos(rect: DOMRect) {
+  const cardWidth = 250
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - cardWidth - 8))
+  const flipped = window.innerHeight - rect.bottom < 180 && rect.top > 180
+  return { top: flipped ? rect.top - 4 : rect.bottom + 4, left, flipped }
+}
+
+/** 状态按钮 + hover/focus 悬浮时间线卡（createPortal 到 body 并做视口边界钳制，避免 transform 错位或贴边溢出） */
+function StatusHoverButton({ orderStatus, order, stepLabel: _stepLabel, assigneeName: _assigneeName, onFilter }: { orderStatus: MrStatus; order: { createdAt?: string | null; submittedAt?: string | null; approvedAt?: string | null; rejectedAt?: string | null; voidedAt?: string | null; voidRequestStatus?: string | null; voidRequestedAt?: string | null; approvalSteps?: Array<{ seq: number; stepKey: string; stepLabel: string; approverName: string | null; action: string | null; decidedAt: string | null }> }; stepLabel?: string; assigneeName?: string | null; onFilter: () => void }) {
   const [hover, setHover] = useState(false)
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const [pos, setPos] = useState<{ top: number; left: number; flipped: boolean } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
   const conf = STATUS_INDICATOR[orderStatus]
   const Icon = conf ? conf.icon : null
@@ -67,6 +79,10 @@ function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilt
     ...(order.voidRequestStatus === 'pending' ? [{ label: '申请作废', at: order.voidRequestedAt }] : []),
   ]).filter((seg) => seg.at)
   const steps = (order.approvalSteps || [])
+  const showCard = () => {
+    if (btnRef.current) setPos(calcHoverCardPos(btnRef.current.getBoundingClientRect()))
+    setHover(true)
+  }
   return (
     <span className="inline-block">
       <button
@@ -74,23 +90,22 @@ function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilt
         type="button"
         className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80"
         onClick={(event) => { event.stopPropagation(); onFilter() }}
-        onMouseEnter={() => {
-          if (btnRef.current) {
-            const rect = btnRef.current.getBoundingClientRect()
-            setPos({ top: rect.bottom + 4, left: rect.left })
-          }
-          setHover(true)
-        }}
+        onMouseEnter={showCard}
         onMouseLeave={() => setHover(false)}
+        onFocus={showCard}
+        onBlur={() => setHover(false)}
       >
         {Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null}
         {STATUS_LABELS[orderStatus]}
       </button>
-      {hover && pos && segs.length ? (
-        <div className="pointer-events-none fixed z-[100] min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ top: pos.top, left: pos.left }}>
+      {hover && pos && segs.length ? createPortal(
+        <div
+          className="pointer-events-none fixed z-[100] min-w-[190px] max-w-[260px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg"
+          style={{ top: pos.top, left: pos.left, transform: pos.flipped ? 'translateY(-100%)' : undefined }}
+        >
           {segs.map((seg) => (
             <div key={seg.label} className="flex items-center gap-1.5 text-muted-foreground">
-              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#582b8b]/10 text-[#582b8b]"><CircleDot className="h-2.5 w-2.5" /></span>
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/10 text-primary"><CircleDot className="h-2.5 w-2.5" /></span>
               {seg.label} <span className="font-medium text-foreground">{shortDate(seg.at)}</span>
             </div>
           ))}
@@ -114,18 +129,23 @@ function StatusHoverButton({ orderStatus, order, stepLabel, assigneeName, onFilt
               })()}
             </div>
           ) : null}
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </span>
   )
 }
 
-/** 「作废审批中」状态按钮 + hover 悬浮进度卡（与 StatusHoverButton 同款交互）：申请作废时间线 + 作废审批链 */
+/** 「作废审批中」状态按钮 + hover/focus 悬浮进度卡（createPortal + 视口边界钳制） */
 function VoidStatusHoverButton({ order, onFilter }: { order: { voidRequestedAt?: string | null; voidReason?: string | null; voidSteps?: Array<{ stage: string; stageLabel: string; approverName: string | null; action: string | null; decidedAt: string | null; createdAt: string | null }> }; onFilter: () => void }) {
   const [hover, setHover] = useState(false)
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const [pos, setPos] = useState<{ top: number; left: number; flipped: boolean } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
   const steps = order.voidSteps || []
+  const showCard = () => {
+    if (btnRef.current) setPos(calcHoverCardPos(btnRef.current.getBoundingClientRect()))
+    setHover(true)
+  }
   return (
     <span className="inline-block">
       <button
@@ -133,23 +153,22 @@ function VoidStatusHoverButton({ order, onFilter }: { order: { voidRequestedAt?:
         type="button"
         className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80"
         onClick={(event) => { event.stopPropagation(); onFilter() }}
-        onMouseEnter={() => {
-          if (btnRef.current) {
-            const rect = btnRef.current.getBoundingClientRect()
-            setPos({ top: rect.bottom + 4, left: rect.left })
-          }
-          setHover(true)
-        }}
+        onMouseEnter={showCard}
         onMouseLeave={() => setHover(false)}
+        onFocus={showCard}
+        onBlur={() => setHover(false)}
       >
         <Ban className="h-3.5 w-3.5 text-amber-600" />
         作废审批中
       </button>
-      {hover && pos && (order.voidRequestedAt || steps.length) ? (
-        <div className="pointer-events-none fixed z-[100] min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ top: pos.top, left: pos.left }}>
+      {hover && pos && (order.voidRequestedAt || steps.length) ? createPortal(
+        <div
+          className="pointer-events-none fixed z-[100] min-w-[190px] max-w-[260px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg"
+          style={{ top: pos.top, left: pos.left, transform: pos.flipped ? 'translateY(-100%)' : undefined }}
+        >
           {order.voidRequestedAt ? (
             <div className="flex items-center gap-1.5 text-muted-foreground">
-              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#582b8b]/10 text-[#582b8b]"><CircleDot className="h-2.5 w-2.5" /></span>
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/10 text-primary"><CircleDot className="h-2.5 w-2.5" /></span>
               申请作废 <span className="font-medium text-foreground">{shortDate(order.voidRequestedAt)}</span>
             </div>
           ) : null}
@@ -173,7 +192,8 @@ function VoidStatusHoverButton({ order, onFilter }: { order: { voidRequestedAt?:
               })()}
             </div>
           ) : null}
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </span>
   )
@@ -221,6 +241,7 @@ export function MrListPage() {
   const [statusCounts, setStatusCounts] = useState<MrStatusCounts | null>(null)
   const [pendingMineCountRemote, setPendingMineCountRemote] = useState<number | null>(null)
   const [remindingId, setRemindingId] = useState<string | number | null>(null)
+  const [remindTarget, setRemindTarget] = useState<MrOrder | null>(null)
   const [queryInput, setQueryInput] = useState('')
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
@@ -316,6 +337,7 @@ export function MrListPage() {
     setStatus('all')
     setPurchaseStatus('all')
     setCompany('all')
+    setPendingMine(false)
     setDateFrom('')
     setDateTo('')
     setSalesFilterId('all')
@@ -370,93 +392,192 @@ export function MrListPage() {
   }
 
   const pendingMineCount = pendingMineCountRemote ?? (pendingMine ? items.length : items.filter((order) => Number(order.approvalParticipant) === 1).length)
+  const hasActiveFilters = Boolean(
+    q.trim() || status !== 'all' || purchaseStatus !== 'all' || company !== 'all'
+    || salesFilterId !== 'all' || customerFilterId || dateFrom || dateTo || pendingMine,
+  )
+
+  const isRemindThrottled = (order: MrOrder) => Boolean(
+    order.lastRemindedAt && (() => {
+      const time = new Date(String(order.lastRemindedAt).replace(' ', 'T')).getTime()
+      return Number.isFinite(time) && Date.now() - time < 24 * 3600 * 1000
+    })(),
+  )
+
+  const executeRemindOrder = async (order: MrOrder) => {
+    setRemindingId(order.id!)
+    try {
+      const result = await remindMr(order.id!)
+      toast.success('已催办，提醒邮件将发送给当前签核人')
+      setItems((current) => current.map((item) => item.id === order.id ? { ...item, lastRemindedAt: result.remindedAt || new Date().toISOString() } : item))
+      setRemindTarget(null)
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : '催办失败')
+    } finally {
+      setRemindingId(null)
+    }
+  }
+
+  const renderMrCard = (order: MrOrder) => {
+    const orderStatus = (order.status || 'draft') as MrStatus
+    const purchaseFilled = Number(order.purchaseFilledCount) || 0
+    const purchaseItemTotal = Number(order.itemCount) || 0
+    const purchaseHasDraft = order.purchaseStatus === 'pending' && (purchaseFilled > 0 || Boolean(String(order.purchaseNote || '').trim()))
+    const remindThrottled = isRemindThrottled(order)
+    const statusConf = STATUS_INDICATOR[orderStatus]
+    const StatusIcon = statusConf?.icon
+    const purchaseConf = order.purchaseStatus ? PURCHASE_INDICATOR[order.purchaseStatus] : null
+    const PurchaseIcon = purchaseConf?.icon
+
+    const statusNode = (
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <span className="inline-flex items-center gap-1">
+          {StatusIcon ? <StatusIcon className={`h-3.5 w-3.5 ${statusConf.color}`} /> : null}
+          {STATUS_LABELS[orderStatus]}
+        </span>
+        {orderStatus === 'approved' && order.voidRequestStatus === 'pending' ? (
+          <>
+            <ArrowRight className="h-3 w-3 shrink-0 text-amber-600/80" />
+            <span className="inline-flex items-center gap-1">
+              <Ban className="h-3.5 w-3.5 text-amber-600" />
+              作废审批中
+            </span>
+          </>
+        ) : null}
+      </span>
+    )
+
+    const fields = [
+      { label: '负责的销售', value: order.salesOwnerName || '-' },
+      { label: '未税总计', value: <span className="font-medium tabular-nums">¥ {money(order.totalExcludingTax)}</span> },
+      { label: '更新时间', value: shortDate(order.updatedAt) },
+      ...(orderStatus === 'approved' && order.voidRequestStatus !== 'pending' && order.purchaseStatus ? [{
+        label: '采购状态',
+        value: (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+            {PurchaseIcon ? <PurchaseIcon className={`h-3.5 w-3.5 ${purchaseConf.color}`} /> : null}
+            {PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}
+            {purchaseHasDraft ? <Save className="h-3.5 w-3.5 shrink-0 text-amber-600" /> : null}
+          </span>
+        ),
+      }] : []),
+    ]
+
+    return (
+      <ResponsiveCard
+        onClick={() => navigate(`/mr/${order.id}`)}
+        title={(
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate">{order.customerName || '未选择客户'}</span>
+            {order.company && order.company !== 'dunyang' ? (
+              <span className="inline-flex shrink-0 items-center rounded border border-violet-200 bg-violet-50 px-1.5 py-px text-[11px] font-medium text-violet-700">
+                {mrCompanyOf(order.company).shortLabel}
+              </span>
+            ) : null}
+          </span>
+        )}
+        status={statusNode}
+        subtitle={(
+          <span className="block truncate">
+            {order.ctrlNo || '未填写 Ctrl.NO'}
+            {order.assignmentError ? <span className="ml-2 text-destructive">· 流程暂停：{order.assignmentError}</span> : null}
+          </span>
+        )}
+        fields={fields}
+        actions={orderStatus === 'in_review' && order.permissions?.canRemind ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={remindingId === order.id || remindThrottled}
+            title={remindThrottled ? `已于 ${String(order.lastRemindedAt).replace('T', ' ').slice(5, 16)} 催过，24 小时内只能催办一次` : '催办当前签核人'}
+            onClick={(event) => { event.stopPropagation(); setRemindTarget(order) }}
+          >
+            {remindingId === order.id ? <span className="btn-loader btn-loader-sm mr-1" aria-hidden="true" /> : <BellRing className="mr-1 h-3.5 w-3.5 text-amber-600" />}
+            {remindThrottled ? '已催办' : '催办'}
+          </Button>
+        ) : undefined}
+      />
+    )
+  }
 
   return (
-    <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden p-6">
+    <PageContainer className="overflow-x-hidden">
       <ErrorToast message={error} />
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">客户订购申请（MR）</h1>
-          <p className="mt-1 text-sm text-muted-foreground">申请填写、报价导入、电子签核及归档输出</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {user?.role === 'admin' ? (
-            <Button variant="outline" onClick={() => setRulesOpen(true)}>
-              <SlidersHorizontal className="mr-2 size-4" />
-              识别规则
-            </Button>
-          ) : null}
-          {hasPermission('mr.create') ? (
-            <Button onClick={createDraft} disabled={creating}>
-              {creating ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Plus className="mr-2 size-4" />}
-              新建 MR 申请
-            </Button>
-          ) : null}
-        </div>
-      </header>
+      <PageHeader
+        title="客户订购申请（MR）"
+        subtitle="申请填写、报价导入、电子签核及归档输出"
+        actions={(
+          <>
+            {user?.role === 'admin' ? (
+              <Button variant="outline" onClick={() => setRulesOpen(true)}>
+                <SlidersHorizontal className="mr-2 size-4" />
+                识别规则
+              </Button>
+            ) : null}
+            {hasPermission('mr.create') ? (
+              <Button onClick={createDraft} disabled={creating}>
+                {creating ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Plus className="mr-2 size-4" />}
+                新建 MR 申请
+              </Button>
+            ) : null}
+          </>
+        )}
+      />
       <LayoutRulesDialog open={rulesOpen} onOpenChange={setRulesOpen} />
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
+      <StatStrip>
         {pendingMineCount > 0 || pendingMine ? (
-          <button
-            type="button"
-            onClick={() => setPendingMine((value) => !value)}
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm transition-colors ${
-              pendingMine
-                ? 'bg-primary font-medium text-white'
-                : 'bg-primary/10 text-primary hover:bg-primary/20'
-            }`}
+          <StatStripItem
+            label="待我签核"
+            value={pendingMineCount}
+            icon={Hourglass}
+            iconClassName="text-primary"
+            active={pendingMine}
             title={pendingMine ? '取消“只看待我签核”' : '只看当前等我签核的 MR'}
-            aria-pressed={pendingMine}
-          >
-            <Hourglass className="size-3.5" />
-            待我签核 <span className="font-bold">{pendingMineCount}</span>
-          </button>
+            onClick={() => setPendingMine((value) => !value)}
+          />
         ) : null}
-        {/* 统计条可点击筛选：全部 + 各状态,点击切换 status 筛选 */}
+        {/* 统计条可点击筛选：全部 + 各状态，点击切换 status 筛选 */}
         {(
           [
-            { key: 'all', label: '全部', icon: null as LucideIcon | null },
+            { key: 'all', label: '全部', icon: undefined as LucideIcon | undefined },
             { key: 'draft', label: '草稿', icon: STATUS_INDICATOR.draft.icon },
             { key: 'in_review', label: '签核中', icon: STATUS_INDICATOR.in_review.icon },
             { key: 'approved', label: '已通过', icon: STATUS_INDICATOR.approved.icon },
             { key: 'voiding', label: '作废审批中', icon: STATUS_INDICATOR.voiding.icon },
             { key: 'rejected', label: '已驳回', icon: STATUS_INDICATOR.rejected.icon },
             { key: 'voided', label: '已作废', icon: STATUS_INDICATOR.voided.icon },
-          ] as Array<{ key: string; label: string; icon: LucideIcon | null }>
-        ).map((item) => {
+          ] as Array<{ key: string; label: string; icon?: LucideIcon }>
+        ).map((item, idx) => {
           const count = statusCounts
             ? (statusCounts[item.key as keyof MrStatusCounts] ?? 0)
             : item.key === 'all' ? items.length : item.key === 'voiding' ? items.filter((o) => o.voidRequestStatus === 'pending' && (o.status || 'draft') === 'approved').length : items.filter((o) => (o.status || 'draft') === item.key).length
           const active = status === item.key
-          const Icon = item.icon
           const color = item.key === 'all' ? '' : (STATUS_INDICATOR[item.key]?.color || '')
           return (
-            <button
+            <StatStripItem
               key={item.key}
-              type="button"
+              label={item.label}
+              value={count}
+              icon={item.icon}
+              iconClassName={color}
+              active={active}
+              animationIndex={idx}
               onClick={() => setStatus(item.key)}
-              aria-pressed={active}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm transition-colors ${
-                active ? 'bg-primary font-medium text-white' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
-              }`}
-            >
-              {Icon ? <Icon className={`h-3.5 w-3.5 ${active ? '' : color}`} /> : null}
-              <span>{item.label}</span>
-              <span className="font-bold tabular-nums">{count}</span>
-            </button>
+            />
           )
         })}
-      </div>
+      </StatStrip>
 
       <Card>
         <CardContent className="space-y-3 pt-6">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="relative min-w-[260px] flex-1">
+            <div className="relative min-w-0 flex-1 basis-[240px]">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="全文搜索：客户 / 单号 / 设备型号 / 品名 / 料号 / 供应商…" aria-label="搜索 MR" className="pl-9" />
             </div>
-            <div className="w-[240px]">
+            <div className="w-full sm:w-[240px]">
               <DateRangePicker
                 start={dateFrom}
                 end={dateTo}
@@ -465,7 +586,7 @@ export function MrListPage() {
                 ariaLabel="填表日期范围"
               />
             </div>
-            <div className="w-[170px]">
+            <div className="w-full sm:w-[170px]">
               <Select value={company} onValueChange={setCompany}>
                 <SelectTrigger aria-label="按签单主体筛选"><SelectValue placeholder="签单主体：全部" /></SelectTrigger>
                 <SelectContent>
@@ -494,114 +615,115 @@ export function MrListPage() {
       </Card>
 
       <div className="overflow-hidden rounded-xl border bg-card">
-        <div ref={tableScrollRef}>
-          <table className="w-full table-fixed caption-bottom text-sm">
-              <colgroup>
-                <col className="w-[280px]" />
-                <col className="w-[110px]" />
-                <col className="w-[150px]" />
-                <col className="w-[190px]" />
-                <col className="w-[160px]" />
-              </colgroup>
-              <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
-                <TableRow>
-                  <TableHead>客户 / Ctrl.NO</TableHead>
-                  <TableHead>负责的销售</TableHead>
-                  <TableHead className="pr-6 text-right">未税总计</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>更新时间</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-              {loading ? (
-                <TableRow><TableCell colSpan={5} className="h-[50vh] text-center"><Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" /></TableCell></TableRow>
-              ) : items.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="h-[50vh] text-center text-muted-foreground">暂无符合条件的 MR 申请单</TableCell></TableRow>
-            ) : pagedItems.map((order) => {
-              const orderStatus = (order.status || 'draft') as MrStatus
-              // 采购暂存进度：已填品项数 + 备注非空都算有进度（2026-09-21 热修 #175 起备注也落库）
-              const purchaseFilled = Number(order.purchaseFilledCount) || 0
-              const purchaseItemTotal = Number(order.itemCount) || 0
-              const purchaseHasDraft = order.purchaseStatus === 'pending' && (purchaseFilled > 0 || Boolean(String(order.purchaseNote || '').trim()))
-              const stepLabel = order.currentStepKey === 'sales' ? '业务负责人' : (order.currentStepLabel || '')
-              // 催办（spec 008）：签核中且有权限的行显示铃铛，24h 节流置灰
-              const remindThrottled = Boolean(order.lastRemindedAt && (() => { const time = new Date(String(order.lastRemindedAt).replace(' ', 'T')).getTime(); return Number.isFinite(time) && Date.now() - time < 24 * 3600 * 1000 })())
-              const quickRemind = async () => {
-                if (!window.confirm(`确定催办「${order.customerName || '该 MR'}」的当前签核人吗？系统会向其发送提醒邮件。`)) return
-                setRemindingId(order.id!)
-                try {
-                  const result = await remindMr(order.id!)
-                  toast.success('已催办，提醒邮件将发送给当前签核人')
-                  setItems((current) => current.map((item) => item.id === order.id ? { ...item, lastRemindedAt: result.remindedAt || new Date().toISOString() } : item))
-                } catch (cause) {
-                  toast.error(cause instanceof Error ? cause.message : '催办失败')
-                } finally {
-                  setRemindingId(null)
-                }
-              }
-              return (
-                <TableRow key={order.id} className="cursor-pointer hover:relative hover:z-10" onClick={() => navigate(`/mr/${order.id}`)}>
-                  <TableCell>
-                    <button type="button" className="block max-w-full text-left transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={order.customerName ? `按客户筛选：${order.customerName}` : undefined} onClick={(event) => { event.stopPropagation(); if (order.customerId) { setCustomerFilterId(String(order.customerId)); setCustomerFilterName(order.customerName || '') } else { navigate(`/mr/${order.id}`) } }}>
-                      <span title={order.customerName || '未选择客户'} className="block truncate font-medium">{order.customerName || '未选择客户'}</span>
-                    </button>
-                    {/* Ctrl.NO 与签单主体徽标同一行（2026-09-11 佬反馈）；非默认主体（敦沪）才显示徽标，点击可按公司筛选（spec 011） */}
-                    <div className="flex items-center gap-1.5">
-                      <span title={order.ctrlNo || '未填写 Ctrl.NO'} className="min-w-0 truncate text-xs text-muted-foreground">{order.ctrlNo || '未填写 Ctrl.NO'}</span>
-                      {order.company && order.company !== 'dunyang' ? (
-                        <button type="button" className="inline-flex shrink-0 items-center rounded border border-violet-200 bg-violet-50 px-1.5 py-px text-[11px] font-medium text-violet-700 transition-colors hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300" title={`按签单主体筛选：${mrCompanyOf(order.company).label}`} onClick={(event) => { event.stopPropagation(); setCompany(order.company || 'all') }}>
-                          {mrCompanyOf(order.company).shortLabel}
-                        </button>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                  <TableCell className="truncate">
-                    {order.salesOwnerId ? (
-                      <button type="button" className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline" title={`按销售筛选：${order.salesOwnerName || '-'}`} onClick={(event) => { event.stopPropagation(); setSalesFilterId(String(order.salesOwnerId)); setSalesFilterName(order.salesOwnerName || '') }}>
-                        {order.salesOwnerName || '-'}
-                      </button>
-                    ) : (order.salesOwnerName || '-')}
-                  </TableCell>
-                  <TableCell className="truncate pr-6 text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
-                  <TableCell className="truncate">
-                    {/* MR 状态与采购状态一行并排,统一 gap 分隔（采购状态字号小一号、灰一点） */}
-                    <div className="group flex items-center gap-1.5">
-                      <StatusHoverButton orderStatus={orderStatus} order={order} stepLabel={stepLabel} assigneeName={order.currentAssigneeName} onFilter={() => setStatus(orderStatus)} />
-                      {orderStatus === 'in_review' && order.permissions?.canRemind ? (
-                        <button type="button" className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-amber-600/80 transition-colors hover:bg-amber-50 hover:text-amber-700 disabled:opacity-40"
-                          title={remindThrottled ? `已于 ${String(order.lastRemindedAt).replace('T', ' ').slice(5, 16)} 催过，24 小时内只能催办一次` : '催办当前签核人'}
-                          aria-label="催办" disabled={remindingId === order.id || remindThrottled}
-                          onClick={(event) => { event.stopPropagation(); void quickRemind() }}>
-                          {remindingId === order.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BellRing className="h-3.5 w-3.5" />}
-                        </button>
-                      ) : null}
-                      {orderStatus === 'approved' && order.voidRequestStatus === 'pending' ? (
-                        <>
-                          <ArrowRight className="h-3 w-3 shrink-0 text-amber-600/80" />
-                          <VoidStatusHoverButton order={order} onFilter={() => setStatus('voiding')} />
-                        </>
-                      ) : orderStatus === 'approved' && order.purchaseStatus ? (
-                        <>
-                          {/* 流程递进箭头：常驻琥珀色（呼应采购状态色）,无打扰动效 */}
-                          <ArrowRight className="h-3 w-3 shrink-0 text-amber-600/80" />
-                          <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`采购状态：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}${purchaseHasDraft ? (purchaseFilled > 0 ? `（已暂存 ${purchaseFilled}/${purchaseItemTotal} 项）` : '（已暂存备注）') : ''}${order.updatedAt ? ` · 更新于 ${shortDate(order.updatedAt)}` : ''}（点击按采购状态筛选）`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
-                            {(() => { const conf = PURCHASE_INDICATOR[order.purchaseStatus || '']; const Icon = conf ? conf.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null })()}
-                            {PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}
-                            {purchaseHasDraft ? <Save className="h-3.5 w-3.5 shrink-0 text-amber-600" /> : null}
+        {loading ? (
+          <SkeletonList rows={5} columns={5} />
+        ) : items.length === 0 ? (
+          <EmptyState
+            title={hasActiveFilters ? '暂无符合条件的 MR 申请单' : '暂无 MR 申请单'}
+            description={hasActiveFilters ? '可尝试调整搜索词或重置筛选条件' : undefined}
+            actionLabel={hasActiveFilters ? '重置筛选' : (hasPermission('mr.create') ? '新建 MR 申请' : undefined)}
+            onAction={hasActiveFilters ? resetFilters : (hasPermission('mr.create') ? () => void createDraft() : undefined)}
+          />
+        ) : (
+          <ResponsiveList items={pagedItems} keyExtractor={(order) => String(order.id)} renderCard={renderMrCard}>
+            <div ref={tableScrollRef} className="overflow-x-auto">
+              <table className="w-full min-w-[890px] table-fixed caption-bottom text-sm">
+                <colgroup>
+                  <col className="w-[280px]" />
+                  <col className="w-[110px]" />
+                  <col className="w-[150px]" />
+                  <col className="w-[190px]" />
+                  <col className="w-[160px]" />
+                </colgroup>
+                <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
+                  <TableRow>
+                    <TableHead>客户 / Ctrl.NO</TableHead>
+                    <TableHead>负责的销售</TableHead>
+                    <TableHead className="pr-6 text-right">未税总计</TableHead>
+                    <TableHead>状态</TableHead>
+                    <TableHead>更新时间</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pagedItems.map((order, rowIndex) => {
+                    const orderStatus = (order.status || 'draft') as MrStatus
+                    // 采购暂存进度：已填品项数 + 备注非空都算有进度（2026-09-21 热修 #175 起备注也落库）
+                    const purchaseFilled = Number(order.purchaseFilledCount) || 0
+                    const purchaseItemTotal = Number(order.itemCount) || 0
+                    const purchaseHasDraft = order.purchaseStatus === 'pending' && (purchaseFilled > 0 || Boolean(String(order.purchaseNote || '').trim()))
+                    const stepLabel = order.currentStepKey === 'sales' ? '业务负责人' : (order.currentStepLabel || '')
+                    // 催办（spec 008）：签核中且有权限的行显示铃铛，24h 节流置灰
+                    const remindThrottled = isRemindThrottled(order)
+                    return (
+                      <TableRow
+                        key={order.id}
+                        className="list-row-enter cursor-pointer hover:relative hover:z-10"
+                        style={{ animationDelay: `${Math.min(rowIndex * 30, 360)}ms` }}
+                        onClick={() => navigate(`/mr/${order.id}`)}
+                      >
+                        <TableCell>
+                          <button type="button" className="block max-w-full text-left transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={order.customerName ? `按客户筛选：${order.customerName}` : undefined} onClick={(event) => { event.stopPropagation(); if (order.customerId) { setCustomerFilterId(String(order.customerId)); setCustomerFilterName(order.customerName || '') } else { navigate(`/mr/${order.id}`) } }}>
+                            <span title={order.customerName || '未选择客户'} className="block truncate font-medium">{order.customerName || '未选择客户'}</span>
                           </button>
-                        </>
-                      ) : null}
-                    </div>
+                          {/* Ctrl.NO 与签单主体徽标同一行（2026-09-11 佬反馈）；非默认主体（敦沪）才显示徽标，点击可按公司筛选（spec 011） */}
+                          <div className="flex items-center gap-1.5">
+                            <span title={order.ctrlNo || '未填写 Ctrl.NO'} className="min-w-0 truncate text-xs text-muted-foreground">{order.ctrlNo || '未填写 Ctrl.NO'}</span>
+                            {order.company && order.company !== 'dunyang' ? (
+                              <button type="button" className="inline-flex shrink-0 items-center rounded border border-violet-200 bg-violet-50 px-1.5 py-px text-[11px] font-medium text-violet-700 transition-colors hover:bg-violet-100" title={`按签单主体筛选：${mrCompanyOf(order.company).label}`} onClick={(event) => { event.stopPropagation(); setCompany(order.company || 'all') }}>
+                                {mrCompanyOf(order.company).shortLabel}
+                              </button>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell className="truncate">
+                          {order.salesOwnerId ? (
+                            <button type="button" className="block max-w-full truncate text-left transition-colors hover:text-primary hover:underline" title={`按销售筛选：${order.salesOwnerName || '-'}`} onClick={(event) => { event.stopPropagation(); setSalesFilterId(String(order.salesOwnerId)); setSalesFilterName(order.salesOwnerName || '') }}>
+                              {order.salesOwnerName || '-'}
+                            </button>
+                          ) : (order.salesOwnerName || '-')}
+                        </TableCell>
+                        <TableCell className="truncate pr-6 text-right tabular-nums">¥ {money(order.totalExcludingTax)}</TableCell>
+                        <TableCell className="truncate">
+                          {/* MR 状态与采购状态一行并排,统一 gap 分隔（采购状态字号小一号、灰一点） */}
+                          <div className="group flex items-center gap-1.5">
+                            <StatusHoverButton orderStatus={orderStatus} order={order} stepLabel={stepLabel} assigneeName={order.currentAssigneeName} onFilter={() => setStatus(orderStatus)} />
+                            {orderStatus === 'in_review' && order.permissions?.canRemind ? (
+                              <button type="button" className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-amber-600/80 transition-colors hover:bg-amber-50 hover:text-amber-700 disabled:opacity-40"
+                                title={remindThrottled ? `已于 ${String(order.lastRemindedAt).replace('T', ' ').slice(5, 16)} 催过，24 小时内只能催办一次` : '催办当前签核人'}
+                                aria-label="催办" disabled={remindingId === order.id || remindThrottled}
+                                onClick={(event) => { event.stopPropagation(); setRemindTarget(order) }}>
+                                {remindingId === order.id ? <span className="btn-loader btn-loader-xs" aria-hidden="true" /> : <BellRing className="h-3.5 w-3.5" />}
+                              </button>
+                            ) : null}
+                            {orderStatus === 'approved' && order.voidRequestStatus === 'pending' ? (
+                              <>
+                                <ArrowRight className="h-3 w-3 shrink-0 text-amber-600/80" />
+                                <VoidStatusHoverButton order={order} onFilter={() => setStatus('voiding')} />
+                              </>
+                            ) : orderStatus === 'approved' && order.purchaseStatus ? (
+                              <>
+                                {/* 流程递进箭头：常驻琥珀色（呼应采购状态色）,无打扰动效 */}
+                                <ArrowRight className="h-3 w-3 shrink-0 text-amber-600/80" />
+                                <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-opacity hover:opacity-80" title={`采购状态：${PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}${purchaseHasDraft ? (purchaseFilled > 0 ? `（已暂存 ${purchaseFilled}/${purchaseItemTotal} 项）` : '（已暂存备注）') : ''}${order.updatedAt ? ` · 更新于 ${shortDate(order.updatedAt)}` : ''}（点击按采购状态筛选）`} onClick={(event) => { event.stopPropagation(); setPurchaseStatus(order.purchaseStatus || '') }}>
+                                  {(() => { const conf = PURCHASE_INDICATOR[order.purchaseStatus || '']; const Icon = conf ? conf.icon : null; return Icon ? <Icon className={`h-3.5 w-3.5 ${conf.color}`} /> : null })()}
+                                  {PURCHASE_LABELS[order.purchaseStatus] || order.purchaseStatus}
+                                  {purchaseHasDraft ? <Save className="h-3.5 w-3.5 shrink-0 text-amber-600" /> : null}
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
 
-                    {order.assignmentError ? <div className="mt-1 truncate text-xs text-destructive" title={`流程暂停：${order.assignmentError}`}>流程暂停：{order.assignmentError}</div> : null}
-                  </TableCell>
-                  <TableCell title={shortDate(order.updatedAt)} className="truncate text-sm text-muted-foreground">{shortDate(order.updatedAt)}</TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-          </table>
-        </div>
+                          {order.assignmentError ? <div className="mt-1 truncate text-xs text-destructive" title={`流程暂停：${order.assignmentError}`}>流程暂停：{order.assignmentError}</div> : null}
+                        </TableCell>
+                        <TableCell title={shortDate(order.updatedAt)} className="truncate text-sm text-muted-foreground">{shortDate(order.updatedAt)}</TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </table>
+            </div>
+          </ResponsiveList>
+        )}
         {!loading && items.length > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5 text-sm text-muted-foreground">
             <span>共 {items.length} 条 · 已加载 {Math.min(page * PAGE_SIZE, items.length)} 条</span>
@@ -629,6 +751,15 @@ export function MrListPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      <ReasonConfirmDialog
+        open={Boolean(remindTarget)}
+        title="催办签核人"
+        description={remindTarget ? `确定催办「${remindTarget.customerName || '该 MR'}」的当前签核人吗？系统会向其发送提醒邮件。` : undefined}
+        confirmLabel="发送催办"
+        loading={Boolean(remindTarget && remindingId === remindTarget.id)}
+        onCancel={() => setRemindTarget(null)}
+        onConfirm={() => { if (remindTarget) return executeRemindOrder(remindTarget) }}
+      />
+    </PageContainer>
   )
 }

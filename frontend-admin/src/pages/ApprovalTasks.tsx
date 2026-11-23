@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   CalendarClock, Ban, CheckCircle2, CircleCheck, CircleCheckBig, CircleDot, CircleMinus, CircleSlash, CircleX,
-  Clock3, FileSignature, FileText, Forward, Hourglass, ListTodo, Loader2, Minus, Package, PackageCheck,
+  Clock3, FileSignature, FileText, Forward, Hourglass, ListTodo, Minus, Package, PackageCheck,
   PauseCircle, Pencil, RefreshCw, RotateCcw, Search, Send, BellRing, ArrowRight, type LucideIcon,
 } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -16,9 +16,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
+import { PageContainer, PageHeader } from '@/components/PageHeader'
+import { ReasonConfirmDialog } from '@/components/ReasonConfirmDialog'
 import { ResponsiveCard, ResponsiveList } from '@/components/ResponsiveList'
 import { EmptyState } from '@/components/EmptyState'
-import { Skeleton } from '@/components/Skeleton'
+import { SkeletonList } from '@/components/Skeleton'
+import { indicatorSpan } from '@/components/StatusIndicator'
 import { approveMr, listApprovalTasks, rejectMr, remindMr } from '@/packages/mr/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { matchesSearchText } from '@/lib/text-i18n'
@@ -36,16 +39,7 @@ function dateTime(value?: string | null) {
   return value ? String(value).replace('T', ' ').slice(0, 16) : '-'
 }
 
-// —— 考勤风格扩散：状态/业务 徽章 → 图标+文字（去 Badge 大色块）——
-function indicatorSpan(icon: LucideIcon, color: string, label: string) {
-  const Icon = icon
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-      <Icon className={`h-3.5 w-3.5 ${color}`} />
-      {label}
-    </span>
-  )
-}
+// —— 状态/业务指示器（复用公共 StatusIndicator）——
 
 const TASK_STATUS_INDICATOR: Record<string, { icon: LucideIcon; color: string; label: string }> = {
   pending: { icon: Hourglass, color: 'text-amber-600', label: '待处理' },
@@ -129,38 +123,79 @@ function agingInfo(createdAt?: string | null) {
   return { text, overdue: hours >= 48 }
 }
 
-/** 状态 hover 悬浮卡（fixed 定位，防表格遮挡）：发起/完成时间线 + 签核步骤链 */
+/** 状态 hover / 触屏点击悬浮卡（fixed + Portal 定位，防表格遮挡与视口底部溢出）：发起/完成时间线 + 签核步骤链 */
 function TaskStatusHover({ task }: { task: ApprovalTask }) {
   const [hover, setHover] = useState(false)
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
-  const ref = useRef<HTMLSpanElement>(null)
+  const [pinned, setPinned] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number; flipped: boolean } | null>(null)
+  const ref = useRef<HTMLButtonElement>(null)
   const segs = ([
     { label: '发起', at: task.createdAt },
     { label: '完成', at: task.completedAt },
   ]).filter((seg) => seg.at)
   const steps = task.approvalSteps || []
+
+  const show = () => {
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect()
+      const cardWidth = Math.min(250, window.innerWidth - 16)
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - cardWidth - 8))
+      const flipped = window.innerHeight - rect.bottom < 180 && rect.top > 180
+      setPos({ top: flipped ? rect.top - 4 : rect.bottom + 4, left, flipped })
+    }
+    setHover(true)
+  }
+
+  useEffect(() => {
+    if (!pinned) return
+    const onDown = (event: MouseEvent) => {
+      if (ref.current?.contains(event.target as Node)) return
+      setPinned(false)
+      setHover(false)
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setPinned(false); setHover(false) }
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [pinned])
+
   if (!segs.length && !steps.length) return statusIndicator(task)
   return (
-    <span
+    <button
       ref={ref}
-      className="inline-block cursor-default"
-      onMouseEnter={() => {
-        if (ref.current) {
-          const rect = ref.current.getBoundingClientRect()
-          setPos({ top: rect.bottom + 4, left: Math.min(rect.left, Math.max(8, window.innerWidth - 240)) })
+      type="button"
+      className="inline-flex cursor-default items-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+      onMouseEnter={show}
+      onMouseLeave={() => { if (!pinned) setHover(false) }}
+      onFocus={show}
+      onBlur={() => { if (!pinned) setHover(false) }}
+      onClick={(event) => {
+        event.stopPropagation()
+        if (pinned && hover) {
+          setPinned(false)
+          setHover(false)
+        } else {
+          setPinned(true)
+          show()
         }
-        setHover(true)
       }}
-      onMouseLeave={() => setHover(false)}
     >
       {statusIndicator(task)}
       {/* createPortal 到 body：行入场动画 list-row-enter 的 transform 会让行成为 fixed 包含块，
           直接渲染在行内会整体错位（踩过的坑） */}
       {hover && pos ? createPortal(
-        <div className="pointer-events-none fixed z-[100] min-w-[190px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ top: pos.top, left: pos.left }}>
+        <div
+          className="pointer-events-none fixed z-[100] min-w-[190px] max-w-[min(260px,calc(100vw-16px))] rounded-lg border border-slate-200 bg-white p-2.5 text-left text-xs shadow-lg"
+          style={{ top: pos.top, left: pos.left, transform: pos.flipped ? 'translateY(-100%)' : undefined }}
+        >
           {segs.map((seg) => (
             <div key={seg.label} className="flex items-center gap-1.5 text-muted-foreground">
-              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#582b8b]/10 text-[#582b8b]"><CircleDot className="h-2.5 w-2.5" /></span>
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/10 text-primary"><CircleDot className="h-2.5 w-2.5" /></span>
               {seg.label} <span className="font-medium text-foreground">{dateTime(seg.at)}</span>
             </div>
           ))}
@@ -188,7 +223,7 @@ function TaskStatusHover({ task }: { task: ApprovalTask }) {
         </div>,
         document.body,
       ) : null}
-    </span>
+    </button>
   )
 }
 
@@ -228,6 +263,7 @@ export function ApprovalTasks() {
   const [endDate, setEndDate] = useState(searchParams.get('endDate') || '')
   // MR 签核行内快捷操作
   const [actingTaskId, setActingTaskId] = useState<string | number | null>(null)
+  const [confirmAction, setConfirmAction] = useState<{ kind: 'approve' | 'remind'; task: ApprovalTask } | null>(null)
   const [rejectTask, setRejectTask] = useState<ApprovalTask | null>(null)
   const [rejectReason, setRejectReason] = useState('')
   const [rejectTarget, setRejectTarget] = useState<'sales' | 'assistant'>('sales')
@@ -299,16 +335,17 @@ export function ApprovalTasks() {
     view === 'pending' && task.status === 'pending' && task.businessType === 'mr'
   ), [view])
 
-  async function quickApprove(task: ApprovalTask) {
-    if (!window.confirm(`确认同意「${task.title}」的签核？`)) return
+  async function executeQuickApprove(task: ApprovalTask) {
     if (user && user.hasEngineerSignature === false) {
       toast.error('签核前请先设置手写签名：右上角头像 → 我的设置 → 手写签名')
+      setConfirmAction(null)
       return
     }
     setActingTaskId(task.id)
     try {
       const next = await approveMr(task.businessId)
       toast.success(next.status === 'approved' ? 'MR 已完成全部签核' : '当前签核步骤已完成，流程已转至下一步')
+      setConfirmAction(null)
       window.dispatchEvent(new CustomEvent('mr:approval-changed'))
       await load()
     } catch (cause) {
@@ -353,13 +390,13 @@ export function ApprovalTasks() {
     return Number.isFinite(time) && Date.now() - time < 24 * 3600 * 1000
   }
 
-  async function quickRemind(task: ApprovalTask) {
-    if (!window.confirm(`确定催办「${task.title}」的当前签核人吗？系统会向其发送提醒邮件。`)) return
+  async function executeQuickRemind(task: ApprovalTask) {
     setActingTaskId(task.id)
     try {
       const result = await remindMr(task.businessId)
       toast.success('已催办，提醒邮件将发送给当前签核人')
       setItems((current) => current.map((item) => item.id === task.id ? { ...item, lastRemindedAt: result.remindedAt || new Date().toISOString() } : item))
+      setConfirmAction(null)
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : '催办失败')
     } finally {
@@ -375,16 +412,16 @@ export function ApprovalTasks() {
     const title = throttled ? `已于 ${lastText} 催过，24 小时内只能催办一次` : '催办当前签核人'
     if (withText) return (
       <Button variant="ghost" size="sm" className="text-muted-foreground hover:bg-transparent hover:text-amber-600" disabled={acting || throttled} title={title}
-        onClick={(event) => { event.stopPropagation(); void quickRemind(task) }}>
-        {acting ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <BellRing className="mr-1 h-4 w-4" />}
+        onClick={(event) => { event.stopPropagation(); setConfirmAction({ kind: 'remind', task }) }}>
+        {acting ? <span className="btn-loader btn-loader-sm mr-1" aria-hidden="true" /> : <BellRing className="mr-1 h-4 w-4" />}
         催办
       </Button>
     )
     return (
       <button type="button" className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-amber-50 hover:text-amber-600 disabled:opacity-40" title={title} aria-label="催办"
         disabled={acting || throttled}
-        onClick={(event) => { event.stopPropagation(); void quickRemind(task) }}>
-        {acting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BellRing className="h-3.5 w-3.5" />}
+        onClick={(event) => { event.stopPropagation(); setConfirmAction({ kind: 'remind', task }) }}>
+        {acting ? <span className="btn-loader btn-loader-xs" aria-hidden="true" /> : <BellRing className="h-3.5 w-3.5" />}
       </button>
     )
   }
@@ -400,15 +437,15 @@ export function ApprovalTasks() {
       <>
         {withText ? (
           <Button variant="ghost" size="sm" className={`${cls} hover:text-emerald-600`} disabled={acting}
-            onClick={(event) => { event.stopPropagation(); void quickApprove(task) }}>
-            {acting ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <CircleCheck className="mr-1 h-4 w-4" />}
+            onClick={(event) => { event.stopPropagation(); setConfirmAction({ kind: 'approve', task }) }}>
+            {acting ? <span className="btn-loader btn-loader-sm mr-1" aria-hidden="true" /> : <CircleCheck className="mr-1 h-4 w-4" />}
             同意
           </Button>
         ) : (
           <button type="button" className={`${cls} hover:bg-emerald-50 hover:text-emerald-600`} title="同意签核" aria-label="同意签核"
             disabled={acting}
-            onClick={(event) => { event.stopPropagation(); void quickApprove(task) }}>
-            {acting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CircleCheck className="h-3.5 w-3.5" />}
+            onClick={(event) => { event.stopPropagation(); setConfirmAction({ kind: 'approve', task }) }}>
+            {acting ? <span className="btn-loader btn-loader-xs" aria-hidden="true" /> : <CircleCheck className="h-3.5 w-3.5" />}
           </button>
         )}
         {withText ? (
@@ -467,16 +504,17 @@ export function ApprovalTasks() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] space-y-4 p-4 sm:p-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold"><ListTodo className="size-6 text-primary" />待办中心</h1>
-          <p className="mt-1 text-sm text-muted-foreground">统一查看 MR 签核及其他系统接入的审批任务。</p>
-        </div>
-        <Button variant="outline" onClick={() => void load()} disabled={loading}>
-          <RefreshCw className={`mr-2 size-4 ${loading ? 'animate-spin' : ''}`} />刷新
-        </Button>
-      </header>
+    <PageContainer>
+      <PageHeader
+        title="待办中心"
+        subtitle="统一查看 MR 签核及其他系统接入的审批任务。"
+        icon={ListTodo}
+        actions={(
+          <Button variant="outline" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className={`mr-2 size-4 ${loading ? 'animate-spin' : ''}`} />刷新
+          </Button>
+        )}
+      />
 
       <div className="-mx-2 flex items-end gap-1 overflow-x-auto border-b border-border px-2 sm:mx-0 sm:px-1" role="tablist" aria-label="待办视图">
         {VIEWS.map((item) => {
@@ -542,16 +580,7 @@ export function ApprovalTasks() {
 
       <div className="overflow-hidden rounded-xl border bg-card">
         {loading ? (
-          <div className="p-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={`skeleton-${i}`} className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0">
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-4 w-16" />
-                <Skeleton className="h-4 w-24" />
-              </div>
-            ))}
-          </div>
+          <SkeletonList rows={5} columns={4} />
         ) : filteredItems.length === 0 ? (
           <div className="p-2">
             <EmptyState
@@ -650,12 +679,31 @@ export function ApprovalTasks() {
           <DialogFooter>
             <Button variant="outline" onClick={() => { setRejectTask(null); setRejectReason(''); setRejectTarget('sales') }}>取消</Button>
             <Button disabled={rejecting || !rejectReason.trim()} onClick={() => void confirmReject()}>
-              {rejecting ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+              {rejecting ? <span className="btn-loader mr-1.5" aria-hidden="true" /> : null}
               确认驳回
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+
+      <ReasonConfirmDialog
+        open={Boolean(confirmAction)}
+        title={confirmAction?.kind === 'approve' ? '同意签核' : '催办签核人'}
+        description={confirmAction
+          ? (confirmAction.kind === 'approve'
+            ? `确认同意「${confirmAction.task.title}」的签核？`
+            : `确定催办「${confirmAction.task.title}」的当前签核人吗？系统会向其发送提醒邮件。`)
+          : undefined}
+        confirmLabel={confirmAction?.kind === 'approve' ? '确认同意' : '发送催办'}
+        loading={Boolean(confirmAction && actingTaskId === confirmAction.task.id)}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={() => {
+          if (!confirmAction) return
+          return confirmAction.kind === 'approve'
+            ? executeQuickApprove(confirmAction.task)
+            : executeQuickRemind(confirmAction.task)
+        }}
+      />
+    </PageContainer>
   )
 }

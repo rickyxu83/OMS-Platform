@@ -38,7 +38,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { serviceItemsLabel, serviceItemsSearchText, servicePartActionLabel } from "@/lib/service-items";
 import { displayServiceOrderParts, displayServiceOrderWorkContent } from "@/lib/service-order-detail-view";
 import { api } from "@/services/api";
-import { Skeleton } from "@/components/Skeleton";
+import { SkeletonList } from "@/components/Skeleton";
+import { PageContainer, PageHeader } from "@/components/PageHeader";
+import { StatStrip, StatStripItem } from "@/components/StatStrip";
+import { indicatorSpan } from "@/components/StatusIndicator";
 import { formatCount, formatDate, formatDateTime, formatDateRange, formatFileSize } from "@/lib/format";
 import { EmptyState } from "@/components/EmptyState";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
@@ -817,15 +820,6 @@ const TYPE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
   other: { icon: MoreHorizontal, color: "text-slate-400" },
 };
 const STATIC_FALLBACK = { icon: Send, color: "text-slate-400" };
-function indicatorSpan(icon: LucideIcon, color: string, label: string) {
-  const Icon = icon;
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-      <Icon className={`h-3.5 w-3.5 ${color}`} />
-      {label}
-    </span>
-  );
-}
 
 const SERVICE_TYPE_SEARCH_ALIASES: Record<string, string> = {
   install: "安装 install",
@@ -2059,80 +2053,70 @@ export function ServiceOrders() {
     : devices;
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold">{t.title}</h1>
-          <p className="text-muted-foreground mt-1">{t.subtitle}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={load} disabled={saving}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            {t.actions.refresh}
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" disabled={saving || exporting || loading}>
-                {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" />}
-                {exporting ? t.actions.exporting : t.actions.export}
-                <ChevronDown className="w-4 h-4 ml-2" />
+    <PageContainer>
+      <PageHeader
+        title={t.title}
+        subtitle={t.subtitle}
+        actions={(
+          <>
+            <Button variant="outline" onClick={load} disabled={saving}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              {t.actions.refresh}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" disabled={saving || exporting || loading}>
+                  {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Download className="w-4 h-4 mr-2" />}
+                  {exporting ? t.actions.exporting : t.actions.export}
+                  <ChevronDown className="w-4 h-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => exportOrders()} disabled={exporting || loading}>
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  {t.actions.exportExcel}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => exportOrdersPdf()} disabled={exporting || loading}>
+                  <FileDown className="w-4 h-4 mr-2" />
+                  {t.actions.exportPdf}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {canDeleteOrders ? (
+              <Button variant="ghost" className="text-red-600 hover:text-red-700" onClick={bulkDeleteOrders} disabled={saving || !selectedIds.length}>
+                <Trash2 className="w-4 h-4 mr-2" />
+                {t.bulk.delete}{selectedIds.length ? ` (${selectedIds.length})` : ""}
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => exportOrders()} disabled={exporting || loading}>
-                <FileSpreadsheet className="w-4 h-4 mr-2" />
-                {t.actions.exportExcel}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => exportOrdersPdf()} disabled={exporting || loading}>
-                <FileDown className="w-4 h-4 mr-2" />
-                {t.actions.exportPdf}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {canDeleteOrders ? (
-            <Button variant="ghost" className="text-red-600 hover:text-red-700" onClick={bulkDeleteOrders} disabled={saving || !selectedIds.length}>
-              <Trash2 className="w-4 h-4 mr-2" />
-              {t.bulk.delete}{selectedIds.length ? ` (${selectedIds.length})` : ""}
-            </Button>
-          ) : null}
-          {canCreateOrders ? (
-            <Button onClick={openCreateOrder} disabled={saving}>
-              <Plus className="w-4 h-4 mr-2" />
-              {t.actions.create}
-            </Button>
-          ) : null}
-        </div>
-      </div>
+            ) : null}
+            {canCreateOrders ? (
+              <Button onClick={openCreateOrder} disabled={saving}>
+                <Plus className="w-4 h-4 mr-2" />
+                {t.actions.create}
+              </Button>
+            ) : null}
+          </>
+        )}
+      />
 
       <ErrorToast message={error} />
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
+      <StatStrip>
         {stats.map((stat, statIndex) => {
           const active = statusFilter === stat.filter;
           return (
-            <button
+            <StatStripItem
               key={stat.label}
-              type="button"
-              aria-pressed={active}
-              onClick={() => setStatusFilter(active ? "all" : stat.filter)}
-              className="group -mx-1 inline-flex items-baseline gap-1.5 rounded px-1 transition-colors hover:bg-muted/60"
+              label={stat.label}
+              value={formatCount(stat.value)}
+              active={active}
+              loading={initialLoading}
+              animationIndex={statIndex}
               title={stat.label}
-            >
-              <span className="text-muted-foreground">{stat.label}</span>
-              {initialLoading ? (
-                <Skeleton className="h-5 w-8" />
-              ) : (
-                <span
-                  className={`stat-value-enter inline-block text-base font-bold underline-offset-4 group-hover:underline ${active ? "text-primary underline" : ""}`}
-                  style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}
-                >
-                  {formatCount(stat.value)}
-                </span>
-              )}
-            </button>
+              onClick={() => setStatusFilter(active ? "all" : stat.filter)}
+            />
           );
         })}
-      </div>
+      </StatStrip>
 
       <Card>
         <CardContent className="pt-6">
@@ -2182,17 +2166,7 @@ export function ServiceOrders() {
       <div className="overflow-hidden rounded-xl border bg-card">
         <div>
             {initialLoading ? (
-              <div className="p-2">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={`skeleton-${i}`} className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0">
-                    <Skeleton className="h-4 w-20" />
-                    <Skeleton className="h-4 flex-1" />
-                    <Skeleton className="h-4 w-16" />
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-6 w-14 rounded-full" />
-                  </div>
-                ))}
-              </div>
+              <SkeletonList rows={5} columns={5} />
             ) : filteredOrders.length === 0 ? (
               <EmptyState
                 title={t.list.empty}
@@ -2749,6 +2723,6 @@ export function ServiceOrders() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

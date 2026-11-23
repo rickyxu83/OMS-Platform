@@ -144,7 +144,7 @@ export function SettingsHolidays(props: SettingsHolidaysProps) {
                 ) : null}
               </div>
               {canManage ? (
-                <div className="grid gap-3 md:grid-cols-[160px_1fr_140px_auto]">
+                <div className="grid gap-3 md:grid-cols-[200px_1fr_140px_auto]">
                   <div className="space-y-2">
                     <Label>日期</Label>
                     <Input
@@ -178,44 +178,44 @@ export function SettingsHolidays(props: SettingsHolidaysProps) {
                   </div>
                 </div>
               ) : null}
-              <div className="overflow-x-auto rounded-md border">
-                <Table className="min-w-[720px]">
-                  <TableHeader>
+              <div className="overflow-x-auto rounded-lg border">
+                <Table className="w-full min-w-[720px]">
+                  <TableHeader className="bg-muted/20 text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                     <TableRow>
-                      <TableHead>日期</TableHead>
-                      <TableHead>名称</TableHead>
-                      <TableHead>类型</TableHead>
-                      <TableHead><span className="inline-flex items-center gap-1">来源 <HelpTooltip label={HOLIDAY_SOURCE_HELP} /></span></TableHead>
-                      <TableHead>状态</TableHead>
-                      <TableHead>操作</TableHead>
+                      <TableHead className="w-[1%] whitespace-nowrap pl-4 pr-3">日期</TableHead>
+                      <TableHead className="px-3">名称</TableHead>
+                      <TableHead className="w-[1%] whitespace-nowrap px-3">类型</TableHead>
+                      <TableHead className="w-[1%] whitespace-nowrap px-3"><span className="inline-flex items-center gap-1">来源 <HelpTooltip label={HOLIDAY_SOURCE_HELP} /></span></TableHead>
+                      <TableHead className="w-[1%] whitespace-nowrap px-3">状态</TableHead>
+                      <TableHead className="w-[1%] whitespace-nowrap pl-3 pr-4 text-right">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {legalHolidays.map((item) => (
                       <TableRow key={item.date} className={item.active === false ? "opacity-55" : ""}>
-                        <TableCell>
+                        <TableCell className="w-[1%] whitespace-nowrap pl-4 pr-3">
                           <div className="font-medium tabular-nums">{item.date}</div>
                           <div className="text-xs text-muted-foreground">{holidayWeekday(item.date)}</div>
                         </TableCell>
-                        <TableCell className="font-medium">{item.name}</TableCell>
-                        <TableCell>
+                        <TableCell className="px-3 font-medium">{item.name}</TableCell>
+                        <TableCell className="w-[1%] whitespace-nowrap px-3">
                           <Badge variant={(item.dayType || "legal_holiday") === "makeup_workday" ? "orange" : "rose"}>
                             {DAY_TYPE_LABELS[item.dayType || "legal_holiday"] || "放假"}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">{HOLIDAY_SOURCE_LABELS[item.source] || item.source || "-"}</TableCell>
-                        <TableCell>
+                        <TableCell className="w-[1%] whitespace-nowrap px-3 text-muted-foreground">{HOLIDAY_SOURCE_LABELS[item.source] || item.source || "-"}</TableCell>
+                        <TableCell className="w-[1%] whitespace-nowrap px-3">
                           <Badge variant={item.active === false ? "outline" : "success"}>{item.active === false ? "停用" : "启用"}</Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="w-[1%] whitespace-nowrap pl-3 pr-4 text-right">
                           {canManage ? (
                             item.active === false ? (
-                              <Button size="sm" variant="outline" onClick={() => enableLegalHoliday(item)}>
-                                <Check className="mr-1 h-4 w-4" /> 启用
+                              <Button size="sm" variant="ghost" className="h-8 px-2.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700" onClick={() => enableLegalHoliday(item)}>
+                                <Check className="h-3.5 w-3.5" /> 启用
                               </Button>
                             ) : (
-                              <Button size="sm" variant="outline" onClick={() => disableLegalHoliday(item)}>
-                                <Trash2 className="mr-1 h-4 w-4" /> 停用
+                              <Button size="sm" variant="ghost" className="h-8 px-2.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={() => disableLegalHoliday(item)}>
+                                <Trash2 className="h-3.5 w-3.5" /> 停用
                               </Button>
                             )
                           ) : (

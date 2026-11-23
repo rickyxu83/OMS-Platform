@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { Loader2, RefreshCw, Wallet } from "lucide-react";
+import { RefreshCw, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/EmptyState";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
+import { SkeletonList } from "@/components/Skeleton";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { annualBalanceDays, days, hours, LEAVE_TYPE_LABELS, type EmployeeProfile } from "@/pages/attendance-shared";
 
@@ -118,8 +119,8 @@ export function BalanceLedgerPanel({ items, loading, profile, onRefresh }: Balan
   ];
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 border-b bg-muted/20">
+    <Card className="gap-0 overflow-hidden">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 border-b bg-muted/20 py-4 [.border-b]:pb-4">
         <div className="flex items-center gap-2">
           <Wallet className="size-4 text-primary" />
           <div>
@@ -130,8 +131,8 @@ export function BalanceLedgerPanel({ items, loading, profile, onRefresh }: Balan
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">特休余额 {days(annualBalanceDays(profile))} 天</Badge>
           <Badge variant="secondary">调休余额 {hours(profile?.compTimeBalanceHours)} 小时</Badge>
-          <Button variant="ghost" size="sm" onClick={onRefresh} disabled={loading}>
-            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />刷新
+          <Button variant="ghost" size="sm" className="h-8 text-muted-foreground hover:text-foreground" onClick={onRefresh} disabled={loading}>
+            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />刷新
           </Button>
         </div>
       </CardHeader>
@@ -156,8 +157,8 @@ export function BalanceLedgerPanel({ items, loading, profile, onRefresh }: Balan
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />加载中
+          <div className="rounded-lg border">
+            <SkeletonList rows={4} columns={5} />
           </div>
         ) : !filtered.length ? (
           <EmptyState
@@ -182,43 +183,45 @@ export function BalanceLedgerPanel({ items, loading, profile, onRefresh }: Balan
               />
             )}
           >
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>时间</TableHead>
-                  <TableHead>类型</TableHead>
-                  <TableHead>变动</TableHead>
-                  <TableHead>变动后余额</TableHead>
-                  <TableHead>事由</TableHead>
-                  <TableHead>操作人</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((item) => {
-                  const summary = requestSummary(item.request);
-                  return (
-                    <TableRow key={item.id}>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(item.createdAt)}</TableCell>
-                      <TableCell><Badge variant="outline">{balanceTypeLabel(item.balanceType)}</Badge></TableCell>
-                      <TableCell><DeltaText balanceType={item.balanceType} delta={item.delta} /></TableCell>
-                      <TableCell className="tabular-nums">{amountText(item.balanceType, item.balanceAfter)}</TableCell>
-                      <TableCell>
-                        <div className="space-y-0.5">
-                          <div className="text-sm">
-                            <span className="font-medium">{ledgerActionLabel(item.action)}</span>
-                            {summary ? <span className="ml-1.5 text-muted-foreground">{summary}</span> : null}
+            <div className="overflow-x-auto rounded-lg border">
+              <Table className="w-full min-w-[720px]">
+                <TableHeader className="bg-muted/20 text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
+                  <TableRow>
+                    <TableHead className="w-[1%] whitespace-nowrap pl-4 pr-3">时间</TableHead>
+                    <TableHead className="w-[1%] whitespace-nowrap px-3">类型</TableHead>
+                    <TableHead className="w-[1%] whitespace-nowrap px-3">变动</TableHead>
+                    <TableHead className="w-[1%] whitespace-nowrap px-3 text-right">变动后余额</TableHead>
+                    <TableHead className="px-3">事由</TableHead>
+                    <TableHead className="w-[1%] whitespace-nowrap pl-3 pr-4">操作人</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((item) => {
+                    const summary = requestSummary(item.request);
+                    return (
+                      <TableRow key={item.id}>
+                        <TableCell className="w-[1%] whitespace-nowrap pl-4 pr-3 tabular-nums text-muted-foreground">{formatDateTime(item.createdAt)}</TableCell>
+                        <TableCell className="w-[1%] whitespace-nowrap px-3"><Badge variant="outline">{balanceTypeLabel(item.balanceType)}</Badge></TableCell>
+                        <TableCell className="w-[1%] whitespace-nowrap px-3"><DeltaText balanceType={item.balanceType} delta={item.delta} /></TableCell>
+                        <TableCell className="w-[1%] whitespace-nowrap px-3 text-right tabular-nums">{amountText(item.balanceType, item.balanceAfter)}</TableCell>
+                        <TableCell className="min-w-[200px] whitespace-normal px-3">
+                          <div className="space-y-0.5">
+                            <div className="text-sm">
+                              <span className="font-medium">{ledgerActionLabel(item.action)}</span>
+                              {summary ? <span className="ml-1.5 text-muted-foreground">{summary}</span> : null}
+                            </div>
+                            {item.note && item.note !== summary ? (
+                              <div className="text-xs text-muted-foreground">{item.note}</div>
+                            ) : null}
                           </div>
-                          {item.note && item.note !== summary ? (
-                            <div className="text-xs text-muted-foreground">{item.note}</div>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{item.createdByName || "—"}</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                        </TableCell>
+                        <TableCell className="w-[1%] whitespace-nowrap pl-3 pr-4 text-muted-foreground">{item.createdByName || "—"}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </ResponsiveList>
         )}
       </CardContent>

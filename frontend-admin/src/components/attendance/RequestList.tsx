@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeftRight, CalendarClock, CalendarDays, CalendarOff, CircleCheck, CircleSlash, CircleX, Clock3, Coins, Coffee, Flag, Hourglass, Loader2, Paperclip, PencilLine, Undo2, Users, Wrench, Zap, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, CalendarClock, CalendarDays, CalendarOff, CircleCheck, CircleSlash, CircleX, Clock3, Coins, Coffee, Flag, Hourglass, Paperclip, PencilLine, Undo2, Users, Wrench, Zap, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/EmptyState";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
+import { SkeletonList } from "@/components/Skeleton";
 import {
   LEAVE_TYPE_LABELS,
   OVERTIME_DAY_TYPE_LABELS,
@@ -260,15 +261,16 @@ function LinkedOrderChip({ order, onPreview }: { order: ServiceOrderSummary; onP
           {text}
         </span>
       )}
-      {hover && pos && rows.length ? (
-        <div className="pointer-events-none fixed z-[100] min-w-[200px] max-w-[300px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg dark:border-slate-700 dark:bg-slate-900" style={{ top: pos.top, left: pos.left }}>
+      {hover && pos && rows.length ? createPortal(
+        <div className="pointer-events-none fixed z-[100] min-w-[200px] max-w-[300px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg" style={{ top: pos.top, left: pos.left }}>
           {rows.map((row) => (
             <div key={row.label} className="flex items-start gap-1.5 py-0.5 text-muted-foreground">
               <span className="shrink-0 text-muted-foreground/60">{row.label}</span>
               <span className="min-w-0 break-words font-medium text-foreground">{row.value}</span>
             </div>
           ))}
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </span>
   );
@@ -316,6 +318,16 @@ export function RequestList({
   const hasActions = typeof actions === "function";
   // 归组：同 batchId 合并显示为一条；操作以首条为代表发起，服务端按 batch_id 自动扩组（specs/003）
   const groups = groupBatchItems(items);
+  const groupActions = new Map<AttendanceRequest["id"], ReactNode>();
+  if (hasActions) {
+    for (const group of groups) {
+      const node = actions?.(group[0]);
+      if (node !== null && node !== undefined && node !== false) {
+        groupActions.set(group[0].id, node);
+      }
+    }
+  }
+  const showActionsColumn = groupActions.size > 0;
   const detailCellExtra = (item: AttendanceRequest) => (
     <>
       {item.reason ? (
@@ -400,16 +412,17 @@ export function RequestList({
   };
   const renderTableRow = (item: AttendanceRequest) => {
     const duration = requestDurationParts(item);
+    const rowActions = groupActions.get(item.id) ?? null;
     return (
       <TableRow key={item.id}>
-        {showEmployee ? <TableCell className="font-medium">{item.employeeName || "-"}</TableCell> : null}
-        <TableCell>{requestTypeIndicator(item.requestType)}</TableCell>
-        <TableCell>
-          <div>{requestDetailContent(item)}</div>
+        {showEmployee ? <TableCell className="w-[1%] whitespace-nowrap pl-4 pr-3 font-medium" title={item.employeeName || "-"}>{item.employeeName || "-"}</TableCell> : null}
+        <TableCell className={`w-[1%] whitespace-nowrap ${showEmployee ? "px-3" : "pl-4 pr-3"}`}>{requestTypeIndicator(item.requestType)}</TableCell>
+        <TableCell className="min-w-[260px] whitespace-normal px-3">
+          <div className="min-w-0">{requestDetailContent(item)}</div>
           {requestMetaRow(item, onPreviewOrder, onDownloadProof)}
         </TableCell>
-        <TableCell>{requestTimeRange(item)}</TableCell>
-        <TableCell className="text-right tabular-nums">
+        <TableCell className="w-[1%] whitespace-nowrap px-3">{requestTimeRange(item)}</TableCell>
+        <TableCell className="w-[1%] whitespace-nowrap pl-3 pr-4 text-right tabular-nums">
           {duration ? (
             <>
               <span className="text-sm font-semibold">{duration.value}</span>
@@ -419,10 +432,12 @@ export function RequestList({
             <span className="text-muted-foreground">-</span>
           )}
         </TableCell>
-        <TableCell><StatusWithChain status={item.status} steps={item.approvals} /></TableCell>
-        {hasActions ? (
-          <TableCell>
-            <div className="flex flex-wrap gap-2">{actions?.(item)}</div>
+        <TableCell className={`w-[1%] whitespace-nowrap ${showActionsColumn ? "px-3" : "pl-3 pr-4"}`}><StatusWithChain status={item.status} steps={item.approvals} /></TableCell>
+        {showActionsColumn ? (
+          <TableCell className="w-[1%] whitespace-nowrap pl-2 pr-4 text-right">
+            <div className="flex items-center justify-end gap-1">
+              {rowActions ?? <span className="text-xs text-muted-foreground/50">-</span>}
+            </div>
           </TableCell>
         ) : null}
       </TableRow>
@@ -430,6 +445,7 @@ export function RequestList({
   };
   const renderBatchTableRow = (group: RequestGroup) => {
     const rep = group[0];
+    const rowActions = groupActions.get(rep.id) ?? null;
     const orderLabel = rep.serviceOrder?.orderNo || (rep.sourceId ? `#${rep.sourceId}` : "-");
     const totalHours = group.reduce((sum, item) => sum + Number(item.hours || 0), 0);
     const kindsText = group.map((item) => overtimeKindLabel(item)).join(" + ");
@@ -448,10 +464,10 @@ export function RequestList({
     const dateText = chineseMonthDay(startDate) + (endDate && endDate !== startDate ? ` → ${chineseMonthDay(endDate)}` : "");
     return (
       <TableRow key={rep.id}>
-        {showEmployee ? <TableCell className="font-medium">{rep.employeeName || "-"}</TableCell> : null}
-        <TableCell>{requestTypeIndicator(rep.requestType)}</TableCell>
-        <TableCell>
-          <div className="flex items-center gap-2">
+        {showEmployee ? <TableCell className="w-[1%] whitespace-nowrap pl-4 pr-3 font-medium" title={rep.employeeName || "-"}>{rep.employeeName || "-"}</TableCell> : null}
+        <TableCell className={`w-[1%] whitespace-nowrap ${showEmployee ? "px-3" : "pl-4 pr-3"}`}>{requestTypeIndicator(rep.requestType)}</TableCell>
+        <TableCell className="min-w-[260px] whitespace-normal px-3">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {rep.serviceOrder ? (
               <LinkedOrderChip order={rep.serviceOrder as ServiceOrderSummary} onPreview={onPreviewOrder} />
             ) : (
@@ -464,22 +480,24 @@ export function RequestList({
               <span className={`inline-flex shrink-0 items-center gap-0.5 text-[11px] font-semibold ${groupPayMultiplier === 2 ? "text-amber-600" : "text-sky-600"}`}><Zap className="h-3 w-3" />{groupPayMultiplier}倍</span>
             ) : null}
           </div>
-          <div className="mt-0.5 truncate text-xs text-muted-foreground" title={kindsText}>{kindsText}</div>
+          <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground" title={kindsText}>{kindsText}</div>
         </TableCell>
-        <TableCell>
+        <TableCell className="w-[1%] whitespace-nowrap px-3">
           <span className="text-sm font-medium tabular-nums">{dateText}</span>
           <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">
             {String(rep.startAt || "").slice(11, 16)} – {String(group[group.length - 1].endAt || group[group.length - 1].startAt || "").slice(11, 16)}
           </span>
         </TableCell>
-        <TableCell className="text-right tabular-nums">
+        <TableCell className="w-[1%] whitespace-nowrap pl-3 pr-4 text-right tabular-nums">
           <span className="text-sm font-semibold">{hours(totalHours)}</span>
           <span className="ml-0.5 text-xs text-muted-foreground">小时</span>
         </TableCell>
-        <TableCell><StatusWithChain status={groupStatus} steps={rep.approvals} /></TableCell>
-        {hasActions ? (
-          <TableCell>
-            <div className="flex flex-wrap gap-2">{actions?.(rep)}</div>
+        <TableCell className={`w-[1%] whitespace-nowrap ${showActionsColumn ? "px-3" : "pl-3 pr-4"}`}><StatusWithChain status={groupStatus} steps={rep.approvals} /></TableCell>
+        {showActionsColumn ? (
+          <TableCell className="w-[1%] whitespace-nowrap pl-2 pr-4 text-right">
+            <div className="flex items-center justify-end gap-1">
+              {rowActions ?? <span className="text-xs text-muted-foreground/50">-</span>}
+            </div>
           </TableCell>
         ) : null}
       </TableRow>
@@ -500,8 +518,8 @@ export function RequestList({
       <CardContent>
         {toolbar ? <div className="mb-4 flex flex-wrap items-center gap-2">{toolbar}</div> : null}
         {loading ? (
-          <div className="flex items-center justify-center py-8 text-muted-foreground">
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" /> 正在加载…
+          <div className="rounded-lg border">
+            <SkeletonList rows={4} columns={5} />
           </div>
         ) : items.length === 0 ? (
           <EmptyState title={emptyText} className="min-h-0" />
@@ -512,16 +530,17 @@ export function RequestList({
             breakpoint="md"
             renderCard={(group) => (group.length > 1 ? renderBatchCard(group) : renderItemCard(group[0]))}
           >
-          <div className="overflow-x-auto rounded-md border">
-            <Table className="min-w-[760px]">
-              <TableHeader>
+          <div className="overflow-x-auto rounded-lg border">
+            <Table className="w-full min-w-[760px]">
+              <TableHeader className="bg-muted/20 text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                 <TableRow>
-                  {showEmployee ? <TableHead>员工</TableHead> : null}
-                  <TableHead>类型</TableHead>
-                  <TableHead>明细</TableHead>
-                  <TableHead>时间</TableHead>
-                  <TableHead>状态</TableHead>
-                  {hasActions ? <TableHead>操作</TableHead> : null}
+                  {showEmployee ? <TableHead className="w-[1%] whitespace-nowrap pl-4 pr-3">员工</TableHead> : null}
+                  <TableHead className={`w-[1%] whitespace-nowrap ${showEmployee ? "px-3" : "pl-4 pr-3"}`}>类型</TableHead>
+                  <TableHead className="px-3">明细</TableHead>
+                  <TableHead className="w-[1%] whitespace-nowrap px-3">时间</TableHead>
+                  <TableHead className="w-[1%] whitespace-nowrap pl-3 pr-4 text-right">时长</TableHead>
+                  <TableHead className={`w-[1%] whitespace-nowrap ${showActionsColumn ? "px-3" : "pl-3 pr-4"}`}>状态</TableHead>
+                  {showActionsColumn ? <TableHead className="w-[1%] whitespace-nowrap pl-2 pr-4 text-right">操作</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -817,7 +836,7 @@ function requestMetaRow(
   const linkedOrderNo = item.requestType === "overtime" && item.sourceType === "service_order" ? item.serviceOrder?.orderNo : undefined;
   const reasonRedundant = Boolean(item.reason && linkedOrderNo && (item.reason as string).includes(linkedOrderNo));
   if (item.reason && !reasonRedundant) {
-    segs.push(<span title={item.reason} key="reason" className="min-w-0 truncate">{item.reason}</span>);
+    segs.push(<span title={item.reason} key="reason" className="max-w-[220px] truncate">{item.reason}</span>);
     titleParts.push(item.reason);
   }
 
@@ -864,7 +883,7 @@ function requestMetaRow(
   if (!segs.length) return null;
   return (
     <div className="mt-0.5 flex items-center text-xs text-muted-foreground">
-      <div className="flex min-w-0 flex-1 items-center gap-x-2 overflow-hidden whitespace-nowrap" title={titleParts.join(" · ")}>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5" title={titleParts.join(" · ")}>
         {segs.flatMap((seg, index) =>
           index === 0 ? [seg] : [<span key={`sep-${index}`} className="shrink-0 text-muted-foreground/40">·</span>, seg],
         )}

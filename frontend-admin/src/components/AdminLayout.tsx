@@ -8,6 +8,7 @@ import {
   FileSignature,
   ClipboardCheck,
   Users,
+  UserCog,
   Server,
   Building2,
   BarChart3,
@@ -21,9 +22,9 @@ import {
   ChevronUp,
   TriangleAlert,
   Sparkles,
+  Menu,
 } from "lucide-react";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import {
   Dialog,
@@ -242,7 +243,7 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
     items: [
       {
         labelKey: "users",
-        icon: Settings,
+        icon: UserCog,
         path: "users",
         requiredPermissions: ["user.view"],
       },
@@ -743,13 +744,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         />
       )}
 
+      {/* 左侧边缘展开柄：桌面收起侧栏时使用；移动端改为底部导航「菜单」入口，避免遮挡内容 */}
       {!sidebarOpen ? (
         <Button
           type="button"
           variant="outline"
           size="icon"
           onClick={() => setSidebarOpen(true)}
-          className="fixed left-0 top-1/2 z-40 h-12 w-8 -translate-y-1/2 rounded-l-none rounded-r-xl border-l-0 bg-background/95 text-muted-foreground shadow-md backdrop-blur hover:text-foreground"
+          className={`${hideMobileChrome || mobileNavItems.length === 0 ? "inline-flex" : "hidden lg:inline-flex"} fixed left-0 top-1/2 z-40 h-12 w-8 -translate-y-1/2 rounded-l-none rounded-r-xl border-l-0 bg-background/95 text-muted-foreground shadow-md backdrop-blur hover:text-foreground`}
           aria-label="展开侧边栏"
           title="展开侧边栏"
         >
@@ -782,8 +784,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             onFocusCapture={() => setMobileNavVisible(true)}
           >
             <div
-              className="mx-auto grid max-w-md gap-1.5"
-              style={{ gridTemplateColumns: `repeat(${mobileNavItems.length}, minmax(0, 1fr))` }}
+              className="mx-auto grid max-w-md gap-1"
+              style={{ gridTemplateColumns: `repeat(${mobileNavItems.length + 1}, minmax(0, 1fr))` }}
             >
               {mobileNavItems.map((item) => {
                 const Icon = item.icon;
@@ -794,7 +796,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                     key={item.path}
                     type="button"
                     onClick={() => navigateTo(item.path)}
-                    className={`flex min-w-0 items-center justify-center gap-1.5 rounded-full px-2.5 py-2 text-xs font-medium transition-colors ${
+                    className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 py-1.5 text-[11px] font-medium transition-colors sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-2.5 sm:py-2 sm:text-xs ${
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -805,6 +807,20 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={() => setSidebarOpen((open) => !open)}
+                aria-expanded={sidebarOpen}
+                aria-label="展开全部导航菜单"
+                className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 py-1.5 text-[11px] font-medium transition-colors sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-2.5 sm:py-2 sm:text-xs ${
+                  sidebarOpen
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                }`}
+              >
+                <Menu className="h-4 w-4 shrink-0" />
+                <span className="truncate">菜单</span>
+              </button>
             </div>
           </nav>
         )}

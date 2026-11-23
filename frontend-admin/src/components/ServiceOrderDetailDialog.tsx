@@ -1,6 +1,7 @@
 import { Archive, Building2, CircleCheck, CircleCheckBig, CircleSlash, CircleX, Clock3, Download, Flag, Hourglass, Loader2, PenLine, Pencil, Radio, Send, Upload, Wrench, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { indicatorSpan } from "@/components/StatusIndicator";
 import { MarkdownContent } from "@/lib/markdown";
 import { formatDateTime, formatDateRange, formatFileSize } from "@/lib/format";
 import { serviceItemsLabel } from "@/lib/service-items";
@@ -55,16 +56,7 @@ const DEFAULT_DETAIL_LABELS = {
   unnamedEngineer: "未指定",
 };
 
-// —— 图标+文字指示器（去 Badge 大色块，与列表页一致）——
-function indicatorSpan(icon: LucideIcon, color: string, label: string) {
-  const Icon = icon;
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-      <Icon className={`h-3.5 w-3.5 ${color}`} />
-      {label}
-    </span>
-  );
-}
+// —— 图标+文字指示器（使用公共 StatusIndicator）——
 
 const STATUS_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
   draft: { icon: Pencil, color: "text-slate-400" },

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, BarChart3, Sparkles, TrendingDown, TrendingUp, Users, Wrench, MapPin, Search, Send, Clock3, Hourglass, PenLine, Upload, CircleCheck, CircleSlash, CircleCheckBig, CircleX, Archive, Pencil, Radio, Building2, HardDrive, ClipboardCheck, BookOpen, MoreHorizontal, type LucideIcon } from "lucide-react";
+import { ArrowRight, BarChart3, ChevronDown, Sparkles, TrendingDown, TrendingUp, Users, Wrench, MapPin, Search, Send, Clock3, Hourglass, PenLine, Upload, CircleCheck, CircleSlash, CircleCheckBig, CircleX, Archive, Pencil, Radio, Building2, HardDrive, ClipboardCheck, BookOpen, MoreHorizontal, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -790,6 +790,7 @@ export function Dashboard() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [isCompactViewport, setIsCompactViewport] = useState(false);
+  const newsCardRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1029,36 +1030,53 @@ export function Dashboard() {
 
       <ErrorToast message={error} />
 
-      {/* 客户动态跑马灯：横向循环滚动，hover 暂停，点击跳原文；底部完整列表保留 */}
+      {/* 客户动态轻量跑马灯：白底融入卡片体系 + 左右边缘淡出，hover/focus 暂停，点击跳原文或直达底部完整列表 */}
       {customerNews.length > 0 && (
-        <div className="news-marquee flex h-9 items-center overflow-hidden rounded-lg border border-primary/20 bg-primary/5">
-          <style>{`
-            @keyframes news-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-            .news-marquee-track { animation: news-marquee ${Math.max(60, customerNews.length * 14)}s linear infinite; }
-            .news-marquee:hover .news-marquee-track { animation-play-state: paused; }
-            @media (prefers-reduced-motion: reduce) { .news-marquee-track { animation: none; } }
-          `}</style>
-          <div className="flex h-full shrink-0 items-center gap-1.5 bg-primary px-3 text-xs font-medium text-white">
-            <Radio className="h-3.5 w-3.5" /> 客户动态
-          </div>
-          <div className="flex min-w-0 flex-1 items-center overflow-hidden">
-            <div className="news-marquee-track flex shrink-0 items-center whitespace-nowrap">
+        <div className="news-marquee flex h-10 items-center gap-2 rounded-xl border border-border/80 bg-card px-2.5 shadow-xs sm:px-3">
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary-soft px-2 py-1 text-xs font-medium text-primary">
+            <Radio className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>客户动态</span>
+          </span>
+          <span className="h-4 w-px shrink-0 bg-border" aria-hidden="true" />
+          <div className="news-marquee-mask flex min-w-0 flex-1 items-center overflow-hidden">
+            <div
+              className="news-marquee-track flex shrink-0 items-center whitespace-nowrap"
+              style={{ "--marquee-duration": `${Math.max(60, customerNews.length * 14)}s` } as CSSProperties}
+            >
               {[...customerNews, ...customerNews].map((item, index) => (
-                <button
-                  key={`${item.id}-${index}`}
-                  type="button"
-                  disabled={!item.url}
-                  onClick={() => item.url && window.open(item.url, "_blank", "noopener,noreferrer")}
-                  className="mx-4 inline-flex shrink-0 items-center gap-1.5 text-xs transition-colors hover:text-primary"
-                  title={item.title}
-                >
-                  <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">{item.customerNames || item.customerName}</span>
-                  <span className="max-w-[320px] truncate text-foreground">{item.title}</span>
-                  {item.publishedAt ? <span className="text-muted-foreground">{formatDate(item.publishedAt)}</span> : null}
-                </button>
+                <span key={`${item.id}-${index}`} className="inline-flex shrink-0 items-center">
+                  <button
+                    type="button"
+                    disabled={!item.url}
+                    onClick={() => item.url && window.open(item.url, "_blank", "noopener,noreferrer")}
+                    className="group inline-flex shrink-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-xs transition-colors hover:bg-muted/60 disabled:cursor-default"
+                    title={item.title}
+                  >
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground/80">
+                      {item.customerNames || item.customerName}
+                    </span>
+                    <span className="max-w-[240px] truncate text-foreground transition-colors group-hover:text-primary sm:max-w-[340px]">
+                      {item.title}
+                    </span>
+                    {item.publishedAt ? (
+                      <span className="tabular-nums text-muted-foreground">{formatDate(item.publishedAt)}</span>
+                    ) : null}
+                  </button>
+                  <span className="mx-3 select-none text-border" aria-hidden="true">·</span>
+                </span>
               ))}
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => newsCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-primary"
+            title="跳转到下方完整客户动态"
+          >
+            <span className="hidden sm:inline">查看全部</span>
+            <span className="sm:hidden">全部</span>
+            <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
         </div>
       )}
 
@@ -1244,8 +1262,8 @@ export function Dashboard() {
       )}
 
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-5 lg:gap-6">
-        <section className="lg:col-span-3">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12 lg:gap-6">
+        <section className="lg:col-span-7 xl:col-span-8">
           <div className="mb-3 px-1 sm:mb-4">
             <h2 className="text-lg font-semibold sm:text-xl">{t.map.title}</h2>
           </div>
@@ -1265,7 +1283,7 @@ export function Dashboard() {
           />
         </section>
 
-        <section className="lg:col-span-2">
+        <section className="lg:col-span-5 xl:col-span-4">
           <div className="mb-3 flex items-center justify-between gap-2 px-1 sm:mb-4">
             <h2 className="text-lg font-semibold sm:text-xl">{t.recent.title}</h2>
             <button
@@ -1277,22 +1295,33 @@ export function Dashboard() {
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>
-          <Card className="h-[300px] lg:h-[440px]">
-            <CardContent className="min-h-0 flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-6">
+          <Card className="flex h-[320px] flex-col overflow-hidden border-none shadow-sm ring-1 ring-border lg:h-[440px]">
+            <CardContent className="min-h-0 flex-1 overflow-y-auto p-1.5 sm:p-2">
               {loading ? (
-                <div className="flex h-full items-center justify-center text-muted-foreground">
-                  <span className="btn-loader mr-2" aria-hidden="true" /> {t.recent.loading}
+                <div className="divide-y divide-border/60">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={`recent-skeleton-${i}`} className="space-y-1.5 px-2.5 py-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <Skeleton className="h-4 w-36" />
+                        <Skeleton className="h-4 w-14" />
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <Skeleton className="h-3.5 w-44" />
+                        <Skeleton className="h-3.5 w-16" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : recentOrders.length === 0 ? (
                 <EmptyState title={t.recent.empty} />
               ) : (
-                <div className="space-y-1.5">
+                <div className="divide-y divide-border/60">
                   {recentOrders.map((order) => (
                     <div
                       key={order.key}
                       role="button"
                       tabIndex={0}
-                      className="group relative -mx-2 flex cursor-pointer items-start gap-3 rounded-xl px-2 py-3 transition-colors hover:bg-muted/50 sm:-mx-3 sm:px-3"
+                      className="group cursor-pointer rounded-lg px-2.5 py-2.5 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                       onClick={() => openOrderPreview(order.source)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
@@ -1301,19 +1330,28 @@ export function Dashboard() {
                         }
                       }}
                     >
-                      <div className={`h-2 w-2 shrink-0 rounded-full ${
-                        order.status === "in_progress" ? "bg-primary" : "bg-muted-foreground/30"
-                      }`} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex min-w-0 items-center justify-between gap-2">
-                          <span className="min-w-0 truncate text-sm font-semibold" title={order.customer}>{order.customer}</span>
-                          <span className="shrink-0">{statusIndicatorOf(order.status, order.statusLabel)}</span>
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-baseline gap-1.5">
+                          <span
+                            className="min-w-0 truncate text-sm font-semibold text-foreground transition-colors group-hover:text-primary"
+                            title={order.customer}
+                          >
+                            {order.customer}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground/60" aria-hidden="true">·</span>
+                          <span className="shrink-0 truncate text-xs text-muted-foreground" title={order.engineer}>
+                            {order.engineer}
+                          </span>
                         </div>
-                        <span className="mt-0.5 block min-w-0 truncate text-sm text-muted-foreground" title={order.title}>{order.title}</span>
-                        <div className="mt-0.5 flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
-                          <span className="shrink-0 whitespace-nowrap">{order.date}</span>
-                          <span className="min-w-0 truncate font-medium text-foreground" title={order.engineer}>{order.engineer}</span>
-                        </div>
+                        <span className="shrink-0">{statusIndicatorOf(order.status, order.statusLabel)}</span>
+                      </div>
+                      <div className="mt-1 flex min-w-0 items-center justify-between gap-3">
+                        <p className="min-w-0 flex-1 truncate text-xs leading-5 text-muted-foreground" title={order.title}>
+                          {order.title}
+                        </p>
+                        <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground/80">
+                          {order.date}
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -1326,6 +1364,7 @@ export function Dashboard() {
 
       {/* 客户动态（有新闻时才显示卡片） */}
       {customerNews.length > 0 && (
+        <div ref={newsCardRef} className="scroll-mt-4">
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -1380,6 +1419,7 @@ export function Dashboard() {
             </div>
           </CardContent>
         </Card>
+        </div>
       )}
 
       <Dialog open={Boolean(previewOrder)} onOpenChange={(open) => { if (!open) closeOrderPreview(); }}>

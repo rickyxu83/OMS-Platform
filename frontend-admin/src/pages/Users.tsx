@@ -18,8 +18,12 @@ import {
 } from "@/components/ui/dialog";
 import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import { PageContainer, PageHeader } from "@/components/PageHeader";
+import { ReasonConfirmDialog } from "@/components/ReasonConfirmDialog";
+import { StatStrip, StatStripItem } from "@/components/StatStrip";
 import { api } from "@/services/api";
-import { Skeleton } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
+import { SkeletonList } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { matchesSearchText } from "@/lib/text-i18n";
 import { useUrlParam } from "@/lib/use-url-param";
@@ -335,14 +339,19 @@ export function Users() {
     }
   }
 
-  async function toggleStatus(user: User) {
+  const [confirmState, setConfirmState] = useState<{ kind: "toggle"; user: User } | { kind: "bulk"; ids: string[] } | null>(null);
+
+  function toggleStatus(user: User) {
     if (!user.id) return;
     if (String(currentUser?.id) === String(user.id)) {
       setError("不能停用或恢复当前登录账号");
       return;
     }
-    const action = user.status === "active" ? "停用" : "启用";
-    if (!window.confirm(`确认${action}成员「${displayName(user)}」？`)) return;
+    setConfirmState({ kind: "toggle", user });
+  }
+
+  async function executeToggleStatus(user: User) {
+    if (!user.id) return;
     setSaving(true);
     setError("");
     try {
@@ -351,6 +360,7 @@ export function Users() {
       } else {
         await api.post(`/users/${user.id}/restore`, {});
       }
+      setConfirmState(null);
       await load();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "操作失败";
@@ -360,10 +370,14 @@ export function Users() {
     }
   }
 
-  async function bulkDisableUsers() {
+  function bulkDisableUsers() {
     const ids = selectedUserIds.filter((id) => selectableFilteredUserIds.includes(id));
     if (!ids.length) return;
-    if (!window.confirm(`确认停用选中的 ${ids.length} 名成员？当前登录账号不会被停用。`)) return;
+    setConfirmState({ kind: "bulk", ids });
+  }
+
+  async function executeBulkDisableUsers(ids: string[]) {
+    if (!ids.length) return;
     setSaving(true);
     setError("");
     try {
@@ -371,6 +385,7 @@ export function Users() {
         await api.delete(`/users/${id}`);
       }
       setSelectedUserIds([]);
+      setConfirmState(null);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "批量停用失败");
@@ -381,51 +396,46 @@ export function Users() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold">成员与角色</h1>
-          <p className="text-muted-foreground mt-1">管理系统用户、邮箱账号和权限</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={load}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            刷新
-          </Button>
-          <Button variant="outline" onClick={async () => {
-            if (permData) { setPermDialogOpen(true); return }
-            await loadPermissions(true);
-          }}>
-            <Shield className="w-4 h-4 mr-2" />
-            权限配置
-          </Button>
-          {canCreateUsers ? (
-            <Button onClick={openCreate}>
-              <Plus className="w-4 h-4 mr-2" />
-              新增成员
+    <PageContainer>
+      <PageHeader
+        title="成员与角色"
+        subtitle="管理系统用户、邮箱账号和权限"
+        actions={(
+          <>
+            <Button variant="outline" onClick={load}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              刷新
             </Button>
-          ) : null}
-        </div>
-      </div>
+            <Button variant="outline" onClick={async () => {
+              if (permData) { setPermDialogOpen(true); return }
+              await loadPermissions(true);
+            }}>
+              <Shield className="w-4 h-4 mr-2" />
+              权限配置
+            </Button>
+            {canCreateUsers ? (
+              <Button onClick={openCreate}>
+                <Plus className="w-4 h-4 mr-2" />
+                新增成员
+              </Button>
+            ) : null}
+          </>
+        )}
+      />
 
       <ErrorToast message={error} />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <StatStrip>
         {stats.map((stat, statIndex) => (
-          <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-            <CardContent className="pt-6">
-              <div className="text-sm text-muted-foreground">{stat.label}</div>
-              <div className="text-2xl font-bold mt-1">
-                                {loading ? (
-                  <Skeleton className="h-8 w-16" />
-                ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <StatStripItem
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            loading={loading}
+            animationIndex={statIndex}
+          />
         ))}
-      </div>
+      </StatStrip>
 
       <Card>
         <CardContent className="pt-6">
@@ -513,11 +523,15 @@ export function Users() {
         <CardContent>
           <div>
             {loading ? (
-              <div className="flex h-full items-center justify-center text-muted-foreground">
-                <span className="btn-loader mr-2" aria-hidden="true" /> 正在加载…
-              </div>
+              <SkeletonList rows={5} columns={4} />
             ) : filtered.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">暂无用户</div>
+              <EmptyState
+                title={searchQuery.trim() || roleFilter !== "all" || statusFilter !== "all" ? "无匹配当前筛选的成员" : "暂无成员"}
+                actionLabel={searchQuery.trim() || roleFilter !== "all" || statusFilter !== "all" ? "重置筛选" : undefined}
+                onAction={searchQuery.trim() || roleFilter !== "all" || statusFilter !== "all"
+                  ? () => { setSearchQuery(""); setRoleFilter("all"); setStatusFilter("all"); }
+                  : undefined}
+              />
             ) : (
               <div className="space-y-3">
               {filtered.map((user) => {
@@ -529,9 +543,10 @@ export function Users() {
                     key={user.id}
                     className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 border border-border rounded-lg hover:border-primary transition-colors"
                   >
-                    <div className="flex items-center gap-4 flex-1">
+                    <div className="flex items-start md:items-center gap-3.5 flex-1 min-w-0">
                       {canDeleteUsers ? (
                         <Checkbox
+                          className="mt-1 md:mt-0"
                           checked={selected}
                           onCheckedChange={(checked) => toggleUserSelection(user.id, checked)}
                           disabled={saving || !selectable}
@@ -545,29 +560,29 @@ export function Users() {
                           <UserX className="w-5 h-5 text-muted-foreground" />
                         )}
                       </div>
-                      <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-3">
-                        <div>
-                          <div className="font-medium">{displayName(user)}</div>
+                      <div className="min-w-0 flex-1 grid grid-cols-2 md:grid-cols-5 gap-3">
+                        <div className="col-span-2 md:col-span-1 min-w-0">
+                          <div className="font-medium truncate">{displayName(user)}</div>
                           <div title={user.email || user.username || "-"} className="text-sm text-muted-foreground truncate">{user.email || user.username || "-"}</div>
                           {user.loginAlias ? (
                             <div className="text-xs text-muted-foreground">别名：{user.loginAlias}</div>
                           ) : null}
                         </div>
-                        <div>
+                        <div className="flex items-center">
                           <Badge variant={ROLE_VARIANT[user.role || ""] || "secondary"}>
                             {roleLabel}
                           </Badge>
                         </div>
-                        <div>
-                          <div className="text-sm text-muted-foreground">联系方式</div>
-                          <div className="text-sm">{user.phone || "-"}</div>
+                        <div className="min-w-0">
+                          <div className="text-xs text-muted-foreground">联系方式</div>
+                          <div className="text-sm truncate">{user.phone || "-"}</div>
                           <div className="text-xs text-muted-foreground truncate" title={user.loginAlias ? `可用别名登录：${user.loginAlias}` : "未设置别名"}>{user.loginAlias ? `可用别名登录：${user.loginAlias}` : "未设置别名"}</div>
                         </div>
-                        <div>
-                          <div className="text-sm text-muted-foreground">上次登录时间</div>
-                          <div className="text-sm">{formatDateTime(user.lastLoginAt)}</div>
+                        <div className="min-w-0">
+                          <div className="text-xs text-muted-foreground">上次登录时间</div>
+                          <div className="text-sm truncate">{formatDateTime(user.lastLoginAt)}</div>
                         </div>
-                        <div>
+                        <div className="flex items-center">
                           <Badge variant={STATUS_VARIANT[user.status || "active"] || "secondary"}>
                             {user.status === "active" ? "在岗" : "离岗"}
                           </Badge>
@@ -575,16 +590,16 @@ export function Users() {
                       </div>
                     </div>
                     {canEditUsers || canDeleteUsers ? (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-1">
                         {canEditUsers ? (
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                            className="h-8 px-2.5 text-muted-foreground hover:text-foreground"
                             onClick={() => openEdit(user)}
                             disabled={saving}
                           >
-                            <Pencil className="w-4 h-4 mr-1" />
+                            <Pencil className="w-3.5 h-3.5" />
                             编辑
                           </Button>
                         ) : null}
@@ -592,14 +607,16 @@ export function Users() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                            className={user.status === "active"
+                              ? "h-8 px-2.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                              : "h-8 px-2.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700"}
                             onClick={() => toggleStatus(user)}
                             disabled={saving || String(currentUser?.id) === String(user.id)}
                           >
                             {user.status === "active" ? (
-                              <UserX className="w-4 h-4 mr-1" />
+                              <UserX className="w-3.5 h-3.5" />
                             ) : (
-                              <UserCheck className="w-4 h-4 mr-1" />
+                              <UserCheck className="w-3.5 h-3.5" />
                             )}
                             {user.status === "active" ? "停用" : "启用"}
                           </Button>
@@ -779,6 +796,30 @@ export function Users() {
           ) : null}
         </DialogContent>
       </Dialog>
-    </div>
+
+      <ReasonConfirmDialog
+        open={Boolean(confirmState)}
+        title={confirmState?.kind === "bulk"
+          ? "批量停用成员"
+          : confirmState?.user.status === "active"
+            ? "停用成员"
+            : "启用成员"}
+        description={confirmState
+          ? (confirmState.kind === "bulk"
+            ? `确认停用选中的 ${confirmState.ids.length} 名成员？当前登录账号不会被停用。`
+            : `确认${confirmState.user.status === "active" ? "停用" : "启用"}成员「${displayName(confirmState.user)}」？`)
+          : undefined}
+        confirmLabel={confirmState?.kind === "toggle" && confirmState.user.status !== "active" ? "确认启用" : "确认停用"}
+        destructive={confirmState?.kind === "bulk" || confirmState?.user.status === "active"}
+        loading={saving}
+        onCancel={() => setConfirmState(null)}
+        onConfirm={() => {
+          if (!confirmState) return;
+          return confirmState.kind === "bulk"
+            ? executeBulkDisableUsers(confirmState.ids)
+            : executeToggleStatus(confirmState.user);
+        }}
+      />
+    </PageContainer>
   );
 }

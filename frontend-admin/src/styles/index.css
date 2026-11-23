@@ -232,22 +232,56 @@ button:disabled:has(.btn-loader) {
   }
 }
 
-/* DateRangePicker D 款：react-day-picker 选中/范围色 → 公司主题紫 #582b8b */
+/* DateRangePicker / DatePicker D 款：react-day-picker 选中/范围色 → 主题主色 */
+.rdp-custom {
+  margin: 0;
+}
+@media (max-width: 639px) {
+  .rdp-custom {
+    --rdp-cell-size: 36px;
+  }
+}
 .rdp-custom .rdp-day_selected,
 .rdp-custom .rdp-day_selected:focus-visible,
 .rdp-custom .rdp-day_selected:hover {
-  background-color: #582b8b !important;
-  color: #fff !important;
+  background-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
 }
 .rdp-custom .rdp-day_range_middle {
-  background-color: rgba(88, 43, 139, 0.12) !important;
+  background-color: color-mix(in oklab, var(--primary) 12%, transparent) !important;
   color: #1e293b !important;
 }
 .rdp-custom .rdp-day_range_start,
 .rdp-custom .rdp-day_range_end {
-  background-color: #582b8b !important;
-  color: #fff !important;
+  background-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
 }
 .rdp-custom .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
-  background-color: rgba(88, 43, 139, 0.08);
+  background-color: color-mix(in oklab, var(--primary) 8%, transparent);
+}
+
+/* 运营总览顶部客户动态跑马灯：白底轻量条 + 左右渐变淡出 + hover/focus 暂停 */
+@keyframes news-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.news-marquee-track {
+  animation: news-marquee var(--marquee-duration, 60s) linear infinite;
+}
+.news-marquee:hover .news-marquee-track,
+.news-marquee:focus-within .news-marquee-track {
+  animation-play-state: paused;
+}
+.news-marquee-mask {
+  mask-image: linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .news-marquee-track {
+    animation: none;
+  }
 }
