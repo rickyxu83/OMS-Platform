@@ -1273,7 +1273,7 @@ export function Attendance() {
                 </div>
               </>)}
               actions={canAdminApprove ? (item) => item.status === "approved" ? (
-                <Button size="sm" variant="outline" onClick={() => voidRequest(item)}><X className="mr-1 h-4 w-4" /> 作废</Button>
+                <Button size="sm" variant="ghost" className="h-8 px-2.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={() => voidRequest(item)}><X className="h-3.5 w-3.5" /> 作废</Button>
               ) : null : undefined}
             />
           </>) : (
