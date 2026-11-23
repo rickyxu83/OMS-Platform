@@ -374,7 +374,7 @@ const DETAIL_GROUPS = [
 
 function detailEntries(order, items = []) {
   const splitDelivery = orderField(order, 'splitDelivery', 'split_delivery')
-  const pricing = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }[Number(orderField(order, 'pricingMode', 'pricing_mode'))] || ''
+  const pricing = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细', 4: '手动开单兜底' }[Number(orderField(order, 'pricingMode', 'pricing_mode'))] || ''
   const entries = [
     ['客户名称', orderField(order, 'customerName', 'customer_name')],
     ['客户联系人', orderField(order, 'contactName', 'contact_name')],

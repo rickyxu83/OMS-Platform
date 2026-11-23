@@ -7,7 +7,7 @@ import type { MrApproval, MrItem, MrOrder } from '../types'
 import { mrCompanyOf } from './companies'
 
 const STATUS: Record<string, string> = { draft: '草稿', in_review: '签核中', approved: '已通过', rejected: '已驳回', voided: '已作废' }
-const PRICING: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
+const PRICING: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细', 4: '手动开单兜底' }
 const SIGNATURE_ROLES = [['assistant', '助理'], ['sales', '业务负责人'], ['engineering', '工程会签'], ['supervisor', '处级单位'], ['vp', '副总经理']] as const
 // 页眉订货条四栏已展示 客户/交付/项目分类/状态；客户 P/O、交付地点、付款条件、发票类型、开票内容归入资料区（2026-09-09 用户反馈）
 const HEADER_DUPLICATES = new Set(['客户名称', 'Ctrl.NO', '未税总计', '最晚交付日期', '填表日期'])

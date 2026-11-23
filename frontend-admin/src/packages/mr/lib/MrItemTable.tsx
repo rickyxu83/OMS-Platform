@@ -178,7 +178,7 @@ export function MrItemTable({
     onFocusHandled?.()
   }, [focusIndex, onFocusHandled])
 
-  const setItem = (index: number, patch: Partial<MrItem>) => onChange(items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch, ...(mode === 3 && patch.unitPrice !== undefined ? { quotedUnitPrice: null } : {}) } : item))
+  const setItem = (index: number, patch: Partial<MrItem>) => onChange(items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch, ...([3, 4].includes(mode) && patch.unitPrice !== undefined ? { quotedUnitPrice: null } : {}) } : item))
   const duplicateItem = (index: number) => {
     const source = items[index]
     if (!source) return
@@ -436,21 +436,24 @@ function ItemEditorPanel({
             <Input type="number" min={0} step={0.01} value={numberValue(item.qty)} onChange={(event) => onChange({ qty: event.target.value === '' ? null : Number(event.target.value) })} />
           </Field>
           <Field label="未税单价" editable={editable} readonlyText={item.unitPrice == null ? '-' : money(item.unitPrice)}>
-            <Input type="number" min={0} step="0.01" value={numberValue(item.unitPrice)} disabled={mode !== 3} onChange={(event) => onChange({ unitPrice: event.target.value === '' ? null : Number(event.target.value) })} />
+            <Input type="number" min={0} step="0.01" value={numberValue(item.unitPrice)} disabled={![3, 4].includes(mode)} onChange={(event) => onChange({ unitPrice: event.target.value === '' ? null : Number(event.target.value) })} />
           </Field>
-          <Field required={!serviceRow} label="供应商" editable={editable} readonlyText={textValue(item.vendor)}>
+          <Field required={!serviceRow && mode !== 4} label="供应商" editable={editable} readonlyText={textValue(item.vendor)}>
             <Input list="mr-vendor-options" value={item.vendor || ''} placeholder="从供应商目录选择或输入完整名称" disabled={serviceRow} onChange={(event) => onChange({ vendor: event.target.value })} />
           </Field>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
-          <Field required={!serviceRow} label="采购价（含税）" editable={editable} readonlyText={item.costInclTax == null ? '-' : `¥ ${money(item.costInclTax)}`}>
+          <Field required={!serviceRow && mode !== 4} label="采购价（含税）" editable={editable} readonlyText={item.costInclTax == null ? '-' : `¥ ${money(item.costInclTax)}`}>
             <Input type="number" min={0} step="0.01" value={numberValue(item.costInclTax)} disabled={serviceRow} onChange={(event) => onChange({ costInclTax: event.target.value === '' ? null : Number(event.target.value) })} />
           </Field>
-          <Field required={!serviceRow} label="采购税率" editable={editable} readonlyText={item.taxRate ? `${item.taxRate}%` : '-'}>
-            <Select value={String(item.taxRate || '')} disabled={serviceRow} onValueChange={(value) => onChange({ taxRate: Number(value) })}>
+          <Field required={!serviceRow && mode !== 4} label="采购税率" editable={editable} readonlyText={item.taxRate ? `${item.taxRate}%` : '-'}>
+            <Select value={item.taxRate === null || item.taxRate === undefined ? 'none' : String(item.taxRate)} disabled={serviceRow} onValueChange={(value) => onChange({ taxRate: value === 'none' ? null : Number(value) })}>
               <SelectTrigger><SelectValue placeholder="选择采购税率" /></SelectTrigger>
-              <SelectContent>{allowedTaxRates.map((rate) => <SelectItem key={rate} value={String(rate)}>{rate}%</SelectItem>)}</SelectContent>
+              <SelectContent>
+                {mode === 4 ? <SelectItem value="none">不填写</SelectItem> : null}
+                {allowedTaxRates.map((rate) => <SelectItem key={rate} value={String(rate)}>{rate}%</SelectItem>)}
+              </SelectContent>
             </Select>
           </Field>
         </div>
@@ -465,6 +468,7 @@ function ItemEditorPanel({
         </div>
         {editable && mode === 1 ? <p className="text-xs text-muted-foreground">多项系统集成优先保留销售报价的逐项未税单价；缺失时按采购价（未税）占比分摊未税总计。</p> : null}
         {editable && mode === 2 ? <p className="text-xs text-muted-foreground">单项系统集成将未税总计按主项 99%、技术服务 1% 自动分配。</p> : null}
+        {editable && mode === 4 ? <p className="text-xs text-muted-foreground">手动开单兜底不分摊、不重算单价；供应商、采购价和采购税率可留空，组合内容请写入品名或描述。</p> : null}
 
         <div>
           <div className="mb-1.5 text-xs text-muted-foreground">品项装机承担方</div>

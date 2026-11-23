@@ -339,7 +339,7 @@ export function QuotationImportDialog({
       pricingMode: effectivePricingMode,
       invoiceType: invoiceType || '',
       totalExcludingTax: salesTotal,
-      items: effectivePricingMode === 3 ? quotationDetailItems(draftItems) : draftItems,
+      items: [3, 4].includes(effectivePricingMode) ? quotationDetailItems(draftItems) : draftItems,
       installOptions: [],
     }).items || []
   }, [preview, draftItems, effectivePricingMode, invoiceType])

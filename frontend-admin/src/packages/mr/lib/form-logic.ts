@@ -20,9 +20,13 @@ export function blankItem(taxRate = 13): MrItem {
   return { name: '', description: '', oemSpec: '', companyPartNo: '', qty: 1, unitPrice: null, vendor: '', costInclTax: null, taxRate, warrantyService: '', installBy: '', purchaseOrderNo: '', shipmentNo: '' }
 }
 
-export function normalizeCostTaxRates(items: MrItem[], invoiceType?: string | null) {
+export function normalizeCostTaxRates(items: MrItem[], invoiceType?: string | null, preserveMissing = false) {
   const forcedRate = String(invoiceType || '').startsWith('6%') ? 6 : null
-  return items.map((item) => ({ ...item, taxRate: forcedRate || ([6, 13].includes(Number(item.taxRate)) ? Number(item.taxRate) : 13) }))
+  return items.map((item) => ({
+    ...item,
+    // 手动开单兜底允许采购税率留空；其他模式仍按既有规则默认 13%，6% 销售发票始终强制 6%
+    taxRate: forcedRate || ([6, 13].includes(Number(item.taxRate)) ? Number(item.taxRate) : preserveMissing && (item.taxRate === null || item.taxRate === undefined) ? null : 13),
+  }))
 }
 
 export function quotationDetailItems(items: MrItem[]) {
@@ -71,7 +75,7 @@ function costExcludingTax(item: MrItem) {
 export function calculateForm(order: MrOrder): MrOrder {
   const mode = number(order.pricingMode)
   const total = number(order.totalExcludingTax)
-  let source: MrItem[] = normalizeCostTaxRates((order.items || []).slice(0, 200), order.invoiceType)
+  let source: MrItem[] = normalizeCostTaxRates((order.items || []).slice(0, 200), order.invoiceType, mode === 4)
   if (mode === 2) {
     source = source.slice(0, 2)
     if (source.length === 0) source = [blankItem(defaultCostTaxRate(order.invoiceType))]
@@ -107,7 +111,8 @@ export function calculateForm(order: MrOrder): MrOrder {
   const costExcl = items.reduce((sum, item) => sum + number(item.costExcludingTax), 0)
   const costIncl = items.reduce((sum, item) => sum + number(item.costInclTax), 0)
   const completeCostTotals = items.every((item) => item.costInclTax !== null && item.costInclTax !== undefined && item.costExcludingTax !== null && item.costExcludingTax !== undefined)
-  const salesTotal = mode === 3 ? round(sales) : order.totalExcludingTax
+  // 开明细与手动开单兜底都由品项小计汇总；手动模式不触碰用户填写的单价
+  const salesTotal = mode === 3 || mode === 4 ? round(sales) : order.totalExcludingTax
   const tax = String(order.invoiceType || '').startsWith('13%') ? 13 : 6
   return {
     ...order,

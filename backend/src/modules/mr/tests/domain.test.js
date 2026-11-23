@@ -311,6 +311,43 @@ function validBody(overrides = {}) {
   assert.equal(schedule.order.taiwanBusinessTransfers[0].type, 'installments')
 }
 
+// spec 021：手动开单兜底（模式 4）——不分摊、采购信息半放、明细金额仍为必填
+{
+  const manual = normalizeOrder(validBody({
+    pricingMode: 4,
+    totalExcludingTax: 999999,
+    items: [
+      { name: '交换机一套', description: '含主机 ×1 + 模块 ×20', qty: 1, unitPrice: 1234.56, vendor: null, costInclTax: null, taxRate: null },
+      { name: '安装服务', qty: 2, unitPrice: 100, quotedUnitPrice: 1, vendor: '', costInclTax: null, taxRate: null },
+    ],
+  }))
+  assert.deepStrictEqual(validateSubmission(manual.order, manual.items), [], '采购信息留空的手动单应可提交')
+  assert.equal(manual.order.totalExcludingTax, 1434.56, '手动单总计较品项小计加总，不采用外部传入总额')
+  assert.deepStrictEqual(manual.items.map((item) => item.unitPrice), [1234.56, 100], '手动单不得分摊或用报价原价覆盖单价')
+  assert.deepStrictEqual(manual.items.map((item) => item.subtotal), [1234.56, 200])
+  assert.equal(manual.items[0].marginRate, null)
+  assert.equal(totals(manual.order, manual.items).marginRate, null)
+  assert.deepStrictEqual(computeApprovalSteps(manual.order, manual.items).map((step) => step.key), ['assistant', 'sales', 'supervisor'], '成本留空时不得因毛利加签副总')
+
+  const dunhuManual = normalizeOrder(validBody({ company: 'dunhu', pricingMode: 4, items: [{ name: '组合设备', qty: 1, unitPrice: 100 }] }))
+  assert.deepStrictEqual(validateSubmission(dunhuManual.order, dunhuManual.items), [], '敦沪也应允许手动开单兜底')
+
+  const missing = normalizeOrder(validBody({ pricingMode: 4, items: [
+    { name: '', description: '', qty: 1, unitPrice: 100 },
+    { name: '缺数量', qty: null, unitPrice: 100 },
+    { name: '缺单价', qty: 1, unitPrice: null },
+  ] }))
+  const missingFields = validateSubmission(missing.order, missing.items).map((error) => error.field)
+  assert(missingFields.includes('items.0.name') && missingFields.includes('items.1.qty') && missingFields.includes('items.2.unitPrice'), '品名、数量、单价仍为必填')
+
+  const negativeMargin = normalizeOrder(validBody({ pricingMode: 4, items: [{ name: '负毛利设备', qty: 1, unitPrice: 100, costInclTax: 226, taxRate: 13 }] }))
+  assert(validateSubmission(negativeMargin.order, negativeMargin.items).some((error) => error.message.includes('毛利率不得为负数')), '手动单填写成本后仍拦截负毛利')
+
+  const invalidCost = normalizeOrder(validBody({ pricingMode: 4, items: [{ name: '设备', qty: 1, unitPrice: 100, costInclTax: -1, taxRate: 10 }] }))
+  const costFields = validateSubmission(invalidCost.order, invalidCost.items).map((error) => error.field)
+  assert(costFields.includes('items.0.costInclTax') && costFields.includes('items.0.taxRate'), '选填的采购信息一旦填写仍须合法')
+}
+
 // 供应商为敦阳（内部承担）判定：无需采购（2026-09-08 佬裁决）
 {
   assert.equal(isInternalVendor('敦阳'), true)
@@ -330,7 +367,7 @@ function validBody(overrides = {}) {
   assert.equal(normalizeOrder(validBody({ company: '不存在' })).order.company, 'dunyang')
   assert.equal(normalizeOrder(validBody({ company: 'dunhu' })).order.company, 'dunhu')
 
-  // 敦沪单仅允许开明细（模式 3），提交时拒绝其他模式
+  // 敦沪单允许开明细（模式 3）与手动开单兜底（模式 4），提交时拒绝系统集成模式
   const dunhuOk = normalizeOrder(validBody({ company: 'dunhu', pricingMode: 3 }))
   assert.deepStrictEqual(validateSubmission(dunhuOk.order, dunhuOk.items), [])
   const dunhuBad = normalizeOrder(validBody({ company: 'dunhu', pricingMode: 1, totalExcludingTax: 100 }))
