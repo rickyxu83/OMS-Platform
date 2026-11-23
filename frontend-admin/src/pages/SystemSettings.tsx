@@ -14,6 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatDateTime } from "@/lib/format";
 import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import { PageContainer, PageHeader } from "@/components/PageHeader";
+import { ReasonConfirmDialog } from "@/components/ReasonConfirmDialog";
 import { MarkdownContent } from "@/lib/markdown";
 import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -689,15 +691,22 @@ export function SystemSettings() {
     }
   }
 
-  async function deleteAnnouncement(id: number) {
+  const [deleteAnnouncementTargetId, setDeleteAnnouncementTargetId] = useState<number | null>(null);
+
+  function deleteAnnouncement(id: number) {
     if (!canManageAnnouncements) return;
-    if (!window.confirm("确定删除这条公告吗？已读记录也会一起删除。")) return;
+    setDeleteAnnouncementTargetId(id);
+  }
+
+  async function executeDeleteAnnouncement(id: number) {
+    if (!canManageAnnouncements) return;
     setAnnouncementSaving(true);
     setError("");
     try {
       await api.delete(`/announcements/${id}`);
       toast.success("公告已删除");
       if (editingAnnouncementId === id) resetAnnouncementForm();
+      setDeleteAnnouncementTargetId(null);
       await loadAnnouncements();
     } catch (e) {
       setError(e instanceof Error ? e.message : "删除公告失败");
@@ -707,13 +716,11 @@ export function SystemSettings() {
   }
 
   return (
-    <div className="space-y-6 p-6 pb-16">
-      <div>
-        <div>
-          <h1 className="text-3xl font-semibold">系统设置</h1>
-          <p className="mt-1 text-muted-foreground">集成密钥、自动提醒与登录公告的集中配置入口</p>
-        </div>
-      </div>
+    <PageContainer className="pb-16">
+      <PageHeader
+        title="系统设置"
+        subtitle="集成密钥、自动提醒与登录公告的集中配置入口"
+      />
 
       <ErrorToast message={error} />
 
@@ -1444,6 +1451,19 @@ export function SystemSettings() {
           </div>
         </div>
       )}
-    </div>
+
+      <ReasonConfirmDialog
+        open={deleteAnnouncementTargetId !== null}
+        title="删除公告"
+        description="确定删除这条公告吗？已读记录也会一起删除。"
+        confirmLabel="确认删除"
+        destructive
+        loading={announcementSaving}
+        onCancel={() => setDeleteAnnouncementTargetId(null)}
+        onConfirm={() => {
+          if (deleteAnnouncementTargetId !== null) return executeDeleteAnnouncement(deleteAnnouncementTargetId);
+        }}
+      />
+    </PageContainer>
   );
 }

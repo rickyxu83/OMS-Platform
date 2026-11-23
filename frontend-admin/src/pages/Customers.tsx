@@ -19,6 +19,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ErrorToast } from "@/components/ErrorToast";
+import { PageContainer, PageHeader } from "@/components/PageHeader";
+import { StatStrip, StatStripItem } from "@/components/StatStrip";
+import { indicatorSpan } from "@/components/StatusIndicator";
 import { TycInfoButton } from "@/components/TycInfoButton";
 import { CustomerProfileDialog } from "@/components/CustomerProfileDialog";
 import { HelpTooltip } from "@/components/HelpTooltip";
@@ -555,16 +558,6 @@ const LEVEL_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
   normal: { icon: CircleUserRound, color: "text-slate-400" },
   potential: { icon: CircleUserRound, color: "text-sky-600" },
 };
-
-function indicatorSpan(icon: LucideIcon, color: string, label: string) {
-  const Icon = icon;
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-      <Icon className={`h-3.5 w-3.5 ${color}`} />
-      {label}
-    </span>
-  );
-}
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
   draft: "草稿",
@@ -1546,60 +1539,57 @@ export function Customers() {
   }
 
   return (
-    <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden p-4 sm:p-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold sm:text-3xl">{t.title}</h1>
-          <p className="text-muted-foreground mt-1">{t.subtitle}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => load(searchQuery)}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            {t.actions.refresh}
-          </Button>
-          {canManageCustomer ? (
-            <Button onClick={openCreate}>
-              <Plus className="w-4 h-4 mr-2" />
-              {t.actions.create}
+    <PageContainer className="overflow-x-hidden">
+      <PageHeader
+        title={t.title}
+        subtitle={t.subtitle}
+        actions={(
+          <>
+            <Button variant="outline" onClick={() => load(searchQuery)}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              {t.actions.refresh}
             </Button>
-          ) : null}
-        </div>
-      </div>
+            {canManageCustomer ? (
+              <Button onClick={openCreate}>
+                <Plus className="w-4 h-4 mr-2" />
+                {t.actions.create}
+              </Button>
+            ) : null}
+          </>
+        )}
+      />
 
       <ErrorToast message={error} />
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
+      <StatStrip>
         {stats.map((stat, statIndex) => {
-          const valueNode = initialLoading ? (
-            <Skeleton className="h-5 w-8" />
-          ) : (
-            <span className="stat-value-enter inline-block text-base font-bold" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
-          );
           // 统计可点过滤：全部客户 / 重点客户（重点+VIP 合并）；服务次数不可点
           if (stat.key === "total" || stat.key === "keyvip") {
             const active = stat.key === "keyvip" ? levelFilter === "keyvip" : levelFilter === "all";
             return (
-              <button
+              <StatStripItem
                 key={stat.key}
-                type="button"
-                onClick={() => setLevelFilter(stat.key === "keyvip" ? (active ? "all" : "keyvip") : "all")}
-                className={`inline-flex items-baseline gap-1.5 rounded-md px-1.5 py-0.5 transition-colors ${active && stat.key === "keyvip" ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-accent"}`}
+                label={stat.label}
+                value={formatCount(stat.value)}
+                active={active && stat.key === "keyvip"}
+                loading={initialLoading}
+                animationIndex={statIndex}
                 title={stat.key === "keyvip" ? `${stat.label}（点击筛选）` : stat.label}
-                aria-pressed={stat.key === "keyvip" ? active : undefined}
-              >
-                <span className="text-muted-foreground">{stat.label}</span>
-                {valueNode}
-              </button>
+                onClick={() => setLevelFilter(stat.key === "keyvip" ? (active ? "all" : "keyvip") : "all")}
+              />
             );
           }
           return (
-            <span key={stat.key} className="inline-flex items-baseline gap-1.5">
-              <span className="text-muted-foreground">{stat.label}</span>
-              {valueNode}
-            </span>
+            <StatStripItem
+              key={stat.key}
+              label={stat.label}
+              value={formatCount(stat.value)}
+              loading={initialLoading}
+              animationIndex={statIndex}
+            />
           );
         })}
-      </div>
+      </StatStrip>
 
       <Card>
         <CardContent className="p-3 sm:p-4">
@@ -2657,6 +2647,6 @@ export function Customers() {
         open={profileDialog !== null}
         onOpenChange={(open) => { if (!open) setProfileDialog(null); }}
       />
-    </div>
+    </PageContainer>
   );
 }

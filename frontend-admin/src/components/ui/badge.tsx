@@ -12,13 +12,13 @@ const badgeVariants = cva(
         default:
           "border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90",
         secondary:
-          "border-slate-500 bg-slate-600 text-white shadow-sm [a&]:hover:bg-slate-500",
+          "border-slate-200/80 bg-slate-100 text-slate-700 [a&]:hover:bg-slate-200/70",
         draft:
-          "border-slate-700 bg-slate-800 text-slate-100 shadow-sm [a&]:hover:bg-slate-700",
+          "border-slate-200 bg-slate-100 text-slate-600 [a&]:hover:bg-slate-200/70",
         destructive:
           "border-transparent bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         outline:
-          "border-slate-600 bg-slate-700 text-white shadow-sm [a&]:hover:bg-slate-600",
+          "border-slate-300 bg-background text-slate-700 [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
         success:
           "border-transparent bg-emerald-600 text-white shadow hover:bg-emerald-500",
         warning:

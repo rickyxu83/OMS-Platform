@@ -26,6 +26,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ErrorToast } from "@/components/ErrorToast";
+import { PageContainer, PageHeader } from "@/components/PageHeader";
+import { ReasonConfirmDialog } from "@/components/ReasonConfirmDialog";
+import { StatStrip, StatStripItem } from "@/components/StatStrip";
+import { indicatorSpan } from "@/components/StatusIndicator";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/services/api";
@@ -258,16 +262,6 @@ const TYPE_INDICATOR: Record<string, { icon: LucideIcon; color: string }> = {
   original_manufacturer: { icon: ShieldCheck, color: "text-sky-600" },
   our_maintenance: { icon: ShieldCheck, color: "text-purple-600" },
 };
-
-function indicatorSpan(icon: LucideIcon, color: string, label: string) {
-  const Icon = icon;
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-      <Icon className={`h-3.5 w-3.5 ${color}`} />
-      {label}
-    </span>
-  );
-}
 
 /** 已选筛选标签：点击取消 */
 function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
@@ -630,14 +624,20 @@ export function MaintenanceParties() {
     }
   }
 
-  async function deleteParty(party: Party) {
+  const [confirmState, setConfirmState] = useState<{ kind: "single"; party: Party } | { kind: "bulk"; ids: string[] } | null>(null);
+
+  function deleteParty(party: Party) {
     if (!party.id) return;
-    const name = party.name || `#${party.id}`;
-    if (!window.confirm(`确认删除维保方「${name}」？`)) return;
+    setConfirmState({ kind: "single", party });
+  }
+
+  async function executeDeleteParty(party: Party) {
+    if (!party.id) return;
     setSaving(true);
     setError("");
     try {
       await api.delete(`/maintenance-parties/${party.id}`);
+      setConfirmState(null);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : t.errors.deleteFailed);
@@ -646,17 +646,22 @@ export function MaintenanceParties() {
     }
   }
 
-  async function bulkDeleteParties() {
+  function bulkDeleteParties() {
     if (!selectedPartyIds.length) return;
-    if (!window.confirm(`确认删除选中的 ${selectedPartyIds.length} 个维保方？`)) return;
+    setConfirmState({ kind: "bulk", ids: [...selectedPartyIds] });
+  }
+
+  async function executeBulkDeleteParties(ids: string[]) {
+    if (!ids.length) return;
     setSaving(true);
     setError("");
     try {
-      for (const id of selectedPartyIds) {
+      for (const id of ids) {
         await api.delete(`/maintenance-parties/${id}`);
       }
-      if (detailTarget && selectedPartyIds.includes(String(detailTarget.id))) closePartyDetail();
+      if (detailTarget && ids.includes(String(detailTarget.id))) closePartyDetail();
       setSelectedPartyIds([]);
+      setConfirmState(null);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : t.errors.bulkDeleteFailed);
@@ -760,53 +765,47 @@ export function MaintenanceParties() {
     );
   }
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold">{t.title}</h1>
-          <p className="text-muted-foreground mt-1">{t.subtitle}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => load(searchQuery, typeFilter)}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            {t.actions.refresh}
-          </Button>
-          {canCreateParties ? (
-            <Button onClick={openCreate}>
-              <Plus className="w-4 h-4 mr-2" />
-              {t.actions.create}
+    <PageContainer>
+      <PageHeader
+        title={t.title}
+        subtitle={t.subtitle}
+        actions={(
+          <>
+            <Button variant="outline" onClick={() => load(searchQuery, typeFilter)}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              {t.actions.refresh}
             </Button>
-          ) : null}
-        </div>
-      </div>
+            {canCreateParties ? (
+              <Button onClick={openCreate}>
+                <Plus className="w-4 h-4 mr-2" />
+                {t.actions.create}
+              </Button>
+            ) : null}
+          </>
+        )}
+      />
 
       <ErrorToast message={error} />
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
+      <StatStrip>
         {stats.map((stat, statIndex) => {
-          const valueNode = initialLoading ? (
-            <Skeleton className="h-5 w-8" />
-          ) : (
-            <span className="stat-value-enter inline-block text-base font-bold" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
-          );
           // 统计条 chip 可点过滤：总数=全部，类型=toggle（与设备资产页同语言）
           const isType = stat.key !== "total";
           const active = isType && typeFilter === stat.key;
           return (
-            <button
+            <StatStripItem
               key={stat.key}
-              type="button"
-              onClick={() => applyStatsFilter(stat.key)}
-              className={`inline-flex items-baseline gap-1.5 rounded-md px-1.5 py-0.5 transition-colors ${active ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-accent"}`}
+              label={stat.label}
+              value={stat.value}
+              active={active}
+              loading={initialLoading}
+              animationIndex={statIndex}
               title={stat.label}
-              aria-pressed={isType ? active : undefined}
-            >
-              <span className="text-muted-foreground">{stat.label}</span>
-              {valueNode}
-            </button>
+              onClick={() => applyStatsFilter(stat.key)}
+            />
           );
         })}
-      </div>
+      </StatStrip>
 
       <Card>
         <CardContent className="p-3 sm:p-4">
@@ -1302,6 +1301,26 @@ export function MaintenanceParties() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+
+      <ReasonConfirmDialog
+        open={Boolean(confirmState)}
+        title={confirmState?.kind === "bulk" ? "批量删除维保方" : "删除维保方"}
+        description={confirmState
+          ? (confirmState.kind === "bulk"
+            ? `确认删除选中的 ${confirmState.ids.length} 个维保方？`
+            : `确认删除维保方「${confirmState.party.name || `#${confirmState.party.id}`}」？`)
+          : undefined}
+        confirmLabel="确认删除"
+        destructive
+        loading={saving}
+        onCancel={() => setConfirmState(null)}
+        onConfirm={() => {
+          if (!confirmState) return;
+          return confirmState.kind === "bulk"
+            ? executeBulkDeleteParties(confirmState.ids)
+            : executeDeleteParty(confirmState.party);
+        }}
+      />
+    </PageContainer>
   );
 }

@@ -73,6 +73,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ErrorToast } from "@/components/ErrorToast";
+import { indicatorSpan } from "@/components/StatusIndicator";
 import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 import { PdfPreview } from "@/components/PdfPreview";
 import { OfficePreviewContent } from "@/components/OfficePreviewContent";
@@ -173,15 +174,6 @@ function serviceItemIndicator(label: string, serviceType?: string): { icon: Luci
   if (label.includes("远程")) return TYPE_INDICATOR.remote;
   if (label.includes("内勤") || label.includes("方案") || label.includes("资料")) return { icon: FileText, color: "text-indigo-600" };
   return TYPE_INDICATOR[serviceType || ""] || TYPE_INDICATOR.other;
-}
-function indicatorSpan(icon: LucideIcon, color: string, label: string) {
-  const Icon = icon;
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-      <Icon className={`h-3.5 w-3.5 ${color}`} />
-      {label}
-    </span>
-  );
 }
 function statusIndicator(status: string, label: string) {
   const conf = STATUS_INDICATOR[status] || INDICATOR_FALLBACK;

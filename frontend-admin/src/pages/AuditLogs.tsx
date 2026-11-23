@@ -12,6 +12,8 @@ import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/compon
 import { ResponsiveList } from "@/components/ResponsiveList";
 import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import { PageContainer, PageHeader } from "@/components/PageHeader";
+import { StatStrip, StatStripItem } from "@/components/StatStrip";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { formatCount, formatDateTime } from "@/lib/format";
@@ -319,57 +321,39 @@ export function AuditLogs() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold">操作审计</h1>
-          <p className="text-muted-foreground mt-1">查看系统操作日志</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={load}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            刷新
-          </Button>
-          <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}>
-            <Download className="w-4 h-4 mr-2" />
-            导出
-          </Button>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="操作审计"
+        subtitle="查看系统操作日志"
+        actions={(
+          <>
+            <Button variant="outline" onClick={load}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              刷新
+            </Button>
+            <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}>
+              <Download className="w-4 h-4 mr-2" />
+              导出
+            </Button>
+          </>
+        )}
+      />
 
       <ErrorToast message={error} />
 
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-1 text-sm">
-        {stats.map((stat, statIndex) => {
-          const content = (
-            <>
-              {stat.label}
-              <b className="font-semibold tabular-nums text-foreground">
-                {loading ? (
-                  <Skeleton className="inline-block h-4 w-10" />
-                ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
-                )}
-              </b>
-            </>
-          );
-          return stat.onClick ? (
-            <button
-              key={stat.label}
-              type="button"
-              onClick={stat.onClick}
-              aria-pressed={stat.active}
-              className={`inline-flex cursor-pointer items-baseline gap-1.5 text-sm transition-colors ${stat.active ? "text-primary font-medium" : "text-muted-foreground hover:text-primary"}`}
-            >
-              {content}
-            </button>
-          ) : (
-            <span key={stat.label} className="inline-flex items-baseline gap-1.5 text-sm text-muted-foreground">
-              {content}
-            </span>
-          );
-        })}
-      </div>
+      <StatStrip>
+        {stats.map((stat, statIndex) => (
+          <StatStripItem
+            key={stat.label}
+            label={stat.label}
+            value={formatCount(stat.value)}
+            active={Boolean(stat.active)}
+            loading={loading}
+            animationIndex={statIndex}
+            onClick={stat.onClick}
+          />
+        ))}
+      </StatStrip>
 
       <Card>
         <CardContent className="pt-6">
@@ -545,8 +529,6 @@ export function AuditLogs() {
             </div>
           </CardContent>
         </Card>
-
-
-    </div>
+    </PageContainer>
   );
 }

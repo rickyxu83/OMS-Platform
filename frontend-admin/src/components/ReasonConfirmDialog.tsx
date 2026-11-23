@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -87,7 +87,7 @@ export function ReasonConfirmDialog({
             variant={destructive ? "destructive" : "default"}
             disabled={!canConfirm}
             onClick={() => void onConfirm(trimmed)}          >
-            {loading ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+            {loading ? <span className="btn-loader mr-1.5" aria-hidden="true" /> : null}
             {confirmLabel}
           </Button>
         </DialogFooter>

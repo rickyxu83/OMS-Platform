@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/dialog";
 import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import { PageContainer, PageHeader } from "@/components/PageHeader";
+import { ReasonConfirmDialog } from "@/components/ReasonConfirmDialog";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
@@ -729,14 +731,20 @@ export function InspectionSchedules() {
     }
   }
 
-  async function deleteSchedule(schedule: Schedule) {
+  const [confirmState, setConfirmState] = useState<{ kind: "single"; schedule: Schedule } | { kind: "bulk"; ids: string[] } | null>(null);
+
+  function deleteSchedule(schedule: Schedule) {
     if (!schedule.id) return;
-    const name = schedule.name || schedule.customerName || `#${schedule.id}`;
-    if (!window.confirm(`确认删除巡检计划「${name}」？历史工单不会被删除。`)) return;
+    setConfirmState({ kind: "single", schedule });
+  }
+
+  async function executeDeleteSchedule(schedule: Schedule) {
+    if (!schedule.id) return;
     setSaving(true);
     setError("");
     try {
       await api.delete(`/inspection-schedules/${schedule.id}`);
+      setConfirmState(null);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "删除失败");
@@ -745,17 +753,22 @@ export function InspectionSchedules() {
     }
   }
 
-  async function bulkDeleteSchedules() {
+  function bulkDeleteSchedules() {
     if (!selectedScheduleIds.length) return;
-    if (!window.confirm(`确认删除选中的 ${selectedScheduleIds.length} 个巡检计划？历史工单不会被删除。`)) return;
+    setConfirmState({ kind: "bulk", ids: [...selectedScheduleIds] });
+  }
+
+  async function executeBulkDeleteSchedules(ids: string[]) {
+    if (!ids.length) return;
     setSaving(true);
     setError("");
     try {
-      for (const id of selectedScheduleIds) {
+      for (const id of ids) {
         await api.delete(`/inspection-schedules/${id}`);
       }
-      if (detailTarget && selectedScheduleIds.includes(String(detailTarget.id))) closeScheduleDetail();
+      if (detailTarget && ids.includes(String(detailTarget.id))) closeScheduleDetail();
       setSelectedScheduleIds([]);
+      setConfirmState(null);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "批量删除失败");
@@ -766,31 +779,31 @@ export function InspectionSchedules() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold">巡检计划</h1>
-          <p className="text-muted-foreground mt-1">管理周期性巡检任务</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={load} disabled={saving}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            刷新
-          </Button>
-          {canManageSchedules ? (
-            <>
-              <Button variant="outline" onClick={generateDueSchedules} disabled={saving}>
-                {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Play className="w-4 h-4 mr-2" />}
-                生成到期巡检单
-              </Button>
-              <Button onClick={openCreate} disabled={saving}>
-                <Plus className="w-4 h-4 mr-2" />
-                新增计划
-              </Button>
-            </>
-          ) : null}
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="巡检计划"
+        subtitle="管理周期性巡检任务"
+        actions={(
+          <>
+            <Button variant="outline" onClick={load} disabled={saving}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              刷新
+            </Button>
+            {canManageSchedules ? (
+              <>
+                <Button variant="outline" onClick={generateDueSchedules} disabled={saving}>
+                  {saving ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Play className="w-4 h-4 mr-2" />}
+                  生成到期巡检单
+                </Button>
+                <Button onClick={openCreate} disabled={saving}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  新增计划
+                </Button>
+              </>
+            ) : null}
+          </>
+        )}
+      />
 
       <ErrorToast message={error} />
 
@@ -1437,6 +1450,26 @@ export function InspectionSchedules() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+
+      <ReasonConfirmDialog
+        open={Boolean(confirmState)}
+        title={confirmState?.kind === "bulk" ? "批量删除巡检计划" : "删除巡检计划"}
+        description={confirmState
+          ? (confirmState.kind === "bulk"
+            ? `确认删除选中的 ${confirmState.ids.length} 个巡检计划？历史工单不会被删除。`
+            : `确认删除巡检计划「${confirmState.schedule.name || confirmState.schedule.customerName || `#${confirmState.schedule.id}`}」？历史工单不会被删除。`)
+          : undefined}
+        confirmLabel="确认删除"
+        destructive
+        loading={saving}
+        onCancel={() => setConfirmState(null)}
+        onConfirm={() => {
+          if (!confirmState) return;
+          return confirmState.kind === "bulk"
+            ? executeBulkDeleteSchedules(confirmState.ids)
+            : executeDeleteSchedule(confirmState.schedule);
+        }}
+      />
+    </PageContainer>
   );
 }

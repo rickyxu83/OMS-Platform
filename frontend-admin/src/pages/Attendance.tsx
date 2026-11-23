@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ErrorToast } from "@/components/ErrorToast";
+import { PageContainer, PageHeader } from "@/components/PageHeader";
 import { PdfPreview } from "@/components/PdfPreview";
 import { ServiceOrderDetailDialog } from "@/components/ServiceOrderDetailDialog";
 import { AttendanceDuty } from "@/pages/AttendanceDuty";
@@ -936,25 +937,25 @@ export function Attendance() {
     return 0;
   };
   return (
-    <div className="space-y-6 p-4 md:p-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold md:text-3xl">假勤管理</h1>
-          <p className="mt-1 text-sm text-muted-foreground">请假、加班、调休申请与月度汇总</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {canApply ? (
-            <Button onClick={() => { setEditingRequest(null); setApplyOpen(true); }}>
-              <Plus className="mr-2 h-4 w-4" />
-              新建申请
+    <PageContainer>
+      <PageHeader
+        title="假勤管理"
+        subtitle="请假、加班、调休申请与月度汇总"
+        actions={(
+          <>
+            <Button variant="outline" onClick={load} disabled={loading}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              刷新
             </Button>
-          ) : null}
-          <Button variant="outline" onClick={load} disabled={loading}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            刷新
-          </Button>
-        </div>
-      </div>
+            {canApply ? (
+              <Button onClick={() => { setEditingRequest(null); setApplyOpen(true); }}>
+                <Plus className="mr-2 h-4 w-4" />
+                新建申请
+              </Button>
+            ) : null}
+          </>
+        )}
+      />
 
       <ErrorToast message={error} />
 
@@ -1845,7 +1846,7 @@ export function Attendance() {
       <EmployeeManageDialog employee={manageEmployee} onClose={() => setManageEmployee(null)} onSaved={load} />
 
       <ReportExportDialog open={reportExportOpen} onOpenChange={setReportExportOpen} initialMonth={reportMonth} employees={employees} />
-    </div>
+    </PageContainer>
   );
 }
 

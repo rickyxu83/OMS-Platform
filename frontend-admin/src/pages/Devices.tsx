@@ -29,6 +29,9 @@ import {
 } from "@/components/ui/dialog";
 import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import { PageContainer, PageHeader } from "@/components/PageHeader";
+import { StatStrip, StatStripItem } from "@/components/StatStrip";
+import { indicatorSpan } from "@/components/StatusIndicator";
 import { api } from "@/services/api";
 import { ProgressPanel, type ProgressState } from "@/components/ProgressPanel";
 import { Skeleton } from "@/components/Skeleton";
@@ -157,16 +160,6 @@ import {
 
 
 
-
-function indicatorSpan(icon: LucideIcon, color: string, label: string) {
-  const Icon = icon;
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-      <Icon className={`h-3.5 w-3.5 ${color}`} />
-      {label}
-    </span>
-  );
-}
 
 /** 已选筛选标签：点击取消 */
 function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
@@ -1724,149 +1717,143 @@ export function Devices() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <PageContainer>
       {normalizationProgress ? (
         <div className="fixed right-4 top-4 z-[60] w-80 sm:right-6 sm:top-6">
           <ProgressPanel progress={normalizationProgress} title="型号后台搜索" />
         </div>
       ) : null}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-3xl font-semibold">设备资产</h1>
-          <p className="text-muted-foreground mt-1">管理客户设备和维保信息</p>
-        </div>
-        <div className="flex flex-wrap gap-2 lg:flex-nowrap">
-          <Button className="shrink-0 whitespace-nowrap" variant="outline" onClick={() => load(searchQuery)}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            刷新
-          </Button>
-          {canCreateDevices || canEditDevices ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={importing || maintenanceImporting}>
-                  {importing || maintenanceImporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Upload className="w-4 h-4 mr-2" />}
-                  批量导入
-                  <ChevronDown className="w-4 h-4 ml-2" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                {canCreateDevices ? (
-                  <>
-                    <DropdownMenuItem onSelect={handleDownloadImportTemplate}>
-                      <Download className="w-4 h-4 mr-2" />
-                      下载导入模板
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={openImportDialog}>
-                      <Upload className="w-4 h-4 mr-2" />
-                      上传已填模板
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={openBulkCreate}>
-                      <Plus className="w-4 h-4 mr-2" />
-                      页面批量新增
-                    </DropdownMenuItem>
-                  </>
-                ) : null}
-                {canEditDevices ? (
-                  <DropdownMenuItem onSelect={openMaintenanceImportDialog}>
-                    <FileSpreadsheet className="w-4 h-4 mr-2" />
-                    导入原厂维保日期
-                  </DropdownMenuItem>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-          <Button
-            className="shrink-0 whitespace-nowrap"
-            variant="outline"
-            onClick={handleExportDevices}
-            disabled={exporting || loading || !filtered.length}
-          >
-            {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <FileSpreadsheet className="w-4 h-4 mr-2" />}
-            批量导出
-          </Button>
-          {canEditDevices ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={loading}>
-                  {modelComparing ? <span className="btn-loader mr-2" aria-hidden="true" /> : <MoreHorizontal className="w-4 h-4 mr-2" />}
-                  {modelComparing ? `校正 ${modelCompareProgress}%` : "其他"}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem onSelect={compareExistingDeviceModels} disabled={modelComparing || loading || !filtered.length}>
-                  {modelComparing ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Search className="w-4 h-4 mr-2" />}
-                  {modelComparing ? `型号校正 ${modelCompareProgress}%` : "型号校正"}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => {
-                    if (!selectedDeviceIds.length || selectedDeviceIds.length < 2) {
-                      toast.warning(selectedDeviceIds.length === 1 ? "合并需两台设备：已选 1 台,请在列表再勾选一台" : "请先在列表勾选两台要合并的设备");
-                      return;
-                    }
-                    const [keep, ...rest] = selectedDeviceIds.slice(0, 4);
-                    setMergeKeepId(String(keep));
-                    setMergeTargetIds(rest.map(String));
-                    setMergeOpen(true);
-                    setMergeError("");
-                  }}
-                  disabled={loading || !filtered.length}
-                >
-                  <Merge className="w-4 h-4 mr-2" />
-                  合并重复设备 {selectedDeviceIds.length ? `(${selectedDeviceIds.length} 台已选)` : ""}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-          {canCreateDevices ? (
-            <Button className="shrink-0 whitespace-nowrap" onClick={openCreate}>
-              <Plus className="w-4 h-4 mr-2" />
-              新增设备
+      <PageHeader
+        title="设备资产"
+        subtitle="管理客户设备和维保信息"
+        actions={(
+          <>
+            <Button className="shrink-0 whitespace-nowrap" variant="outline" onClick={() => load(searchQuery)}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              刷新
             </Button>
-          ) : null}
-        </div>
-      </div>
+            {canCreateDevices || canEditDevices ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={importing || maintenanceImporting}>
+                    {importing || maintenanceImporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Upload className="w-4 h-4 mr-2" />}
+                    批量导入
+                    <ChevronDown className="w-4 h-4 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  {canCreateDevices ? (
+                    <>
+                      <DropdownMenuItem onSelect={handleDownloadImportTemplate}>
+                        <Download className="w-4 h-4 mr-2" />
+                        下载导入模板
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={openImportDialog}>
+                        <Upload className="w-4 h-4 mr-2" />
+                        上传已填模板
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={openBulkCreate}>
+                        <Plus className="w-4 h-4 mr-2" />
+                        页面批量新增
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
+                  {canEditDevices ? (
+                    <DropdownMenuItem onSelect={openMaintenanceImportDialog}>
+                      <FileSpreadsheet className="w-4 h-4 mr-2" />
+                      导入原厂维保日期
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+            <Button
+              className="shrink-0 whitespace-nowrap"
+              variant="outline"
+              onClick={handleExportDevices}
+              disabled={exporting || loading || !filtered.length}
+            >
+              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <FileSpreadsheet className="w-4 h-4 mr-2" />}
+              批量导出
+            </Button>
+            {canEditDevices ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button className="shrink-0 whitespace-nowrap" variant="outline" disabled={loading}>
+                    {modelComparing ? <span className="btn-loader mr-2" aria-hidden="true" /> : <MoreHorizontal className="w-4 h-4 mr-2" />}
+                    {modelComparing ? `校正 ${modelCompareProgress}%` : "其他"}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuItem onSelect={compareExistingDeviceModels} disabled={modelComparing || loading || !filtered.length}>
+                    {modelComparing ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Search className="w-4 h-4 mr-2" />}
+                    {modelComparing ? `型号校正 ${modelCompareProgress}%` : "型号校正"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      if (!selectedDeviceIds.length || selectedDeviceIds.length < 2) {
+                        toast.warning(selectedDeviceIds.length === 1 ? "合并需两台设备：已选 1 台,请在列表再勾选一台" : "请先在列表勾选两台要合并的设备");
+                        return;
+                      }
+                      const [keep, ...rest] = selectedDeviceIds.slice(0, 4);
+                      setMergeKeepId(String(keep));
+                      setMergeTargetIds(rest.map(String));
+                      setMergeOpen(true);
+                      setMergeError("");
+                    }}
+                    disabled={loading || !filtered.length}
+                  >
+                    <Merge className="w-4 h-4 mr-2" />
+                    合并重复设备 {selectedDeviceIds.length ? `(${selectedDeviceIds.length} 台已选)` : ""}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+            {canCreateDevices ? (
+              <Button className="shrink-0 whitespace-nowrap" onClick={openCreate}>
+                <Plus className="w-4 h-4 mr-2" />
+                新增设备
+              </Button>
+            ) : null}
+          </>
+        )}
+      />
 
       <ErrorToast message={error} />
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
+      <StatStrip>
         {stats.map((stat, statIndex) => {
-          const valueNode = initialLoading ? (
-            <Skeleton className="h-5 w-8" />
-          ) : (
-            <span className="stat-value-enter inline-block text-base font-bold" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{formatCount(stat.value)}</span>
-          );
           // 统计条 chip 可点过滤：总数=全部，维保类型=toggle（路 1：类型过滤并进统计条）
           const isType = stat.key !== "total";
           const active = isType && maintenanceFilter === stat.key;
           return (
-            <button
+            <StatStripItem
               key={stat.key}
-              type="button"
-              onClick={() => applyStatsFilter(stat.key)}
-              className={`inline-flex items-baseline gap-1.5 rounded-md px-1.5 py-0.5 transition-colors ${active ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-accent"}`}
+              label={stat.label}
+              value={formatCount(stat.value)}
+              active={active}
+              loading={initialLoading}
+              animationIndex={statIndex}
               title={isType ? `${stat.label}（点击筛选）` : `${stat.label}（点击清除类型筛选）`}
-              aria-pressed={isType ? active : undefined}
-            >
-              <span className="text-muted-foreground">{stat.label}</span>
-              {valueNode}
-            </button>
+              onClick={() => applyStatsFilter(stat.key)}
+            />
           );
         })}
         <button
           type="button"
           onClick={openSuspectedDialog}
-          className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-amber-600 transition-colors hover:bg-amber-50"
+          className="inline-flex items-baseline gap-1.5 rounded-lg px-2 py-1 text-amber-600 transition-colors hover:bg-amber-50"
           title="查看疑似重复设备"
         >
-          <TriangleAlert className="h-3.5 w-3.5" />
+          <TriangleAlert className="h-3.5 w-3.5 self-center" />
           <span>疑似重复设备</span>
           {suspectedLoading && !suspectedOpen ? (
             <Skeleton className="h-5 w-8" />
           ) : (
-            <span className="stat-value-enter inline-block text-base font-bold" style={{ animationDelay: "480ms" }}>{formatCount(suspectedTotal)} 组</span>
+            <span className="stat-value-enter inline-block text-base font-bold tabular-nums" style={{ animationDelay: "400ms" }}>{formatCount(suspectedTotal)} 组</span>
           )}
         </button>
-      </div>
+      </StatStrip>
 
       <Card>
         <CardContent className="p-3 sm:p-4">
@@ -3933,6 +3920,6 @@ export function Devices() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

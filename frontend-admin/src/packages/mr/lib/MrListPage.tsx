@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Loader2, Plus, RefreshCw, RotateCcw, Save, Search, SlidersHorizontal, X, Pencil, Hourglass, CircleCheck, CircleX, CircleSlash, Package, PackageCheck, Minus, FileText, CircleDot, ArrowRight, BellRing, Ban, type LucideIcon } from 'lucide-react'
+import { Plus, RefreshCw, RotateCcw, Save, Search, SlidersHorizontal, X, Pencil, Hourglass, CircleCheck, CircleX, CircleSlash, Package, PackageCheck, Minus, FileText, CircleDot, ArrowRight, BellRing, Ban, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { Button } from '@/components/ui/button'
@@ -12,8 +12,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { EmptyState } from '@/components/EmptyState'
 import { ErrorToast } from '@/components/ErrorToast'
+import { PageContainer, PageHeader } from '@/components/PageHeader'
+import { ReasonConfirmDialog } from '@/components/ReasonConfirmDialog'
 import { ResponsiveCard, ResponsiveList } from '@/components/ResponsiveList'
 import { SkeletonList } from '@/components/Skeleton'
+import { StatStrip, StatStripItem } from '@/components/StatStrip'
 import { useAuth } from '@/contexts/AuthContext'
 import { createMr, listMr, listSalespeople, remindMr } from '../client'
 import type { MrStatusCounts } from '../client'
@@ -238,6 +241,7 @@ export function MrListPage() {
   const [statusCounts, setStatusCounts] = useState<MrStatusCounts | null>(null)
   const [pendingMineCountRemote, setPendingMineCountRemote] = useState<number | null>(null)
   const [remindingId, setRemindingId] = useState<string | number | null>(null)
+  const [remindTarget, setRemindTarget] = useState<MrOrder | null>(null)
   const [queryInput, setQueryInput] = useState('')
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
@@ -400,13 +404,13 @@ export function MrListPage() {
     })(),
   )
 
-  const remindOrder = async (order: MrOrder) => {
-    if (!window.confirm(`确定催办「${order.customerName || '该 MR'}」的当前签核人吗？系统会向其发送提醒邮件。`)) return
+  const executeRemindOrder = async (order: MrOrder) => {
     setRemindingId(order.id!)
     try {
       const result = await remindMr(order.id!)
       toast.success('已催办，提醒邮件将发送给当前签核人')
       setItems((current) => current.map((item) => item.id === order.id ? { ...item, lastRemindedAt: result.remindedAt || new Date().toISOString() } : item))
+      setRemindTarget(null)
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : '催办失败')
     } finally {
@@ -487,9 +491,9 @@ export function MrListPage() {
             size="sm"
             disabled={remindingId === order.id || remindThrottled}
             title={remindThrottled ? `已于 ${String(order.lastRemindedAt).replace('T', ' ').slice(5, 16)} 催过，24 小时内只能催办一次` : '催办当前签核人'}
-            onClick={(event) => { event.stopPropagation(); void remindOrder(order) }}
+            onClick={(event) => { event.stopPropagation(); setRemindTarget(order) }}
           >
-            {remindingId === order.id ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <BellRing className="mr-1 h-3.5 w-3.5 text-amber-600" />}
+            {remindingId === order.id ? <span className="btn-loader btn-loader-sm mr-1" aria-hidden="true" /> : <BellRing className="mr-1 h-3.5 w-3.5 text-amber-600" />}
             {remindThrottled ? '已催办' : '催办'}
           </Button>
         ) : undefined}
@@ -498,82 +502,73 @@ export function MrListPage() {
   }
 
   return (
-    <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden p-6">
+    <PageContainer className="overflow-x-hidden">
       <ErrorToast message={error} />
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">客户订购申请（MR）</h1>
-          <p className="mt-1 text-sm text-muted-foreground">申请填写、报价导入、电子签核及归档输出</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {user?.role === 'admin' ? (
-            <Button variant="outline" onClick={() => setRulesOpen(true)}>
-              <SlidersHorizontal className="mr-2 size-4" />
-              识别规则
-            </Button>
-          ) : null}
-          {hasPermission('mr.create') ? (
-            <Button onClick={createDraft} disabled={creating}>
-              {creating ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Plus className="mr-2 size-4" />}
-              新建 MR 申请
-            </Button>
-          ) : null}
-        </div>
-      </header>
+      <PageHeader
+        title="客户订购申请（MR）"
+        subtitle="申请填写、报价导入、电子签核及归档输出"
+        actions={(
+          <>
+            {user?.role === 'admin' ? (
+              <Button variant="outline" onClick={() => setRulesOpen(true)}>
+                <SlidersHorizontal className="mr-2 size-4" />
+                识别规则
+              </Button>
+            ) : null}
+            {hasPermission('mr.create') ? (
+              <Button onClick={createDraft} disabled={creating}>
+                {creating ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Plus className="mr-2 size-4" />}
+                新建 MR 申请
+              </Button>
+            ) : null}
+          </>
+        )}
+      />
       <LayoutRulesDialog open={rulesOpen} onOpenChange={setRulesOpen} />
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-white px-4 py-2.5 text-sm shadow-sm dark:bg-slate-900">
+      <StatStrip>
         {pendingMineCount > 0 || pendingMine ? (
-          <button
-            type="button"
-            onClick={() => setPendingMine((value) => !value)}
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm transition-colors ${
-              pendingMine
-                ? 'bg-primary font-medium text-white'
-                : 'bg-primary/10 text-primary hover:bg-primary/20'
-            }`}
+          <StatStripItem
+            label="待我签核"
+            value={pendingMineCount}
+            icon={Hourglass}
+            iconClassName="text-primary"
+            active={pendingMine}
             title={pendingMine ? '取消“只看待我签核”' : '只看当前等我签核的 MR'}
-            aria-pressed={pendingMine}
-          >
-            <Hourglass className="size-3.5" />
-            待我签核 <span className="font-bold">{pendingMineCount}</span>
-          </button>
+            onClick={() => setPendingMine((value) => !value)}
+          />
         ) : null}
-        {/* 统计条可点击筛选：全部 + 各状态,点击切换 status 筛选 */}
+        {/* 统计条可点击筛选：全部 + 各状态，点击切换 status 筛选 */}
         {(
           [
-            { key: 'all', label: '全部', icon: null as LucideIcon | null },
+            { key: 'all', label: '全部', icon: undefined as LucideIcon | undefined },
             { key: 'draft', label: '草稿', icon: STATUS_INDICATOR.draft.icon },
             { key: 'in_review', label: '签核中', icon: STATUS_INDICATOR.in_review.icon },
             { key: 'approved', label: '已通过', icon: STATUS_INDICATOR.approved.icon },
             { key: 'voiding', label: '作废审批中', icon: STATUS_INDICATOR.voiding.icon },
             { key: 'rejected', label: '已驳回', icon: STATUS_INDICATOR.rejected.icon },
             { key: 'voided', label: '已作废', icon: STATUS_INDICATOR.voided.icon },
-          ] as Array<{ key: string; label: string; icon: LucideIcon | null }>
-        ).map((item) => {
+          ] as Array<{ key: string; label: string; icon?: LucideIcon }>
+        ).map((item, idx) => {
           const count = statusCounts
             ? (statusCounts[item.key as keyof MrStatusCounts] ?? 0)
             : item.key === 'all' ? items.length : item.key === 'voiding' ? items.filter((o) => o.voidRequestStatus === 'pending' && (o.status || 'draft') === 'approved').length : items.filter((o) => (o.status || 'draft') === item.key).length
           const active = status === item.key
-          const Icon = item.icon
           const color = item.key === 'all' ? '' : (STATUS_INDICATOR[item.key]?.color || '')
           return (
-            <button
+            <StatStripItem
               key={item.key}
-              type="button"
+              label={item.label}
+              value={count}
+              icon={item.icon}
+              iconClassName={color}
+              active={active}
+              animationIndex={idx}
               onClick={() => setStatus(item.key)}
-              aria-pressed={active}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-sm transition-colors ${
-                active ? 'bg-primary font-medium text-white' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
-              }`}
-            >
-              {Icon ? <Icon className={`h-3.5 w-3.5 ${active ? '' : color}`} /> : null}
-              <span>{item.label}</span>
-              <span className="font-bold tabular-nums">{count}</span>
-            </button>
+            />
           )
         })}
-      </div>
+      </StatStrip>
 
       <Card>
         <CardContent className="space-y-3 pt-6">
@@ -696,8 +691,8 @@ export function MrListPage() {
                               <button type="button" className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-amber-600/80 transition-colors hover:bg-amber-50 hover:text-amber-700 disabled:opacity-40"
                                 title={remindThrottled ? `已于 ${String(order.lastRemindedAt).replace('T', ' ').slice(5, 16)} 催过，24 小时内只能催办一次` : '催办当前签核人'}
                                 aria-label="催办" disabled={remindingId === order.id || remindThrottled}
-                                onClick={(event) => { event.stopPropagation(); void remindOrder(order) }}>
-                                {remindingId === order.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BellRing className="h-3.5 w-3.5" />}
+                                onClick={(event) => { event.stopPropagation(); setRemindTarget(order) }}>
+                                {remindingId === order.id ? <span className="btn-loader btn-loader-xs" aria-hidden="true" /> : <BellRing className="h-3.5 w-3.5" />}
                               </button>
                             ) : null}
                             {orderStatus === 'approved' && order.voidRequestStatus === 'pending' ? (
@@ -756,6 +751,15 @@ export function MrListPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      <ReasonConfirmDialog
+        open={Boolean(remindTarget)}
+        title="催办签核人"
+        description={remindTarget ? `确定催办「${remindTarget.customerName || '该 MR'}」的当前签核人吗？系统会向其发送提醒邮件。` : undefined}
+        confirmLabel="发送催办"
+        loading={Boolean(remindTarget && remindingId === remindTarget.id)}
+        onCancel={() => setRemindTarget(null)}
+        onConfirm={() => { if (remindTarget) return executeRemindOrder(remindTarget) }}
+      />
+    </PageContainer>
   )
 }

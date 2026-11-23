@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/dialog";
 import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import { PageContainer, PageHeader } from "@/components/PageHeader";
+import { ReasonConfirmDialog } from "@/components/ReasonConfirmDialog";
 import { api } from "@/services/api";
 import { Skeleton } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
@@ -335,14 +337,19 @@ export function Users() {
     }
   }
 
-  async function toggleStatus(user: User) {
+  const [confirmState, setConfirmState] = useState<{ kind: "toggle"; user: User } | { kind: "bulk"; ids: string[] } | null>(null);
+
+  function toggleStatus(user: User) {
     if (!user.id) return;
     if (String(currentUser?.id) === String(user.id)) {
       setError("不能停用或恢复当前登录账号");
       return;
     }
-    const action = user.status === "active" ? "停用" : "启用";
-    if (!window.confirm(`确认${action}成员「${displayName(user)}」？`)) return;
+    setConfirmState({ kind: "toggle", user });
+  }
+
+  async function executeToggleStatus(user: User) {
+    if (!user.id) return;
     setSaving(true);
     setError("");
     try {
@@ -351,6 +358,7 @@ export function Users() {
       } else {
         await api.post(`/users/${user.id}/restore`, {});
       }
+      setConfirmState(null);
       await load();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "操作失败";
@@ -360,10 +368,14 @@ export function Users() {
     }
   }
 
-  async function bulkDisableUsers() {
+  function bulkDisableUsers() {
     const ids = selectedUserIds.filter((id) => selectableFilteredUserIds.includes(id));
     if (!ids.length) return;
-    if (!window.confirm(`确认停用选中的 ${ids.length} 名成员？当前登录账号不会被停用。`)) return;
+    setConfirmState({ kind: "bulk", ids });
+  }
+
+  async function executeBulkDisableUsers(ids: string[]) {
+    if (!ids.length) return;
     setSaving(true);
     setError("");
     try {
@@ -371,6 +383,7 @@ export function Users() {
         await api.delete(`/users/${id}`);
       }
       setSelectedUserIds([]);
+      setConfirmState(null);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "批量停用失败");
@@ -381,32 +394,32 @@ export function Users() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold">成员与角色</h1>
-          <p className="text-muted-foreground mt-1">管理系统用户、邮箱账号和权限</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={load}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            刷新
-          </Button>
-          <Button variant="outline" onClick={async () => {
-            if (permData) { setPermDialogOpen(true); return }
-            await loadPermissions(true);
-          }}>
-            <Shield className="w-4 h-4 mr-2" />
-            权限配置
-          </Button>
-          {canCreateUsers ? (
-            <Button onClick={openCreate}>
-              <Plus className="w-4 h-4 mr-2" />
-              新增成员
+    <PageContainer>
+      <PageHeader
+        title="成员与角色"
+        subtitle="管理系统用户、邮箱账号和权限"
+        actions={(
+          <>
+            <Button variant="outline" onClick={load}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              刷新
             </Button>
-          ) : null}
-        </div>
-      </div>
+            <Button variant="outline" onClick={async () => {
+              if (permData) { setPermDialogOpen(true); return }
+              await loadPermissions(true);
+            }}>
+              <Shield className="w-4 h-4 mr-2" />
+              权限配置
+            </Button>
+            {canCreateUsers ? (
+              <Button onClick={openCreate}>
+                <Plus className="w-4 h-4 mr-2" />
+                新增成员
+              </Button>
+            ) : null}
+          </>
+        )}
+      />
 
       <ErrorToast message={error} />
 
@@ -779,6 +792,30 @@ export function Users() {
           ) : null}
         </DialogContent>
       </Dialog>
-    </div>
+
+      <ReasonConfirmDialog
+        open={Boolean(confirmState)}
+        title={confirmState?.kind === "bulk"
+          ? "批量停用成员"
+          : confirmState?.user.status === "active"
+            ? "停用成员"
+            : "启用成员"}
+        description={confirmState
+          ? (confirmState.kind === "bulk"
+            ? `确认停用选中的 ${confirmState.ids.length} 名成员？当前登录账号不会被停用。`
+            : `确认${confirmState.user.status === "active" ? "停用" : "启用"}成员「${displayName(confirmState.user)}」？`)
+          : undefined}
+        confirmLabel={confirmState?.kind === "toggle" && confirmState.user.status !== "active" ? "确认启用" : "确认停用"}
+        destructive={confirmState?.kind === "bulk" || confirmState?.user.status === "active"}
+        loading={saving}
+        onCancel={() => setConfirmState(null)}
+        onConfirm={() => {
+          if (!confirmState) return;
+          return confirmState.kind === "bulk"
+            ? executeBulkDisableUsers(confirmState.ids)
+            : executeToggleStatus(confirmState.user);
+        }}
+      />
+    </PageContainer>
   );
 }
