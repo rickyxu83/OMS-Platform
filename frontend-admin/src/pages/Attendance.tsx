@@ -1160,8 +1160,8 @@ export function Attendance() {
               return (
                 <>
                   {isPending ? (
-                    <Button size="sm" variant="outline" disabled={reminded} title={reminded ? "24 小时内已催过，请稍后再试" : undefined} onClick={() => remindRequest(item)}>
-                      <BellRing className="mr-1 h-4 w-4" /> 催一下
+                    <Button size="sm" variant="ghost" className="h-8 px-2.5 text-amber-600 hover:bg-amber-50 hover:text-amber-700" disabled={reminded} title={reminded ? "24 小时内已催过，请稍后再试" : undefined} onClick={() => remindRequest(item)}>
+                      <BellRing className="h-3.5 w-3.5" /> 催一下
                     </Button>
                   ) : null}
                   {canEditResubmit ? (
