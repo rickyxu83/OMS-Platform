@@ -8,6 +8,7 @@ import {
   FileSignature,
   ClipboardCheck,
   Users,
+  UserCog,
   Server,
   Building2,
   BarChart3,
@@ -242,7 +243,7 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
     items: [
       {
         labelKey: "users",
-        icon: Settings,
+        icon: UserCog,
         path: "users",
         requiredPermissions: ["user.view"],
       },
