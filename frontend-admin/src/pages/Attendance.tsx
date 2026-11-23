@@ -1165,23 +1165,23 @@ export function Attendance() {
                     </Button>
                   ) : null}
                   {canEditResubmit ? (
-                    <Button size="sm" onClick={() => { setEditingRequest(item); setApplyOpen(true); }}>
-                      <Pencil className="mr-1 h-4 w-4" /> {isDraft ? "编辑提交" : "修改重提"}
+                    <Button size="sm" variant="ghost" className="h-8 px-2.5 text-primary hover:bg-primary-soft hover:text-primary" onClick={() => { setEditingRequest(item); setApplyOpen(true); }}>
+                      <Pencil className="h-3.5 w-3.5" /> {isDraft ? "编辑提交" : "修改重提"}
                     </Button>
                   ) : null}
                   {canResubmitOvertime ? (
-                    <Button size="sm" onClick={() => resubmitDraft(item)}>
-                      <Send className="mr-1 h-4 w-4" /> 重新提交
+                    <Button size="sm" variant="ghost" className="h-8 px-2.5 text-primary hover:bg-primary-soft hover:text-primary" onClick={() => resubmitDraft(item)}>
+                      <Send className="h-3.5 w-3.5" /> 重新提交
                     </Button>
                   ) : null}
                   {isDraft ? (
-                    <Button size="sm" variant="outline" onClick={() => discardDraft(item)}>
-                      <Trash2 className="mr-1 h-4 w-4" /> 丢弃
+                    <Button size="sm" variant="ghost" className="h-8 px-2.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={() => discardDraft(item)}>
+                      <Trash2 className="h-3.5 w-3.5" /> 丢弃
                     </Button>
                   ) : null}
                   {canWithdraw ? (
-                    <Button size="sm" variant="outline" onClick={() => withdrawRequest(item)}>
-                      <RotateCcw className="mr-1 h-4 w-4" /> 撤回
+                    <Button size="sm" variant="ghost" className="h-8 px-2.5 text-muted-foreground hover:text-foreground" onClick={() => withdrawRequest(item)}>
+                      <RotateCcw className="h-3.5 w-3.5" /> 撤回
                     </Button>
                   ) : null}
                 </>
@@ -1250,15 +1250,15 @@ export function Attendance() {
                     );
                   })}
                   <Select value={recordType} onValueChange={setRecordType}>
-                    <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">全部类型</SelectItem>
                       {Object.entries(REQUEST_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <div className="relative">
-                    <Search className="absolute left-3 top-2 h-4 w-4 text-muted-foreground" />
-                    <Input className="h-8 w-44 pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input className="w-44 pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
                   </div>
                   <div className="w-[220px]">
                     <DateRangePicker
@@ -1410,18 +1410,18 @@ export function Attendance() {
                       : []),
                   ]}
                   actions={(
-                    <Button size="sm" variant="outline" onClick={() => setManageEmployee(employee)}>
-                      <Settings2 className="mr-1 h-4 w-4" /> 管理
+                    <Button size="sm" variant="ghost" className="h-8 px-2.5 text-muted-foreground hover:text-foreground" onClick={() => setManageEmployee(employee)}>
+                      <Settings2 className="h-3.5 w-3.5" /> 管理
                     </Button>
                   )}
                 />
               )}
             >
             <div className="overflow-x-auto">
-              <Table className="min-w-[900px]">
-                <TableHeader>
+              <Table className="min-w-[820px]">
+                <TableHeader className="bg-muted/20 text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                   <TableRow>
-                    <TableHead className="w-10">
+                    <TableHead className="w-10 pl-4">
                       <Checkbox
                         aria-label="全选"
                         checked={employees.length > 0 && selectedEmployeeIds.size === employees.length}
@@ -1432,7 +1432,7 @@ export function Attendance() {
                     <TableHead>级别 / 入职</TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">特休余额 <HelpTooltip label={ANNUAL_LEAVE_HELP} /></span></TableHead>
                     <TableHead>调休余额</TableHead>
-                    <TableHead className="text-right">操作</TableHead>
+                    <TableHead className="pr-4 text-right">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1443,7 +1443,7 @@ export function Attendance() {
                       onMouseDown={(event) => onEmployeeRowMouseDown(index, event)}
                       onMouseEnter={() => onEmployeeRowMouseEnter(index)}
                     >
-                      <TableCell onClick={(event) => event.stopPropagation()}>
+                      <TableCell className="pl-4" onClick={(event) => event.stopPropagation()}>
                         <Checkbox
                           aria-label={`选择 ${employee.employeeName || employee.username || employee.id}`}
                           checked={selectedEmployeeIds.has(String(employee.id))}
@@ -1459,9 +1459,9 @@ export function Attendance() {
                       </TableCell>
                       <TableCell>
                         <div>{ANNUAL_LEAVE_SCHEME_LABELS[employee.annualLeaveScheme || ""] || "陆籍"}</div>
-                        <div className="text-xs text-muted-foreground">{formatDate(employee.hireDate)} 入职</div>
+                        <div className="text-xs tabular-nums text-muted-foreground">{formatDate(employee.hireDate)} 入职</div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="tabular-nums">
                         <span className="text-base font-semibold">{days(annualBalanceDays(employee))}</span><span className="ml-1 text-xs text-muted-foreground">天</span>
                         {employee.annualLeaveTierYears === null || employee.annualLeaveTierYears === undefined ? null : (
                           <div className="mt-0.5 text-xs text-muted-foreground">
@@ -1474,7 +1474,7 @@ export function Attendance() {
                           </div>
                         ) : null}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="tabular-nums">
                         {["engineer", "driver"].includes(employee.role || "") ? (
                           <>
                             <span className="text-base font-semibold">{hours(employee.compTimeBalanceHours)}</span><span className="ml-1 text-xs text-muted-foreground">小时</span>
@@ -1488,10 +1488,10 @@ export function Attendance() {
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => setManageEmployee(employee)}>
-                            <Settings2 className="mr-1 h-4 w-4" /> 管理
+                      <TableCell className="pr-4 text-right">
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <Button size="sm" variant="ghost" className="h-8 px-2.5 text-muted-foreground hover:text-foreground" onClick={() => setManageEmployee(employee)}>
+                            <Settings2 className="h-3.5 w-3.5" /> 管理
                           </Button>
                         </div>
                       </TableCell>
@@ -1499,7 +1499,7 @@ export function Attendance() {
                   ))}
                   {employees.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                         {loading ? "正在加载…" : "暂无员工档案"}
                       </TableCell>
                     </TableRow>

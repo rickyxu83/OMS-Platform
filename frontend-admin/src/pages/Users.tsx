@@ -20,9 +20,10 @@ import { ErrorToast } from "@/components/ErrorToast";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { PageContainer, PageHeader } from "@/components/PageHeader";
 import { ReasonConfirmDialog } from "@/components/ReasonConfirmDialog";
+import { StatStrip, StatStripItem } from "@/components/StatStrip";
 import { api } from "@/services/api";
 import { EmptyState } from "@/components/EmptyState";
-import { Skeleton, SkeletonList } from "@/components/Skeleton";
+import { SkeletonList } from "@/components/Skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { matchesSearchText } from "@/lib/text-i18n";
 import { useUrlParam } from "@/lib/use-url-param";
@@ -424,22 +425,17 @@ export function Users() {
 
       <ErrorToast message={error} />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <StatStrip>
         {stats.map((stat, statIndex) => (
-          <Card key={stat.label} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-            <CardContent className="pt-6">
-              <div className="text-sm text-muted-foreground">{stat.label}</div>
-              <div className="text-2xl font-bold mt-1">
-                                {loading ? (
-                  <Skeleton className="h-8 w-16" />
-                ) : (
-                  <span className="stat-value-enter inline-block" style={{ animationDelay: `${Math.min(statIndex * 120, 480)}ms` }}>{stat.value}</span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <StatStripItem
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            loading={loading}
+            animationIndex={statIndex}
+          />
         ))}
-      </div>
+      </StatStrip>
 
       <Card>
         <CardContent className="pt-6">
@@ -594,16 +590,16 @@ export function Users() {
                       </div>
                     </div>
                     {canEditUsers || canDeleteUsers ? (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-1">
                         {canEditUsers ? (
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                            className="h-8 px-2.5 text-muted-foreground hover:text-foreground"
                             onClick={() => openEdit(user)}
                             disabled={saving}
                           >
-                            <Pencil className="w-4 h-4 mr-1" />
+                            <Pencil className="w-3.5 h-3.5" />
                             编辑
                           </Button>
                         ) : null}
@@ -611,14 +607,16 @@ export function Users() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="bg-slate-50 text-slate-900 hover:bg-slate-100 hover:text-slate-900"
+                            className={user.status === "active"
+                              ? "h-8 px-2.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                              : "h-8 px-2.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700"}
                             onClick={() => toggleStatus(user)}
                             disabled={saving || String(currentUser?.id) === String(user.id)}
                           >
                             {user.status === "active" ? (
-                              <UserX className="w-4 h-4 mr-1" />
+                              <UserX className="w-3.5 h-3.5" />
                             ) : (
-                              <UserCheck className="w-4 h-4 mr-1" />
+                              <UserCheck className="w-3.5 h-3.5" />
                             )}
                             {user.status === "active" ? "停用" : "启用"}
                           </Button>
