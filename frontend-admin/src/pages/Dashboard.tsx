@@ -1262,8 +1262,8 @@ export function Dashboard() {
       )}
 
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-5 lg:gap-6">
-        <section className="lg:col-span-3">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12 lg:gap-6">
+        <section className="lg:col-span-7 xl:col-span-8">
           <div className="mb-3 px-1 sm:mb-4">
             <h2 className="text-lg font-semibold sm:text-xl">{t.map.title}</h2>
           </div>
@@ -1283,7 +1283,7 @@ export function Dashboard() {
           />
         </section>
 
-        <section className="lg:col-span-2">
+        <section className="lg:col-span-5 xl:col-span-4">
           <div className="mb-3 flex items-center justify-between gap-2 px-1 sm:mb-4">
             <h2 className="text-lg font-semibold sm:text-xl">{t.recent.title}</h2>
             <button
@@ -1296,19 +1296,18 @@ export function Dashboard() {
             </button>
           </div>
           <Card className="flex h-[320px] flex-col overflow-hidden border-none shadow-sm ring-1 ring-border lg:h-[440px]">
-            <CardContent className="min-h-0 flex-1 overflow-y-auto p-2 sm:p-2.5">
+            <CardContent className="min-h-0 flex-1 overflow-y-auto p-1.5 sm:p-2">
               {loading ? (
                 <div className="divide-y divide-border/60">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={`recent-skeleton-${i}`} className="space-y-2 px-3 py-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={`recent-skeleton-${i}`} className="space-y-1.5 px-2.5 py-2.5">
                       <div className="flex items-center justify-between gap-2">
-                        <Skeleton className="h-4 w-32" />
-                        <Skeleton className="h-4 w-16" />
+                        <Skeleton className="h-4 w-36" />
+                        <Skeleton className="h-4 w-14" />
                       </div>
-                      <Skeleton className="h-3.5 w-4/5" />
-                      <div className="flex items-center justify-between">
-                        <Skeleton className="h-3 w-16" />
-                        <Skeleton className="h-3 w-20" />
+                      <div className="flex items-center justify-between gap-2">
+                        <Skeleton className="h-3.5 w-44" />
+                        <Skeleton className="h-3.5 w-16" />
                       </div>
                     </div>
                   ))}
@@ -1322,7 +1321,7 @@ export function Dashboard() {
                       key={order.key}
                       role="button"
                       tabIndex={0}
-                      className="group cursor-pointer rounded-lg px-2.5 py-2.5 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 sm:px-3 sm:py-3"
+                      className="group cursor-pointer rounded-lg px-2.5 py-2.5 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                       onClick={() => openOrderPreview(order.source)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
@@ -1332,22 +1331,27 @@ export function Dashboard() {
                       }}
                     >
                       <div className="flex min-w-0 items-center justify-between gap-2">
-                        <span
-                          className="min-w-0 truncate text-sm font-semibold text-foreground transition-colors group-hover:text-primary"
-                          title={order.customer}
-                        >
-                          {order.customer}
-                        </span>
+                        <div className="flex min-w-0 items-baseline gap-1.5">
+                          <span
+                            className="min-w-0 truncate text-sm font-semibold text-foreground transition-colors group-hover:text-primary"
+                            title={order.customer}
+                          >
+                            {order.customer}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground/60" aria-hidden="true">·</span>
+                          <span className="shrink-0 truncate text-xs text-muted-foreground" title={order.engineer}>
+                            {order.engineer}
+                          </span>
+                        </div>
                         <span className="shrink-0">{statusIndicatorOf(order.status, order.statusLabel)}</span>
                       </div>
-                      <p className="mt-1 truncate text-xs leading-5 text-muted-foreground" title={order.title}>
-                        {order.title}
-                      </p>
-                      <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2 text-xs text-muted-foreground">
-                        <span className="min-w-0 truncate font-medium text-foreground/75" title={order.engineer}>
-                          {order.engineer}
+                      <div className="mt-1 flex min-w-0 items-center justify-between gap-3">
+                        <p className="min-w-0 flex-1 truncate text-xs leading-5 text-muted-foreground" title={order.title}>
+                          {order.title}
+                        </p>
+                        <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground/80">
+                          {order.date}
                         </span>
-                        <span className="shrink-0 whitespace-nowrap tabular-nums">{order.date}</span>
                       </div>
                     </div>
                   ))}
