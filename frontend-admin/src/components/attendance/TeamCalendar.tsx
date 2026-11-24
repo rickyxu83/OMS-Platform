@@ -123,6 +123,7 @@ export function TeamCalendar() {
   const [month, setMonth] = useState(currentMonth());
   const [items, setItems] = useState<CalendarItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -175,19 +176,31 @@ export function TeamCalendar() {
     return [...seen.entries()];
   }, [items]);
 
+  // 移动端默认选中日期：当月优先选今天，否则选当月首个有记录的日期，兜底当月 1 日
+  useEffect(() => {
+    setSelectedDate((prev) => {
+      if (prev && prev.startsWith(month)) return prev;
+      if (today.startsWith(month)) return today;
+      const firstActive = [...entriesByDate.keys()].sort()[0];
+      return firstActive || `${month}-01`;
+    });
+  }, [month, today, entriesByDate]);
+
   const [year, mon] = month.split("-").map(Number);
+  const selectedEntries = selectedDate ? entriesByDate.get(selectedDate) || [] : [];
+  const selectedWeekday = selectedDate ? WEEKDAYS[new Date(`${selectedDate}T00:00:00`).getDay()] : "";
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+      <CardHeader className="flex flex-col gap-2.5 space-y-0 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <CardTitle className="flex items-center gap-2 text-base">
             <CalendarDays className="h-4 w-4 text-sky-600" />团队日历
             <HelpTooltip label="当月已批准的请假与调休一览：谁哪天不在、全天还是半天（上午止/下午起）。调休按小时显示时段。仅已批准的申请会上日历。" />
           </CardTitle>
-          <CardDescription>已批准的请假/调休按天落格，半天与时段有标注</CardDescription>
+          <CardDescription>已批准的请假/调休按天落格，手机端点击日期查看当日明细</CardDescription>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 self-start sm:self-auto">
           <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => setMonth(shiftMonth(month, -1))} aria-label="上一月">
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -215,7 +228,7 @@ export function TeamCalendar() {
               {WEEKDAYS.map((day, index) => (
                 <div
                   key={day}
-                  className={`border-b bg-muted/50 px-2 py-1.5 text-center text-xs font-medium text-muted-foreground ${index === 0 || index === 6 ? "text-rose-400" : ""}`}
+                  className={`border-b bg-muted/50 px-1 py-1.5 text-center text-xs font-medium text-muted-foreground sm:px-2 ${index === 0 || index === 6 ? "text-rose-400" : ""}`}
                 >
                   {day}
                 </div>
@@ -223,10 +236,24 @@ export function TeamCalendar() {
               {weeks.flat().map((date, index) => {
                 const entries = date ? entriesByDate.get(date) || [] : [];
                 const weekend = index % 7 === 0 || index % 7 === 6;
+                const isSelected = Boolean(date && date === selectedDate);
                 return (
                   <div
                     key={date || `pad-${index}`}
-                    className={`min-h-20 border-b border-r p-1.5 last:border-r-0 md:min-h-24 [&:nth-child(7n)]:border-r-0 ${date ? "" : "bg-muted/30"} ${weekend && date ? "bg-rose-50/40" : ""}`}
+                    role={date ? "button" : undefined}
+                    tabIndex={date ? 0 : undefined}
+                    onClick={date ? () => setSelectedDate(date) : undefined}
+                    onKeyDown={date ? (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedDate(date);
+                      }
+                    } : undefined}
+                    className={`min-h-14 border-b border-r p-1 last:border-r-0 md:min-h-24 md:cursor-default md:p-1.5 [&:nth-child(7n)]:border-r-0 ${
+                      date ? "cursor-pointer transition-colors active:bg-muted/40" : "bg-muted/30"
+                    } ${weekend && date ? "bg-rose-50/40" : ""} ${
+                      isSelected ? "bg-primary/5 ring-2 ring-primary/50 ring-inset md:bg-transparent md:ring-0" : ""
+                    }`}
                   >
                     {date ? (
                       <>
@@ -236,11 +263,24 @@ export function TeamCalendar() {
                           >
                             {Number(date.slice(8, 10))}
                           </span>
+                          {entries.length > 0 ? (
+                            <span className="text-[10px] font-medium text-muted-foreground tabular-nums md:hidden">{entries.length}人</span>
+                          ) : null}
                           {entries.length > MAX_CHIPS_PER_DAY ? (
-                            <span className="text-[10px] text-muted-foreground">{entries.length} 人</span>
+                            <span className="hidden text-[10px] text-muted-foreground md:inline">{entries.length} 人</span>
                           ) : null}
                         </div>
-                        <div className="space-y-0.5">
+                        {/* 移动端：紧凑色点提示，点击在下方查看完整名单 */}
+                        {entries.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 px-0.5 pt-0.5 md:hidden">
+                            {entries.slice(0, 5).map((entry) => (
+                              <span key={entry.key} className={`h-2 w-2 rounded-full ring-1 ring-inset ${entry.colorCls}`} />
+                            ))}
+                            {entries.length > 5 ? <span className="text-[9px] leading-none text-muted-foreground">+</span> : null}
+                          </div>
+                        ) : null}
+                        {/* 桌面端：完整姓名与假别条 */}
+                        <div className="hidden space-y-0.5 md:block">
                           {entries.slice(0, MAX_CHIPS_PER_DAY).map((entry) => (
                             <div
                               key={entry.key}
@@ -261,6 +301,34 @@ export function TeamCalendar() {
                 );
               })}
             </div>
+
+            {/* 移动端选中日期明细面板 */}
+            {selectedDate ? (
+              <div className="mt-3 rounded-lg border bg-muted/15 p-3 md:hidden">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-semibold text-foreground tabular-nums">
+                    {Number(selectedDate.slice(5, 7))}月{Number(selectedDate.slice(8, 10))}日（周{selectedWeekday}）
+                    {selectedDate === today ? <span className="ml-1.5 text-primary">今天</span> : null}
+                  </span>
+                  <span className="text-muted-foreground">{selectedEntries.length ? `共 ${selectedEntries.length} 人请假/调休` : "全员在岗"}</span>
+                </div>
+                {selectedEntries.length ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {selectedEntries.map((entry) => (
+                      <span
+                        key={entry.key}
+                        className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs ring-1 ring-inset ${entry.colorCls}`}
+                      >
+                        <span className="font-medium">{entry.employeeName}</span>
+                        <span className="opacity-80">{entry.label}{entry.marker ? ` · ${entry.marker}` : ""}</span>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-1.5 text-xs text-muted-foreground">当日暂无已批准的请假或调休记录</p>
+                )}
+              </div>
+            ) : null}
             {legend.length ? (
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span>图例：</span>

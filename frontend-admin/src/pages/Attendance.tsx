@@ -1022,44 +1022,72 @@ export function Attendance() {
                   <RefreshCw className="size-3.5" />刷新
                 </Button>
               </CardHeader>
-              <CardContent className="p-0 [&:last-child]:pb-0">
+              <CardContent className="p-3 md:p-0 [&:last-child]:pb-3 md:[&:last-child]:pb-0">
                 {dutyPendingBatches.length ? (
-                  <Table>
-                    <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
-                      <TableRow>
-                        <TableHead className="pl-6">月份</TableHead>
-                        <TableHead>记录</TableHead>
-                        <TableHead>人次</TableHead>
-                        <TableHead>提交时间</TableHead>
-                        <TableHead>提交方式</TableHead>
-                        <TableHead className="pr-6 text-right">操作</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {dutyPendingBatches.map((batch) => (
-                        <TableRow key={batch.month}>
-                          <TableCell className="pl-6 font-medium tabular-nums">{batch.month}</TableCell>
-                          <TableCell className="tabular-nums">{batch.recordCount} 条</TableCell>
-                          <TableCell className="tabular-nums">{batch.unitsSum} 人次</TableCell>
-                          <TableCell className="text-muted-foreground tabular-nums">{batch.submittedAt ? new Date(batch.submittedAt).toLocaleString("zh-CN", { hour12: false }) : "-"}</TableCell>
-                          <TableCell>{batch.autoSubmitted ? <Badge variant="outline">系统自动</Badge> : <Badge variant="secondary">工程主管</Badge>}</TableCell>
-                          <TableCell className="pr-4 text-right">
-                            <div className="flex flex-wrap justify-end gap-1">
-                              <Button size="sm" variant="ghost" className="h-8 px-2.5 text-muted-foreground hover:text-foreground" disabled={dutyBatchSaving} onClick={() => loadDutyDetail(batch.month)}>
-                                <Eye className="size-3.5" />查看明细
-                              </Button>
-                              <Button size="sm" variant="ghost" className="h-8 px-2.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700" disabled={dutyBatchSaving} onClick={() => dutyAction(batch.month, "approve")}>
-                                <Check className="size-3.5" />终审通过
-                              </Button>
-                              <Button size="sm" variant="ghost" className="h-8 px-2.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700" disabled={dutyBatchSaving} onClick={() => rejectDutyBatch(batch.month)}>
-                                <X className="size-3.5" />退回
-                              </Button>
-                            </div>
-                          </TableCell>
+                  <ResponsiveList
+                    items={dutyPendingBatches}
+                    keyExtractor={(batch) => batch.month}
+                    renderCard={(batch) => (
+                      <ResponsiveCard
+                        title={<span className="tabular-nums">{batch.month} 值班津贴</span>}
+                        status={batch.autoSubmitted ? <Badge variant="outline">系统自动</Badge> : <Badge variant="secondary">工程主管</Badge>}
+                        fields={[
+                          { label: "规模", value: `${batch.recordCount} 条记录 · ${batch.unitsSum} 人次` },
+                          { label: "提交", value: batch.submittedAt ? new Date(batch.submittedAt).toLocaleString("zh-CN", { hour12: false }) : "-" },
+                        ]}
+                        actions={(
+                          <>
+                            <Button size="sm" variant="ghost" className="h-8 px-2.5 text-muted-foreground hover:text-foreground" disabled={dutyBatchSaving} onClick={() => loadDutyDetail(batch.month)}>
+                              <Eye className="size-3.5" />查看明细
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-8 px-2.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700" disabled={dutyBatchSaving} onClick={() => dutyAction(batch.month, "approve")}>
+                              <Check className="size-3.5" />终审通过
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-8 px-2.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700" disabled={dutyBatchSaving} onClick={() => rejectDutyBatch(batch.month)}>
+                              <X className="size-3.5" />退回
+                            </Button>
+                          </>
+                        )}
+                      />
+                    )}
+                  >
+                    <Table>
+                      <TableHeader className="text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
+                        <TableRow>
+                          <TableHead className="pl-6">月份</TableHead>
+                          <TableHead>记录</TableHead>
+                          <TableHead>人次</TableHead>
+                          <TableHead>提交时间</TableHead>
+                          <TableHead>提交方式</TableHead>
+                          <TableHead className="pr-6 text-right">操作</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {dutyPendingBatches.map((batch) => (
+                          <TableRow key={batch.month}>
+                            <TableCell className="pl-6 font-medium tabular-nums">{batch.month}</TableCell>
+                            <TableCell className="tabular-nums">{batch.recordCount} 条</TableCell>
+                            <TableCell className="tabular-nums">{batch.unitsSum} 人次</TableCell>
+                            <TableCell className="text-muted-foreground tabular-nums">{batch.submittedAt ? new Date(batch.submittedAt).toLocaleString("zh-CN", { hour12: false }) : "-"}</TableCell>
+                            <TableCell>{batch.autoSubmitted ? <Badge variant="outline">系统自动</Badge> : <Badge variant="secondary">工程主管</Badge>}</TableCell>
+                            <TableCell className="pr-4 text-right">
+                              <div className="flex flex-wrap justify-end gap-1">
+                                <Button size="sm" variant="ghost" className="h-8 px-2.5 text-muted-foreground hover:text-foreground" disabled={dutyBatchSaving} onClick={() => loadDutyDetail(batch.month)}>
+                                  <Eye className="size-3.5" />查看明细
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-8 px-2.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700" disabled={dutyBatchSaving} onClick={() => dutyAction(batch.month, "approve")}>
+                                  <Check className="size-3.5" />终审通过
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-8 px-2.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700" disabled={dutyBatchSaving} onClick={() => rejectDutyBatch(batch.month)}>
+                                  <X className="size-3.5" />退回
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </ResponsiveList>
                 ) : (
                   <div className="p-8 text-center text-sm text-muted-foreground">暂无待终审的值班津贴批次</div>
                 )}
@@ -1250,17 +1278,17 @@ export function Attendance() {
                     );
                   })}
                   <Select value={recordType} onValueChange={setRecordType}>
-                    <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-28 shrink-0"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">全部类型</SelectItem>
                       {Object.entries(REQUEST_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <div className="relative">
+                  <div className="relative min-w-[140px] flex-1 sm:w-44 sm:flex-none">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input className="w-44 pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
+                    <Input className="w-full pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
                   </div>
-                  <div className="w-[220px]">
+                  <div className="w-full sm:w-[220px]">
                     <DateRangePicker
                       start={recordStartDate}
                       end={recordEndDate}
