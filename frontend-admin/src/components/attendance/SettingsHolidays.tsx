@@ -178,7 +178,36 @@ export function SettingsHolidays(props: SettingsHolidaysProps) {
                   </div>
                 </div>
               ) : null}
-              <div className="overflow-x-auto rounded-lg border">
+              <div className="space-y-2 md:hidden">
+                {legalHolidays.length ? legalHolidays.map((item) => (
+                  <div key={item.date} className={`flex items-center justify-between gap-2 rounded-xl border border-border/80 bg-muted/10 p-3 text-xs ${item.active === false ? "opacity-55" : ""}`}>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-sm font-semibold text-foreground">{item.name}</span>
+                        <Badge variant={(item.dayType || "legal_holiday") === "makeup_workday" ? "orange" : "rose"}>
+                          {DAY_TYPE_LABELS[item.dayType || "legal_holiday"] || "放假"}
+                        </Badge>
+                        <Badge variant={item.active === false ? "outline" : "success"}>{item.active === false ? "停用" : "启用"}</Badge>
+                      </div>
+                      <div className="mt-1 tabular-nums text-muted-foreground">
+                        {item.date}（{holidayWeekday(item.date)}） · {HOLIDAY_SOURCE_LABELS[item.source] || item.source || "-"}
+                      </div>
+                    </div>
+                    {canManage ? (
+                      item.active === false ? (
+                        <Button size="sm" variant="ghost" className="h-8 shrink-0 px-2.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700" onClick={() => enableLegalHoliday(item)}>
+                          <Check className="h-3.5 w-3.5" /> 启用
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="ghost" className="h-8 shrink-0 px-2.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={() => disableLegalHoliday(item)}>
+                          <Trash2 className="h-3.5 w-3.5" /> 停用
+                        </Button>
+                      )
+                    ) : null}
+                  </div>
+                )) : <div className="py-8 text-center text-sm text-muted-foreground">暂无法定节假日</div>}
+              </div>
+              <div className="hidden overflow-x-auto rounded-lg border md:block">
                 <Table className="w-full min-w-[720px]">
                   <TableHeader className="bg-muted/20 text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
                     <TableRow>

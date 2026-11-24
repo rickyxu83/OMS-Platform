@@ -937,8 +937,27 @@ export function Attendance() {
     return 0;
   };
   return (
-    <PageContainer>
+    <PageContainer className="max-md:space-y-3.5 max-md:p-3.5">
+      {/* 手机端紧凑单行头部：标题与操作同排，节省首屏高度；桌面端保留原 PageHeader */}
+      <header className="flex items-center justify-between gap-3 md:hidden">
+        <div className="min-w-0">
+          <h1 className="truncate text-xl font-semibold tracking-tight">假勤管理</h1>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">请假、加班、调休与月度汇总</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" size="icon" className="h-9 w-9" onClick={load} disabled={loading} aria-label="刷新假勤数据">
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+          {canApply ? (
+            <Button size="sm" className="h-9 px-3.5" onClick={() => { setEditingRequest(null); setApplyOpen(true); }}>
+              <Plus className="mr-1 h-4 w-4" />
+              新建申请
+            </Button>
+          ) : null}
+        </div>
+      </header>
       <PageHeader
+        className="hidden md:flex"
         title="假勤管理"
         subtitle="请假、加班、调休申请与月度汇总"
         actions={(
@@ -960,7 +979,7 @@ export function Attendance() {
       <ErrorToast message={error} />
 
       {tabs.length > 1 ? (
-        <div className="-mx-2 flex items-end gap-1 overflow-x-auto border-b border-border px-2 sm:mx-0 sm:px-1" role="tablist" aria-label="假勤视图">
+        <div className="-mx-3.5 flex items-end gap-1 overflow-x-auto border-b border-border px-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-1" role="tablist" aria-label="假勤视图">
           {tabs.map((tab) => {
             const active = tab.key === activeTab;
             return (
@@ -969,7 +988,7 @@ export function Attendance() {
                 type="button"
                 role="tab"
                 aria-selected={active}
-                className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 pb-2 pt-2.5 text-[13px] font-medium transition-colors sm:gap-2 sm:px-4 sm:pb-2.5 sm:pt-3 sm:text-sm ${
+                className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 pb-2 pt-2 text-[13px] font-medium transition-colors sm:gap-2 sm:px-4 sm:pb-2.5 sm:pt-3 sm:text-sm ${
                   active
                     ? "border-primary text-primary"
                     : "border-transparent text-muted-foreground hover:bg-accent/50 hover:text-foreground"
@@ -989,9 +1008,44 @@ export function Attendance() {
       ) : null}
 
       {activeTab === "approve" ? (
-        <div className="space-y-6">
+        <div className="space-y-3.5 md:space-y-6">
+          {/* 手机端等宽分格指标卡（对齐不参差）；桌面端保持 2026-11-12 定稿横条 */}
+          {statTiles.length > 0 ? (
+            <div
+              className={`grid overflow-hidden rounded-xl border bg-card shadow-xs md:hidden ${
+                statTiles.length === 3
+                  ? "grid-cols-3 divide-x"
+                  : statTiles.length === 2
+                    ? "grid-cols-2 divide-x"
+                    : statTiles.length === 1
+                      ? "grid-cols-1"
+                      : "grid-cols-2 divide-x [&>*:nth-child(n+3)]:border-t"
+              }`}
+            >
+              {statTiles.map((stat) => (
+                <div key={stat.label} className="flex min-w-0 flex-col justify-between gap-1.5 px-3 py-2.5">
+                  <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded ${stat.iconBox}`}>
+                      <stat.icon className="h-3 w-3" />
+                    </span>
+                    <span className="truncate">{stat.label}</span>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <b className={`text-base font-semibold tabular-nums leading-tight ${stat.warn ? "text-amber-600" : "text-foreground"}`}>
+                      {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : stat.balanceType ? (
+                        <BalanceLedgerTooltip balanceType={stat.balanceType}>
+                          <span className="underline decoration-dotted underline-offset-4">{formatCount(stat.value)}</span>
+                        </BalanceLedgerTooltip>
+                      ) : formatCount(stat.value)}
+                    </b>
+                    {stat.warn && !loading ? <span className="text-[11px] font-medium text-amber-600">不足</span> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
           {/* 原始横条样式 + 每项左侧图标色块（2026-11-12 佬定稿） */}
-          <div className="flex flex-wrap items-center gap-x-8 gap-y-2 rounded-lg border bg-card px-5 py-3 text-sm">
+          <div className="hidden flex-wrap items-center gap-x-8 gap-y-2 rounded-lg border bg-card px-5 py-3 text-sm md:flex">
             {statTiles.map((stat) => (
               <span key={stat.label} className="flex items-center gap-2 text-muted-foreground">
                 <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${stat.iconBox}`}>
@@ -1149,7 +1203,7 @@ export function Attendance() {
             showEmployee={false}
             emptyText={mineStatus === "all" ? "暂无申请记录" : "没有该状态的申请"}
             toolbar={(
-              <>
+              <div className="-mx-3.5 flex w-[calc(100%+1.75rem)] items-center gap-1.5 overflow-x-auto px-3.5 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:w-auto md:flex-wrap md:gap-2 md:overflow-visible md:px-0 md:pb-0">
                 {[
                   { key: "all", label: "全部", count: mine.length },
                   { key: "draft", label: "待提交", count: mine.filter((item) => item.status === "draft").length },
@@ -1165,15 +1219,15 @@ export function Attendance() {
                       type="button"
                       onClick={() => setMineStatus(chip.key)}
                       className={active
-                        ? "flex h-8 items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-3 text-xs font-medium text-primary"
-                        : "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium text-muted-foreground transition hover:bg-muted/50"}
+                        ? "flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-3 text-xs font-medium text-primary"
+                        : "flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium text-muted-foreground transition hover:bg-muted/50"}
                     >
                       {chip.label}
-                      <span className={active ? "font-semibold" : ""}>{chip.count}</span>
+                      <span className={`tabular-nums ${active ? "font-semibold" : ""}`}>{chip.count}</span>
                     </button>
                   );
                 })}
-              </>
+              </div>
             )}
             actions={(item) => {
               const status = item.status || "";
@@ -1224,18 +1278,18 @@ export function Attendance() {
       {activeTab === "calendar" ? <TeamCalendar /> : null}
 
       {activeTab === "records" && canViewRecords ? (
-        <div className="space-y-5">
+        <div className="space-y-3.5 md:space-y-5">
           {canViewAll ? (
-          <div className="flex w-fit gap-1 rounded-lg border bg-muted/40 p-1 text-sm">
+          <div className="flex w-full gap-1 rounded-lg border bg-muted/40 p-1 text-sm md:w-fit">
             <button
               type="button"
               onClick={() => setRecordView("detail")}
-              className={`h-8 rounded-md px-4 font-medium transition ${recordView === "detail" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              className={`h-8 flex-1 rounded-md px-4 font-medium transition md:flex-none ${recordView === "detail" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >申请明细</button>
             <button
               type="button"
               onClick={() => setRecordView("summary")}
-              className={`h-8 rounded-md px-4 font-medium transition ${recordView === "summary" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              className={`h-8 flex-1 rounded-md px-4 font-medium transition md:flex-none ${recordView === "summary" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
             >月度汇总</button>
           </div>
           ) : null}
@@ -1253,78 +1307,144 @@ export function Attendance() {
               onDownloadProof={previewProof}
               onPreviewOrder={openOrderPreview}
               emptyText={hasRecordFilter ? "没有符合筛选条件的记录" : "暂无记录"}
-              toolbar={(<>
-                <div className="flex flex-wrap items-center gap-2">
-                  {[
-                    { key: "all", label: "全部", count: allRequests.length },
-                    { key: "pending", label: "审批中", count: allRequests.filter((item) => String(item.status || "").startsWith("pending_")).length },
-                    { key: "approved", label: "已通过", count: allRequests.filter((item) => item.status === "approved").length },
-                    { key: "rejected", label: "已驳回", count: allRequests.filter((item) => item.status === "rejected").length },
-                    { key: "voided", label: "已作废", count: allRequests.filter((item) => item.status === "voided").length },
-                  ].map((chip) => {
-                    const active = recordStatus === chip.key;
-                    return (
-                      <button
-                        key={chip.key}
-                        type="button"
-                        onClick={() => setRecordStatus(chip.key)}
-                        className={active
-                          ? "flex h-8 items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-3 text-xs font-medium text-primary"
-                          : "flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium text-muted-foreground transition hover:bg-muted/50"}
-                      >
-                        {chip.label}
-                        <span className={active ? "font-semibold" : ""}>{chip.count}</span>
-                      </button>
-                    );
-                  })}
-                  <Select value={recordType} onValueChange={setRecordType}>
-                    <SelectTrigger className="w-28 shrink-0"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">全部类型</SelectItem>
-                      {Object.entries(REQUEST_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <div className="relative min-w-[140px] flex-1 sm:w-44 sm:flex-none">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input className="w-full pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
+              toolbar={(
+                <div className="flex w-full flex-col gap-2.5 md:flex-row md:flex-wrap md:items-center md:gap-2">
+                  <div className="-mx-3.5 flex items-center gap-1.5 overflow-x-auto px-3.5 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:contents">
+                    {[
+                      { key: "all", label: "全部", count: allRequests.length },
+                      { key: "pending", label: "审批中", count: allRequests.filter((item) => String(item.status || "").startsWith("pending_")).length },
+                      { key: "approved", label: "已通过", count: allRequests.filter((item) => item.status === "approved").length },
+                      { key: "rejected", label: "已驳回", count: allRequests.filter((item) => item.status === "rejected").length },
+                      { key: "voided", label: "已作废", count: allRequests.filter((item) => item.status === "voided").length },
+                    ].map((chip) => {
+                      const active = recordStatus === chip.key;
+                      return (
+                        <button
+                          key={chip.key}
+                          type="button"
+                          onClick={() => setRecordStatus(chip.key)}
+                          className={active
+                            ? "flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-3 text-xs font-medium text-primary"
+                            : "flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium text-muted-foreground transition hover:bg-muted/50"}
+                        >
+                          {chip.label}
+                          <span className={`tabular-nums ${active ? "font-semibold" : ""}`}>{chip.count}</span>
+                        </button>
+                      );
+                    })}
                   </div>
-                  <div className="w-full sm:w-[220px]">
-                    <DateRangePicker
-                      start={recordStartDate}
-                      end={recordEndDate}
-                      onChange={(s2, e2) => { setRecordStartDate(s2); setRecordEndDate(e2); }}
-                      placeholder="开始日期 ~ 结束日期"
-                      ariaLabel="假勤记录日期范围"
-                    />
+                  <div className="grid grid-cols-[112px_minmax(0,1fr)] gap-2 md:contents">
+                    <Select value={recordType} onValueChange={setRecordType}>
+                      <SelectTrigger className="w-full shrink-0 md:w-28"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">全部类型</SelectItem>
+                        {Object.entries(REQUEST_TYPE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <div className="relative min-w-0 md:w-44">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input className="w-full pl-9" placeholder="搜索员工姓名" value={recordKeyword} onChange={(event) => setRecordKeyword(event.target.value)} />
+                    </div>
                   </div>
-                  {hasRecordFilter ? <Button variant="ghost" size="sm" onClick={() => { setRecordStatus("all"); setRecordType("all"); setRecordKeyword(""); setRecordStartDate(""); setRecordEndDate(""); }}>重置</Button> : null}
+                  <div className="flex items-center gap-2 md:contents">
+                    <div className="min-w-0 flex-1 md:w-[220px] md:flex-none">
+                      <DateRangePicker
+                        start={recordStartDate}
+                        end={recordEndDate}
+                        onChange={(s2, e2) => { setRecordStartDate(s2); setRecordEndDate(e2); }}
+                        placeholder="开始日期 ~ 结束日期"
+                        ariaLabel="假勤记录日期范围"
+                      />
+                    </div>
+                    {hasRecordFilter ? <Button variant="ghost" size="sm" className="shrink-0" onClick={() => { setRecordStatus("all"); setRecordType("all"); setRecordKeyword(""); setRecordStartDate(""); setRecordEndDate(""); }}>重置</Button> : null}
+                  </div>
                 </div>
-              </>)}
+              )}
               actions={canAdminApprove ? (item) => item.status === "approved" ? (
                 <Button size="sm" variant="ghost" className="h-8 px-2.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={() => voidRequest(item)}><X className="h-3.5 w-3.5" /> 作废</Button>
               ) : null : undefined}
             />
           </>) : (
         <Card className="gap-0 overflow-hidden">
-          <CardHeader className="border-b bg-muted/20">
+          <CardHeader className="border-b bg-muted/20 max-md:px-4 max-md:py-3.5 [.border-b]:max-md:pb-3.5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <CardTitle>月度汇总</CardTitle>
-                <CardDescription>横向比较员工各类假勤与当前余额，加班费折算等财务明细请用导出</CardDescription>
+                <CardTitle className="text-base md:text-lg">月度汇总</CardTitle>
+                <CardDescription className="text-xs md:text-sm">横向比较员工各类假勤与当前余额，加班费折算等财务明细请用导出</CardDescription>
               </div>
-              <div className="flex items-center gap-2">
-                <Input type="month" className="w-40" value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} />
+              <div className="flex w-full items-center gap-2 sm:w-auto">
+                <Input type="month" className="min-w-0 flex-1 sm:w-40 sm:flex-none" value={reportMonth} onChange={(event) => setReportMonth(event.target.value)} />
                 {canExportReport ? (
-                  <Button onClick={() => setReportExportOpen(true)}>
-                    <Download className="mr-2 h-4 w-4" />
+                  <Button size="sm" className="h-9 shrink-0 md:h-10 md:px-4" onClick={() => setReportExportOpen(true)}>
+                    <Download className="mr-1.5 h-4 w-4 md:mr-2" />
                     导出报表
                   </Button>
                 ) : null}
               </div>
             </div>
           </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto rounded-md border">
+          <CardContent className="p-3.5 md:p-0 [&:last-child]:pb-3.5 md:[&:last-child]:pb-0">
+            {/* 手机端月度汇总卡片：仅展示有变动的假勤项与当前余额，免去 11 列横滑 */}
+            <div className="space-y-2.5 md:hidden">
+              {reportItems.length ? reportItems.map((item) => {
+                const annualUsed = annualUsageDays(item);
+                const toComp = Number(item.overtimeToCompHours || 0);
+                const toPay = Number(item.overtimeToPayHours || 0);
+                const compUsed = Number(item.compTimeUsedHours || 0);
+                const activeStats: Array<{ label: string; value: string; sub?: string; warn?: boolean }> = [];
+                if (annualUsed > 0) activeStats.push({ label: "特休", value: `${days(annualUsed)} 天` });
+                for (const col of reportLeaveColumns) {
+                  const val = reportLeaveHours(item, col.code);
+                  const sickQuota = col.code === "sick" ? item.sickLeaveYtd : null;
+                  if (val > 0 || (sickQuota && sickQuota.usedDays > 0)) {
+                    activeStats.push({
+                      label: col.label,
+                      value: `${hours(val)} 小时`,
+                      sub: sickQuota ? `额度 ${sickQuota.usedDays}/${sickQuota.quotaDays} 天${sickQuota.exceedDays > 0 ? ` · 超 ${sickQuota.exceedDays} 天` : ""}` : undefined,
+                      warn: Boolean(sickQuota && sickQuota.exceedDays > 0),
+                    });
+                  }
+                }
+                if (toComp > 0) activeStats.push({ label: "加班·转调休", value: `${hours(toComp)} 小时` });
+                if (toPay > 0) activeStats.push({ label: "加班·付费", value: `${hours(toPay)} 小时` });
+                if (compUsed > 0) activeStats.push({ label: "调休使用", value: `${hours(compUsed)} 小时` });
+                return (
+                  <div key={item.employeeId} className="rounded-xl border border-border/80 bg-muted/10 p-3.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-semibold text-foreground">{item.employeeName || "-"}</span>
+                      <div className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums">
+                        <span className="rounded-md bg-violet-50 px-2 py-0.5 font-medium text-violet-700 ring-1 ring-inset ring-violet-200/80">
+                          特休余 {days(annualBalanceDays(item))}天
+                        </span>
+                        <span className="rounded-md bg-teal-50 px-2 py-0.5 font-medium text-teal-700 ring-1 ring-inset ring-teal-200/80">
+                          调休余 {hours(item.compTimeBalanceHours)}h
+                        </span>
+                      </div>
+                    </div>
+                    {activeStats.length ? (
+                      <div className="mt-2.5 grid grid-cols-2 gap-1.5">
+                        {activeStats.map((stat) => (
+                          <div key={stat.label} className="rounded-lg bg-background px-2.5 py-1.5 text-xs ring-1 ring-inset ring-border/60">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-muted-foreground">{stat.label}</span>
+                              <span className="font-semibold tabular-nums text-foreground">{stat.value}</span>
+                            </div>
+                            {stat.sub ? (
+                              <div className={`mt-0.5 text-[11px] tabular-nums ${stat.warn ? "text-amber-600" : "text-muted-foreground"}`}>{stat.sub}</div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-xs text-muted-foreground">本月无请假、加班或调休记录</div>
+                    )}
+                  </div>
+                );
+              }) : (
+                <div className="py-8 text-center text-sm text-muted-foreground">暂无数据</div>
+              )}
+            </div>
+            <div className="hidden overflow-x-auto rounded-md border md:block">
               <Table className="min-w-[880px]">
                 <TableHeader>
                   <TableRow>
@@ -1381,11 +1501,11 @@ export function Attendance() {
       {activeTab === "employees" && canManage ? (
         <div ref={employeeCardRef}>
         <Card className="gap-0 overflow-hidden">
-          <CardHeader className="border-b bg-muted/20">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <CardHeader className="border-b bg-muted/20 max-md:px-4 max-md:py-3.5 [.border-b]:max-md:pb-3.5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
               <div>
-                <CardTitle>余额控制台</CardTitle>
-                <CardDescription>集中查看员工档案状态、特休余额与调休余额</CardDescription>
+                <CardTitle className="text-base md:text-lg">余额控制台</CardTitle>
+                <CardDescription className="text-xs md:text-sm">集中查看员工档案状态、特休余额与调休余额</CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary">假勤员工 {activeEmployeeCount} 人</Badge>
@@ -1395,9 +1515,9 @@ export function Attendance() {
           </CardHeader>
           <CardContent className="p-0">
             {selectedEmployeeIds.size ? (
-              <div className="flex flex-wrap items-center gap-3 border-b bg-primary/5 px-5 py-3">
+              <div className="flex flex-wrap items-center gap-2 border-b bg-primary/5 px-3.5 py-2.5 md:gap-3 md:px-5 md:py-3">
                 <Badge>已选 {selectedEmployeeIds.size} 人</Badge>
-                <span className="text-xs text-muted-foreground">点击行切换 · Shift 连选 · 按住拖动框选</span>
+                <span className="hidden text-xs text-muted-foreground lg:inline">点击行切换 · Shift 连选 · 按住拖动框选</span>
                 <div className="ml-auto flex flex-wrap gap-2">
                   <Button size="sm" onClick={() => setBatchBalanceOpen(true)}>
                     <Wallet className="mr-1 h-4 w-4" /> 批量初始化余额
@@ -1547,35 +1667,35 @@ export function Attendance() {
       ) : null}
 
       {activeTab === "settings" && canManage ? (
-        <div className="space-y-6">
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-4 md:space-y-6">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl font-semibold">假勤设置</h2>
-              <p className="mt-1 text-sm text-muted-foreground">按影响范围管理审批流程与工作日历</p>
+              <h2 className="text-base font-semibold md:text-xl">假勤设置</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground md:mt-1 md:text-sm">按影响范围管理审批流程与工作日历</p>
             </div>
-            <Badge variant="outline"><Settings2 className="mr-1 h-3.5 w-3.5" />配置总览</Badge>
+            <Badge variant="outline" className="shrink-0"><Settings2 className="mr-1 h-3.5 w-3.5" />配置总览</Badge>
           </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <AttendanceMetric label="审批流程" value="自动推导" note={`直属主管映射 ${approvalRuleMappedCount} 条生效中`} icon={<ShieldCheck className="h-4 w-4" />} />
-            <AttendanceMetric label="启用节日" value={`${legalHolidays.filter((item) => item.active !== false).length} 个`} note={`${holidayYear} 年工作日历`} icon={<CalendarDays className="h-4 w-4" />} />
-            <AttendanceMetric label="余额换算" value="8 小时" note="标准工作日换算基准" icon={<Wallet className="h-4 w-4" />} />
+          <div className="grid grid-cols-3 gap-2 md:gap-3">
+            <AttendanceMetric label="审批流程" value="自动推导" note={`直属主管映射 ${approvalRuleMappedCount} 条生效中`} icon={<ShieldCheck className="h-3.5 w-3.5 md:h-4 md:w-4" />} />
+            <AttendanceMetric label="启用节日" value={`${legalHolidays.filter((item) => item.active !== false).length} 个`} note={`${holidayYear} 年工作日历`} icon={<CalendarDays className="h-3.5 w-3.5 md:h-4 md:w-4" />} />
+            <AttendanceMetric label="余额换算" value="8 小时" note="标准工作日换算基准" icon={<Wallet className="h-3.5 w-3.5 md:h-4 md:w-4" />} />
           </div>
           {canManage ? (
-            <div className="flex w-fit gap-1 rounded-lg border bg-muted/40 p-1 text-sm">
+            <div className="flex w-full gap-1 rounded-lg border bg-muted/40 p-1 text-sm md:w-fit">
               <button
                 type="button"
                 onClick={() => setSettingsView("rules")}
-                className={`h-8 rounded-md px-4 font-medium transition ${settingsView === "rules" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                className={`h-8 flex-1 rounded-md px-2 font-medium transition md:flex-none md:px-4 ${settingsView === "rules" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
               >审批流程</button>
               <button
                 type="button"
                 onClick={() => setSettingsView("leaveTypes")}
-                className={`h-8 rounded-md px-4 font-medium transition ${settingsView === "leaveTypes" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                className={`h-8 flex-1 rounded-md px-2 font-medium transition md:flex-none md:px-4 ${settingsView === "leaveTypes" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
               >假别管理</button>
               <button
                 type="button"
                 onClick={() => setSettingsView("holidays")}
-                className={`h-8 rounded-md px-4 font-medium transition ${settingsView === "holidays" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                className={`h-8 flex-1 rounded-md px-2 font-medium transition md:flex-none md:px-4 ${settingsView === "holidays" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
               >工作日历</button>
             </div>
           ) : null}
@@ -1706,8 +1826,8 @@ export function Attendance() {
       />
 
       <Dialog open={Boolean(proofPreview)} onOpenChange={(open) => { if (!open) closeProofPreview(); }}>
-        <DialogContent className="flex h-[88vh] max-w-[min(96vw,1100px)] flex-col overflow-hidden p-0">
-          <DialogHeader className="border-b px-5 py-4">
+        <DialogContent className="flex h-[88vh] supports-[height:100dvh]:h-[88dvh] max-w-[min(96vw,1100px)] flex-col overflow-hidden p-0">
+          <DialogHeader className="border-b px-4 py-3 sm:px-5 sm:py-4">
             <DialogTitle>证明附件预览</DialogTitle>
             <DialogDescription title={proofPreview?.originalName || "-"} className="truncate">{proofPreview?.originalName || "-"}</DialogDescription>
           </DialogHeader>
@@ -1813,44 +1933,74 @@ export function Attendance() {
                 }
                 const groups = [...byEmployee.values()];
                 return (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>工程师</TableHead>
-                        <TableHead>7×24 值班（平日加班）</TableHead>
-                        <TableHead>法定节假日（国定假日）</TableHead>
-                        <TableHead className="text-right">合计人次</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                  <>
+                    <div className="space-y-2 sm:hidden">
                       {groups.map((group) => (
-                        <TableRow key={group.name}>
-                          <TableCell className="font-medium">{group.name}</TableCell>
-                          <TableCell>
-                            {group.weekendDates.length ? (
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <Badge variant="cyan">{group.weekendDates.length} 次</Badge>
-                                <span className="text-xs text-muted-foreground tabular-nums">{group.weekendDates.join("、")}</span>
-                              </div>
-                            ) : <span className="text-xs text-muted-foreground">-</span>}
-                          </TableCell>
-                          <TableCell>
-                            {group.holidays.length ? (
-                              <div className="space-y-1">
-                                {group.holidays.map((holiday, index) => (
-                                  <div key={index} className="flex flex-wrap items-center gap-1.5">
-                                    <Badge variant="rose">{holiday.name}</Badge>
-                                    <span className="text-xs text-muted-foreground tabular-nums">{holiday.start}{holiday.end && holiday.end !== holiday.start ? `~${holiday.end}` : ""} × {holiday.units} 天</span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : <span className="text-xs text-muted-foreground">-</span>}
-                          </TableCell>
-                          <TableCell className="text-right"><span className="font-semibold tabular-nums">{group.total}</span><span className="ml-1 text-xs text-muted-foreground">人次</span></TableCell>
-                        </TableRow>
+                        <div key={group.name} className="rounded-lg border bg-muted/15 p-3 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-semibold text-foreground">{group.name}</span>
+                            <span className="font-semibold tabular-nums text-foreground">{group.total} <span className="font-normal text-muted-foreground">人次</span></span>
+                          </div>
+                          {group.weekendDates.length ? (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              <Badge variant="cyan">7×24 · {group.weekendDates.length} 次</Badge>
+                              <span className="tabular-nums text-muted-foreground">{group.weekendDates.join("、")}</span>
+                            </div>
+                          ) : null}
+                          {group.holidays.length ? (
+                            <div className="mt-1.5 space-y-1">
+                              {group.holidays.map((holiday, index) => (
+                                <div key={index} className="flex flex-wrap items-center gap-1.5">
+                                  <Badge variant="rose">{holiday.name}</Badge>
+                                  <span className="tabular-nums text-muted-foreground">{holiday.start}{holiday.end && holiday.end !== holiday.start ? `~${holiday.end}` : ""} × {holiday.units} 天</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
                       ))}
-                    </TableBody>
-                  </Table>
+                    </div>
+                    <div className="hidden sm:block">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>工程师</TableHead>
+                            <TableHead>7×24 值班（平日加班）</TableHead>
+                            <TableHead>法定节假日（国定假日）</TableHead>
+                            <TableHead className="text-right">合计人次</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {groups.map((group) => (
+                            <TableRow key={group.name}>
+                              <TableCell className="font-medium">{group.name}</TableCell>
+                              <TableCell>
+                                {group.weekendDates.length ? (
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <Badge variant="cyan">{group.weekendDates.length} 次</Badge>
+                                    <span className="text-xs text-muted-foreground tabular-nums">{group.weekendDates.join("、")}</span>
+                                  </div>
+                                ) : <span className="text-xs text-muted-foreground">-</span>}
+                              </TableCell>
+                              <TableCell>
+                                {group.holidays.length ? (
+                                  <div className="space-y-1">
+                                    {group.holidays.map((holiday, index) => (
+                                      <div key={index} className="flex flex-wrap items-center gap-1.5">
+                                        <Badge variant="rose">{holiday.name}</Badge>
+                                        <span className="text-xs text-muted-foreground tabular-nums">{holiday.start}{holiday.end && holiday.end !== holiday.start ? `~${holiday.end}` : ""} × {holiday.units} 天</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : <span className="text-xs text-muted-foreground">-</span>}
+                              </TableCell>
+                              <TableCell className="text-right"><span className="font-semibold tabular-nums">{group.total}</span><span className="ml-1 text-xs text-muted-foreground">人次</span></TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </>
                 );
               })()
             ) : (
@@ -1883,10 +2033,10 @@ export function Attendance() {
 function AttendanceMetric({ label, value, note, icon }: { label: string; value: string; note: string; icon: ReactNode }) {
   return (
     <Card className="gap-0 shadow-sm">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between text-sm text-muted-foreground"><span>{label}</span>{icon}</div>
-        <div className="mt-3 text-2xl font-semibold tracking-tight">{value}</div>
-        <div className="mt-1 text-xs text-muted-foreground">{note}</div>
+      <CardContent className="p-2.5 md:p-4 [&:last-child]:pb-2.5 md:[&:last-child]:pb-4">
+        <div className="flex items-center justify-between gap-1 text-xs text-muted-foreground md:text-sm"><span className="truncate">{label}</span><span className="shrink-0">{icon}</span></div>
+        <div className="mt-1.5 text-base font-semibold tracking-tight md:mt-3 md:text-2xl">{value}</div>
+        <div className="mt-0.5 truncate text-[11px] text-muted-foreground md:mt-1 md:text-xs">{note}</div>
       </CardContent>
     </Card>
   );

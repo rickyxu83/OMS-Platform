@@ -191,14 +191,14 @@ export function TeamCalendar() {
   const selectedWeekday = selectedDate ? WEEKDAYS[new Date(`${selectedDate}T00:00:00`).getDay()] : "";
 
   return (
-    <Card>
-      <CardHeader className="flex flex-col gap-2.5 space-y-0 sm:flex-row sm:items-center sm:justify-between">
+    <Card className="max-md:gap-3">
+      <CardHeader className="flex flex-col gap-2 space-y-0 max-md:px-4 max-md:pt-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <CardTitle className="flex items-center gap-2 text-base">
             <CalendarDays className="h-4 w-4 text-sky-600" />团队日历
             <HelpTooltip label="当月已批准的请假与调休一览：谁哪天不在、全天还是半天（上午止/下午起）。调休按小时显示时段。仅已批准的申请会上日历。" />
           </CardTitle>
-          <CardDescription>已批准的请假/调休按天落格，手机端点击日期查看当日明细</CardDescription>
+          <CardDescription className="text-xs sm:text-sm">已批准的请假/调休按天落格，手机端点击日期查看当日明细</CardDescription>
         </div>
         <div className="flex items-center gap-1.5 self-start sm:self-auto">
           <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => setMonth(shiftMonth(month, -1))} aria-label="上一月">
@@ -217,7 +217,7 @@ export function TeamCalendar() {
           ) : null}
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="max-md:px-3.5 max-md:[&:last-child]:pb-3.5">
         {loading ? (
           <div className="flex items-center justify-center py-16 text-muted-foreground">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />加载中…
