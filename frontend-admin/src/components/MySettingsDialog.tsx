@@ -381,7 +381,7 @@ export function MySettingsDialog({ open, onOpenChange, roleLabel }: {
             </div>
           </aside>
 
-          <div className="max-h-[calc(100dvh-9rem)] overflow-y-auto p-5">
+          <div className="max-h-[calc(100vh-9rem)] supports-[height:100dvh]:max-h-[calc(100dvh-9rem)] overflow-y-auto p-5">
             <section className="space-y-4">
               <div>
                 <h3 className="text-sm font-semibold">个人资料</h3>

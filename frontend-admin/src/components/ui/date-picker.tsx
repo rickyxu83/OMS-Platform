@@ -123,7 +123,7 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
           data-date-picker-panel
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="pointer-events-auto fixed z-[100] flex max-h-[calc(100dvh-16px)] max-w-[calc(100vw-16px)] flex-col overflow-auto rounded-xl border border-slate-200 bg-white shadow-xl sm:flex-row sm:overflow-hidden"
+          className="pointer-events-auto fixed z-[100] flex max-h-[calc(100vh-16px)] supports-[height:100dvh]:max-h-[calc(100dvh-16px)] max-w-[calc(100vw-16px)] flex-col overflow-auto rounded-xl border border-slate-200 bg-white shadow-xl sm:flex-row sm:overflow-hidden"
           style={panelPos ? { top: panelPos.top, left: panelPos.left } : undefined}
         >
           {/* 年份：窄屏顶部横向滚动条，桌面左侧纵列 */}

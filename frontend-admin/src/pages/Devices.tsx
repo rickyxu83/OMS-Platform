@@ -3796,7 +3796,7 @@ export function Devices() {
       </Dialog>
 
       <Dialog open={mergeOpen} onOpenChange={setMergeOpen}>
-        <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-[560px]">
+        <DialogContent className="max-h-[92vh] supports-[height:100dvh]:max-h-[92dvh] overflow-y-auto sm:max-w-[560px]">
           <DialogHeader>
             <DialogTitle>合并重复设备</DialogTitle>
             <DialogDescription>

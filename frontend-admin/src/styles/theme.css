@@ -194,6 +194,12 @@
   }
 
   @media (max-width: 640px) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select,
+    textarea {
+      font-size: 16px;
+    }
+
     input[type="date"]:not([data-compact-date="true"]),
     input[type="time"]:not([data-compact-date="true"]),
     input[type="datetime-local"]:not([data-compact-date="true"]) {

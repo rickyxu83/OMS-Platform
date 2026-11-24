@@ -162,7 +162,7 @@ export function PdfPreview({ data, title = "PDF 附件预览", fileName }: PdfPr
           </Button>
         </div>
       </div>
-      <div className="h-[64dvh] min-h-[300px] overflow-auto p-4">
+      <div className="h-[64vh] supports-[height:100dvh]:h-[64dvh] min-h-[300px] overflow-auto p-4">
         {loading ? (
           <div className="flex min-h-[300px] items-center justify-center gap-2 text-sm text-muted-foreground">
             <span className="btn-loader" aria-hidden="true" />

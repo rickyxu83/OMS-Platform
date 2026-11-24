@@ -69,7 +69,7 @@ export function CustomerIndexSuggestions<T extends IndexedCustomer>({
   return (
     <div className="absolute left-0 right-0 top-[calc(100%+0.375rem)] z-50 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg">
       <div className="relative">
-        <div ref={listRef} className="max-h-[68dvh] overflow-y-auto p-2 pr-7 sm:max-h-96 sm:pr-8">
+        <div ref={listRef} className="max-h-[68vh] supports-[height:100dvh]:max-h-[68dvh] overflow-y-auto p-2 pr-7 sm:max-h-96 sm:pr-8">
           {searching ? (
             <div className="mb-2 flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
               <span className="btn-loader" aria-hidden="true" />
