@@ -31,7 +31,7 @@ const RAW_PERMISSION_ENTRIES = Object.freeze([
   ['workspace.admin', '管理工作台', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales_supervisor', 'sales', 'engineer', 'purchaser', 'driver', 'finance', 'import_export']],
   ['workspace.engineer', '工程师工作台', []],
   ['permission.manage', '配置角色权限', ['admin']],
-  ['dashboard.view', '查看运营总览', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor', 'finance', 'import_export', 'driver']],
+  ['dashboard.view', '查看运营总览', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor', 'purchaser', 'finance', 'import_export', 'driver']],
   ['order.view', '查看工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor', 'administrative_supervisor', 'sales', 'sales_supervisor']],
   ['order.create', '创建工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor']],
   ['order.edit', '编辑工单', ['admin', 'assistant', 'dispatcher', 'operations_director', 'engineering_supervisor']],
