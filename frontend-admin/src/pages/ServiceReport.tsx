@@ -123,7 +123,7 @@ import {
   targetDeviceTitle, toInputDateTime, uniqueServiceModules, validateFiles,
 } from "./service-report/utils";
 import {
-  DateTimeFieldControl, DenseField, Field, FullscreenSignatureDialog, InlineError, MarkdownTextarea,
+  DateTimeFieldControl, DenseField, Field, FieldClearButton, FullscreenSignatureDialog, InlineError, MarkdownTextarea,
   NativeTimeInput, ReportPreviewBlock, ReportPreviewField, ReportSection, SignaturePad,
   hasPreviewValue, markdownReplacement,
 } from "./service-report/components";
@@ -3754,7 +3754,10 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 	              <ReportSection sectionId="work" title={isOffice ? "工作内容" : "处理记录"} icon={PenLine} step={workSectionStep} tag="服务时间与处理内容">
               <div className="grid gap-4 p-4 md:grid-cols-2">
                 {isOnsite ? (
-                  <Field label="出发时间">
+                  <Field
+                    label="出发时间"
+                    action={form.departureAt ? <FieldClearButton label="出发时间" onClear={() => patchForm({ departureAt: "" })} /> : null}
+                  >
                     <DateTimeFieldControl
                       label="出发时间"
                       value={form.departureAt}
@@ -3762,14 +3765,22 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                     />
                   </Field>
                 ) : null}
-                <Field label={isOnsite ? "到达时间" : "开始时间"} required>
+                <Field
+                  label={isOnsite ? "到达时间" : "开始时间"}
+                  required
+                  action={form.actualStartAt ? <FieldClearButton label={isOnsite ? "到达时间" : "开始时间"} onClear={() => patchForm({ actualStartAt: "" })} /> : null}
+                >
                   <DateTimeFieldControl
                     label={isOnsite ? "到达时间" : "开始时间"}
                     value={form.actualStartAt}
                     onChange={(actualStartAt) => patchForm({ actualStartAt })}
                   />
                 </Field>
-                <Field label={isOnsite ? "完成时间" : "结束时间"} required>
+                <Field
+                  label={isOnsite ? "完成时间" : "结束时间"}
+                  required
+                  action={form.actualEndAt ? <FieldClearButton label={isOnsite ? "完成时间" : "结束时间"} onClear={() => patchForm({ actualEndAt: "" })} /> : null}
+                >
                   <DateTimeFieldControl
                     label={isOnsite ? "完成时间" : "结束时间"}
                     value={form.actualEndAt}
@@ -3777,7 +3788,10 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                   />
                 </Field>
                 {isOnsite ? (
-                  <Field label="返回时间">
+                  <Field
+                    label="返回时间"
+                    action={form.returnAt ? <FieldClearButton label="返回时间" onClear={() => patchForm({ returnAt: "" })} /> : null}
+                  >
                     <DateTimeFieldControl
                       label="返回时间"
                       value={form.returnAt}

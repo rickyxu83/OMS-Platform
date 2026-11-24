@@ -673,14 +673,41 @@ export function MarkdownTextarea({
 }
 
 /** 工单填写专用 Field：仅填写态（预览态统一走 ReportPreviewField）。与 MR 的 Field（双模）是有意分化，勿合并。 */
-export function Field({ label, children, required = false }: { label: string; children: React.ReactNode; required?: boolean }) {
+export function Field({
+  label,
+  children,
+  required = false,
+  action,
+}: {
+  label: string;
+  children: React.ReactNode;
+  required?: boolean;
+  action?: React.ReactNode;
+}) {
   return (
     <div className="space-y-2">
-      <Label className="block text-sm font-medium text-foreground">
-        {required ? <span className="mr-0.5 text-destructive">*</span> : null}{label}
-      </Label>
+      <div className="flex min-h-5 items-center justify-between gap-2">
+        <Label className="block text-sm font-medium text-foreground">
+          {required ? <span className="mr-0.5 text-destructive">*</span> : null}{label}
+        </Label>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </div>
       {children}
     </div>
+  );
+}
+
+export function FieldClearButton({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClear}
+      aria-label={`清空${label}`}
+      className="-my-1 inline-flex items-center gap-0.5 rounded-md px-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted"
+    >
+      <X className="h-3.5 w-3.5" />
+      清空
+    </button>
   );
 }
 
@@ -715,13 +742,13 @@ export function DateTimeFieldControl({
   }
 
   return (
-    <div className="flex w-full min-w-0 items-center gap-2.5 sm:gap-3">
+    <div className="grid w-full min-w-0 grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] items-center gap-2.5 sm:gap-3">
       <DatePicker
         value={draftDate}
         onChange={setDate}
         clearable={false}
         ariaLabel={`${label}日期`}
-        className="min-w-0 flex-[1.28]"
+        className="min-w-0"
         triggerClassName="h-[42px] rounded-lg border-border bg-input-background shadow-none hover:border-primary/40 focus-within:bg-background"
       />
       <NativeTimeInput
@@ -729,21 +756,9 @@ export function DateTimeFieldControl({
         time={time}
         onTimeChange={setTime}
         heightClass="h-[42px]"
-        className="min-w-0 flex-1"
+        className="min-w-0"
         wrapperClassName="rounded-lg border-border bg-input-background shadow-none hover:border-primary/40 focus-within:bg-background"
       />
-      {value ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-[42px] w-[42px] shrink-0 rounded-lg border-border bg-input-background shadow-none hover:border-primary/40"
-          onClick={() => onChange("")}
-          aria-label={`清空${label}`}
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      ) : null}
     </div>
   );
 }

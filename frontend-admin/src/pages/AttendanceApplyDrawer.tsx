@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DatePicker } from "@/components/ui/date-picker";
-import { DateTimeFieldControl, NativeTimeInput } from "@/pages/service-report/components";
+import { DateTimeFieldControl, FieldClearButton, NativeTimeInput } from "@/pages/service-report/components";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -628,7 +628,10 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                         </div>
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">去程出发</Label>
+                            <div className="flex min-h-5 items-center justify-between gap-2">
+                              <Label className="text-xs text-muted-foreground">去程出发</Label>
+                              {travelDepartureAt ? <FieldClearButton label="去程出发" onClear={() => setTravelDepartureAt("")} /> : null}
+                            </div>
                             <DateTimeFieldControl
                               label="去程出发"
                               value={travelDepartureAt}
@@ -637,7 +640,10 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                             <p className="text-xs text-muted-foreground">到达（工单）：{formatDateTime(selectedOvertimeOrder.actualStartAt || undefined)}</p>
                           </div>
                           <div className="space-y-1.5">
-                            <Label className="text-xs text-muted-foreground">回程返回</Label>
+                            <div className="flex min-h-5 items-center justify-between gap-2">
+                              <Label className="text-xs text-muted-foreground">回程返回</Label>
+                              {travelReturnAt ? <FieldClearButton label="回程返回" onClear={() => setTravelReturnAt("")} /> : null}
+                            </div>
                             <DateTimeFieldControl
                               label="回程返回"
                               value={travelReturnAt}
