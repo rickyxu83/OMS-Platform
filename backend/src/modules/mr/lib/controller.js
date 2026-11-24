@@ -2744,7 +2744,7 @@ async function uploadAttachments(req, res) {
 }
 
 function getConstants(_req, res) {
-  res.json({ ...constants, pricingModes: [{ value: 1, label: '多项系统集成' }, { value: 2, label: '单项系统集成' }, { value: 3, label: '开明细' }] })
+  res.json({ ...constants, pricingModes: [{ value: 1, label: '多项系统集成' }, { value: 2, label: '单项系统集成' }, { value: 3, label: '开明细' }, { value: 4, label: '手动开单兜底' }] })
 }
 
 async function listLayoutRules(_req, res) {

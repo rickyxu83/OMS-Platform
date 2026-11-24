@@ -6,10 +6,10 @@ const CASE_CATEGORIES = ['软件买卖', '硬件买卖', '系统整合', '维护
 const ACCEPTANCE_TYPES = ['交货即验收', '装机完成', '测试完成', '验收报告', '其他']
 const WORK_OPTIONS = ['敦阳', '供应商', 'NO', '其他']
 
-// 签单主体（2026-09-10 spec 011）：敦沪单仅允许"开明细"计价模式；enName 为空时 PDF/打印页眉不渲染英文行
+// 签单主体（2026-09-10 spec 011）：敦沪仅允许明细类模式；spec 021 起两主体均开放手动开单兜底（模式 4）
 const COMPANIES = [
-  { value: 'dunyang', label: '敦阳（宁波）科技有限公司', shortLabel: '敦阳', enName: 'STARK (NINGBO) TECHNOLOGY INC.', pricingModes: [1, 2, 3] },
-  { value: 'dunhu', label: '上海敦沪信息科技有限公司', shortLabel: '敦沪', enName: 'Shanghai Stark Technology Inc.', pricingModes: [3] },
+  { value: 'dunyang', label: '敦阳（宁波）科技有限公司', shortLabel: '敦阳', enName: 'STARK (NINGBO) TECHNOLOGY INC.', pricingModes: [1, 2, 3, 4] },
+  { value: 'dunhu', label: '上海敦沪信息科技有限公司', shortLabel: '敦沪', enName: 'Shanghai Stark Technology Inc.', pricingModes: [3, 4] },
 ]
 const DEFAULT_COMPANY = COMPANIES[0].value
 
@@ -314,7 +314,8 @@ function normalizeOrder(body = {}) {
     ? bodyItems.map((item) => ({ ...item, taxRate: 6 }))
     : bodyItems
   const items = calculateItems(pricingMode, rawTotal, rawItems)
-  if (pricingMode === 3) {
+  // 开明细与手动开单兜底均以逐项小计加总为整单未税总计；模式 4 不做任何分摊或单价重算
+  if ([3, 4].includes(pricingMode)) {
     order.totalExcludingTax = round(items.reduce((sum, item) => sum + (item.subtotal ?? 0), 0), 2)
   }
   return { order, items }
@@ -349,8 +350,8 @@ function validateSubmission(order, items) {
     if (order[field] && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(order[field])) errors.push({ field, message: `${label}邮箱格式不正确` })
   }
   if (order.invoiceType && !INVOICE_TYPES.includes(order.invoiceType)) errors.push({ field: 'invoiceType', message: '发票类型无效' })
-  if (![1, 2, 3].includes(order.pricingMode)) errors.push({ field: 'pricingMode', message: '计价模式无效' })
-  if (!companyOf(order.company).pricingModes.includes(order.pricingMode)) errors.push({ field: 'pricingMode', message: `${companyOf(order.company).label}的 MR 单仅支持开明细计价模式` })
+  if (![1, 2, 3, 4].includes(order.pricingMode)) errors.push({ field: 'pricingMode', message: '计价模式无效' })
+  if (!companyOf(order.company).pricingModes.includes(order.pricingMode)) errors.push({ field: 'pricingMode', message: `${companyOf(order.company).label}的 MR 单仅支持开明细、手动开单兜底计价模式` })
   if (order.invoiceProcess && !INVOICE_PROCESSES.includes(order.invoiceProcess)) errors.push({ field: 'invoiceProcess', message: '开票方式无效' })
   if (order.paymentTerms && !PAYMENT_TERMS.includes(order.paymentTerms)) errors.push({ field: 'paymentTerms', message: '付款条件无效' })
   if (order.paymentTerms === '其他') requireValue('paymentOther', order.paymentOther, '请填写付款条件说明')
@@ -370,15 +371,18 @@ function validateSubmission(order, items) {
 
   items.forEach((item, index) => {
     const label = `第 ${index + 1} 项`
+    const manualMode = order.pricingMode === 4
     if (!item.name && !item.description) errors.push({ field: `items.${index}.name`, message: `${label}：请填写品名及描述` })
     if (!(item.qty > 0)) errors.push({ field: `items.${index}.qty`, message: `${label}：数量必须大于 0` })
-    if (!(item.unitPrice >= 0)) errors.push({ field: `items.${index}.unitPrice`, message: `${label}：未税单价不得小于 0` })
+    // 手动开单兜底必须显式填写单价；其他模式保留既有校验口径（单价可由分摊生成）
+    if ((manualMode && item.unitPrice === null) || !(item.unitPrice >= 0)) errors.push({ field: `items.${index}.unitPrice`, message: `${label}：请填写未税单价，且不得小于 0` })
     const serviceRow = order.pricingMode === 2 && index === 1
-    if (!serviceRow && !item.vendor) errors.push({ field: `items.${index}.vendor`, message: `${label}：请填写供应商` })
-    if (!(item.costInclTax >= 0)) errors.push({ field: `items.${index}.costInclTax`, message: `${label}：采购价（含税）不得小于 0` })
-    if (![6, 13].includes(item.taxRate)) errors.push({ field: `items.${index}.taxRate`, message: `${label}：采购税率仅可选择 6% 或 13%` })
+    // spec 021 半放校验：手动模式可留空供应商与采购成本；一旦填写仍须为合法非负金额和 6%/13% 税率
+    if (!serviceRow && !manualMode && !item.vendor) errors.push({ field: `items.${index}.vendor`, message: `${label}：请填写供应商` })
+    if (item.costInclTax === null ? !manualMode : !(item.costInclTax >= 0)) errors.push({ field: `items.${index}.costInclTax`, message: `${label}：采购价（含税）不得小于 0` })
+    if (item.taxRate === null ? !manualMode : ![6, 13].includes(item.taxRate)) errors.push({ field: `items.${index}.taxRate`, message: `${label}：采购税率仅可选择 6% 或 13%` })
     if (['6%普通发票', '6%服务发票'].includes(order.invoiceType) && item.taxRate === 13) errors.push({ field: `items.${index}.taxRate`, message: `${label}：当前发票类型的适用税率为 6%，采购税率仅可选择 6%` })
-    if (order.pricingMode === 3 && item.marginRate !== null && item.marginRate < 0) errors.push({ field: `items.${index}.unitPrice`, message: `${label}：毛利率不得为负数` })
+    if ([3, 4].includes(order.pricingMode) && item.marginRate !== null && item.marginRate < 0) errors.push({ field: `items.${index}.unitPrice`, message: `${label}：毛利率不得为负数` })
   })
 
   if (order.pricingMode === 1 && items.length) {

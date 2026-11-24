@@ -65,7 +65,7 @@ import { QuotationImportDialog } from './QuotationImportDialog'
 import { OfficePreviewContent, isUnsupportedOfficeName, officePreviewType } from '@/components/OfficePreviewContent'
 import { PdfPreview } from '@/components/PdfPreview'
 
-const PRICING_LABELS: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细' }
+const PRICING_LABELS: Record<number, string> = { 1: '多项系统集成', 2: '单项系统集成', 3: '开明细', 4: '手动开单兜底' }
 const SECTION_ICON = (id: string) => MR_SECTIONS.find((section) => section.id === id)?.icon
 const WORKBENCH_SECTIONS = ['identity', 'trade', 'items', 'billing', 'delivery', 'remark', 'approval']
   .map((id) => MR_SECTIONS.find((section) => section.id === id))
@@ -621,8 +621,8 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
     const nextItems = currentMode === 2 ? currentItems.slice(0, 1) : currentItems
     const currentSalesTotal = calculated.totals?.salesExcludingTax ?? calculated.totalExcludingTax
     const warnings: string[] = []
-    if (currentMode === 3 && nextMode !== 3 && currentItems.some((item) => item.unitPrice !== null && item.unitPrice !== undefined)) {
-      warnings.push('从“开明细”切换至系统集成模式后，各品项的未税单价将按目标计价模式重新计算。')
+    if ([3, 4].includes(currentMode) && ![3, 4].includes(nextMode) && currentItems.some((item) => item.unitPrice !== null && item.unitPrice !== undefined)) {
+      warnings.push(`从“${PRICING_LABELS[currentMode]}”切换至系统集成模式后，各品项的未税单价将按目标计价模式重新计算。`)
     }
     const secondIsService = Boolean(currentItems[1] && `${currentItems[1].name || ''}${currentItems[1].description || ''}`.includes('服务'))
     if (nextMode === 2 && (currentItems.length > 2 || (currentItems.length === 2 && !secondIsService))) {
@@ -808,14 +808,14 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
     const salesTotal = result.salesTotalExcludingTax ?? result.sources.find((source) => source.role === 'sales')?.total
     const suggested = suggestPricingMode(result)
     let importedMode = Number(selectedMode) || Number(calculated?.pricingMode) || suggested.mode
-    // 签单主体计价模式白名单兜底（spec 011）：敦沪单无论识别建议如何都锁定开明细
+    // 签单主体计价模式白名单兜底：敦沪仅允许开明细/手动开单兜底；报价识别本身只建议 1/2/3
     const importCompany = mrCompanyOf(calculated?.company, constants?.COMPANIES?.length ? constants.COMPANIES : MR_COMPANIES)
     if (!importCompany.pricingModes.includes(importedMode)) importedMode = importCompany.pricingModes[0]
     const importedInvoiceType = calculated?.invoiceType || suggestInvoiceType(result)
-    const imported = normalizeCostTaxRates(result.items, importedInvoiceType)
+    const imported = normalizeCostTaxRates(result.items, importedInvoiceType, importedMode === 4)
     const items = importedMode === 2
       ? singleIntegrationItems(imported, importedInvoiceType, calculated?.installOptions || [])
-      : imported
+      : [3, 4].includes(importedMode) ? quotationDetailItems(imported) : imported
     const metadataCustomer = result.metadata?.customer?.trim() || ''
     const matchedCustomer = !calculated?.customerId
       ? result.metadata?.matchedCustomer || customers.find((customer) => [customer.name, customer.code].some((value) => normalizeLookup(value) === normalizeLookup(metadataCustomer)))
@@ -856,7 +856,7 @@ const [pdfPreview, setPdfPreview] = useState<{ file: QuotationFile; data: Uint8A
       pricingMode: importedMode,
       invoiceType: importedInvoiceType || calculated?.invoiceType || '',
       items: syncInstallOptions(items, [], calculated?.installOptions || []),
-      totalExcludingTax: importedMode === 3 ? calculated?.totalExcludingTax : calculated?.totalExcludingTax || salesTotal || null,
+      totalExcludingTax: [3, 4].includes(importedMode) ? calculated?.totalExcludingTax : calculated?.totalExcludingTax || salesTotal || null,
       quotationFiles: result.files,
       customerId: nextCustomerId,
       customerName: nextCustomerName,
@@ -1505,13 +1505,13 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
           <SectionCard id="trade" title="交易信息" icon={SECTION_ICON('trade')} description="当前计价模式和发票类型同时适用于报价导入及手动录入。" flash={flashSection === 'trade'}>
             <div className="grid gap-4 lg:grid-cols-2">
               <SubPanel title="计价与发票">
-                <Field label="签单主体" editable={editable && status === 'draft'} readonlyText={activeCompany.label} help="选择开票/签单公司。上海敦沪信息科技有限公司的单仅支持“开明细”计价模式；提交签核后不可更换（撤回回草稿后可改）。">
+                <Field label="签单主体" editable={editable && status === 'draft'} readonlyText={activeCompany.label} help="选择开票/签单公司。上海敦沪信息科技有限公司的单支持“开明细”和“手动开单兜底”；提交签核后不可更换（撤回回草稿后可改）。">
                   <Select value={activeCompany.value} onValueChange={changeCompany}>
                     <SelectTrigger><SelectValue placeholder="选择签单主体" /></SelectTrigger>
                     <SelectContent>{companies.map((company) => <SelectItem key={company.value} value={company.value}>{company.label}</SelectItem>)}</SelectContent>
                   </Select>
                 </Field>
-                <Field label="计价模式" editable={editable} readonlyText={PRICING_LABELS[Number(calculated.pricingMode)] || '-'} help="决定金额分摊方式：多项系统集成＝整单未税总计按各品项成本占比分摊；单项系统集成＝固定拆为主项 99%＋技术服务 1%；开明细＝各品项小计加总即为总计，不做整单分摊。切换模式会重算品项单价与必填规则。">
+                <Field label="计价模式" editable={editable} readonlyText={PRICING_LABELS[Number(calculated.pricingMode)] || '-'} help="决定金额分摊方式：多项系统集成＝整单未税总计按各品项成本占比分摊；单项系统集成＝固定拆为主项 99%＋技术服务 1%；开明细与手动开单兜底＝各品项小计加总即为总计，不做整单分摊。手动开单兜底允许供应商与采购信息留空。切换模式会重算品项单价与必填规则。">
                   <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border bg-background p-1">
                     {allowedPricingModes.map((mode) => (
                       <Button key={mode.value} type="button" size="sm" variant={Number(calculated.pricingMode) === mode.value ? 'default' : 'ghost'} onClick={() => changePricingMode(mode.value)}>
@@ -1538,7 +1538,7 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                       min={0}
                       step="0.01"
                       value={calculated.totalExcludingTax ?? ''}
-                      disabled={!calculated.pricingMode || Number(calculated.pricingMode) === 3}
+                      disabled={!calculated.pricingMode || [3, 4].includes(Number(calculated.pricingMode))}
                       placeholder="订单总金额（不含税）"
                       onChange={(e) => patch({ totalExcludingTax: asNumber(e.target.value) })}
                     />
@@ -1558,7 +1558,9 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                         ? '请先填写未税总计，再录入各品项采购价。若销售报价未提供逐项未税单价，系统将按采购价（未税）占比分摊未税总计。'
                         : Number(calculated.pricingMode) === 2
                           ? '请先填写未税总计；系统将未税总计按主项 99%、技术服务 1% 自动分配。'
-                          : '请逐项填写未税单价；未税总计由各品项未税小计自动汇总。'}
+                          : Number(calculated.pricingMode) === 4
+                            ? '请逐项填写未税单价；系统不分摊、不重算，供应商与采购信息可留空。组合内容请写入品名或描述。'
+                            : '请逐项填写未税单价；未税总计由各品项未税小计自动汇总。'}
                   </p>
                 ) : null}
               </SubPanel>

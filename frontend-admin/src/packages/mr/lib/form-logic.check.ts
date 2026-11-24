@@ -78,6 +78,22 @@ const incomplete = calculateForm({ pricingMode: 1, totalExcludingTax: 100, invoi
   { name: '待补成本', qty: 1, quotedUnitPrice: 100, costInclTax: null, taxRate: 13 },
   ] })
 assert(incomplete.totals?.costExcludingTax === null && incomplete.totals?.costIncludingTax === null && incomplete.totals?.marginRate === null, '成本不完整时汇总不得显示为0或计算毛利')
+// spec 021：手动开单兜底保留用户单价，总计按小计加总，采购税率允许留空
+const manual = calculateForm({
+  pricingMode: 4,
+  totalExcludingTax: 999999,
+  invoiceType: '13%增值税',
+  items: [
+    { name: '交换机一套', description: '含主机 ×1 + 模块 ×20', qty: 1, unitPrice: 1234.56, costInclTax: null, taxRate: null },
+    { name: '安装服务', qty: 2, unitPrice: 100, quotedUnitPrice: 1, costInclTax: null, taxRate: null },
+  ],
+})
+assert(JSON.stringify(manual.items?.map((item) => item.unitPrice)) === JSON.stringify([1234.56, 100]), '手动开单兜底不得分摊或用报价原价覆盖单价')
+assert(JSON.stringify(manual.items?.map((item) => item.subtotal)) === JSON.stringify([1234.56, 200]), '手动开单兜底小计应为数量乘单价')
+assert(manual.totalExcludingTax === 1434.56 && manual.totals?.salesExcludingTax === 1434.56, '手动开单兜底总计应由品项小计加总')
+assert(manual.items?.every((item) => item.taxRate === null && item.marginRate === null), '手动开单兜底应保留空采购税率且不强算毛利')
+assert(manual.totals?.costExcludingTax === null && manual.totals?.costIncludingTax === null && manual.totals?.marginRate === null, '手动开单兜底成本留空时汇总成本与毛利应为空')
+
 assert(countUpValue(100, 0) === 0 && countUpValue(100, 0.5) === 87.5 && countUpValue(100, 1) === 100, '数字动画应从0缓出到目标值')
 assert(countUpValue(100, -1) === 0 && countUpValue(100, 2) === 100, '数字动画进度应限制在0到1')
 
