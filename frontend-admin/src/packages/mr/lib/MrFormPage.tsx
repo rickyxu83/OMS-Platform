@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowLeft, BellRing, CopyPlus, Download, Eye, File, File
 import { toast } from 'sonner'
 import { SHOW_MR_QUOTE_V2 } from '@/lib/feature-flags'
 import { Button } from '@/components/ui/button'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -1432,14 +1433,14 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
           />
           </div>
         ) : null}
-        {!documentMode ? <div className="hidden border-t lg:block"><WorkbenchMetrics order={calculated} animationKey={importAnimationKey} /></div> : null}
+        {!documentMode ? <div className="hidden border-t xl:block"><WorkbenchMetrics order={calculated} animationKey={importAnimationKey} /></div> : null}
       </div>
 
-      {!documentMode ? <div className="border-b bg-card lg:hidden"><WorkbenchMetrics order={calculated} animationKey={importAnimationKey} /></div> : null}
+      {!documentMode ? <div className="border-b bg-card xl:hidden"><WorkbenchMetrics order={calculated} animationKey={importAnimationKey} /></div> : null}
 
       {documentMode ? (
         <>
-        <div className="mx-auto grid max-w-[1700px] gap-5 px-3 py-4 pb-20 sm:px-6 lg:pb-4 min-[1600px]:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="mx-auto grid max-w-[1700px] gap-5 px-3 py-4 pb-20 sm:px-6 min-[1600px]:grid-cols-[minmax(0,1fr)_340px] min-[1600px]:pb-4">
           <div className="min-w-0 overflow-x-auto overscroll-x-contain rounded-xl border bg-white shadow-sm"><MrDocumentView order={form || calculated} toolbar={approvalDocumentToolbar} embedded /></div>
           <aside className="min-w-0 space-y-4">
             <div className="rounded-xl border bg-card p-4 shadow-sm">
@@ -1502,7 +1503,7 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
             <div className="rounded-xl border bg-card p-4 shadow-sm"><ApprovalPanel order={calculated} /></div>
           </aside>
         </div>
-        <div className="sticky bottom-0 z-20 border-t bg-background/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur lg:hidden">
+        <div className="sticky bottom-0 z-20 border-t bg-background/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur min-[1600px]:hidden">
           {summary('bar')}
         </div>
         </>
@@ -1516,7 +1517,7 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
             签核流程将增加副总经理签核步骤。
           </div>
         ) : null}
-        <div className="flex min-w-0 flex-col gap-5 pb-24 lg:pb-6">
+        <div className="flex min-w-0 flex-col gap-5 pb-24 xl:pb-6">
           {status === 'rejected' ? (
             <div className="rounded-xl border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-800">
               <div className="font-medium">签核已驳回</div>
@@ -1577,7 +1578,7 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                       placeholder="搜索现有客户；如无匹配，提交时将自动建立客户档案"
                       autoComplete="off"
                       onFocus={() => setCustomerOptionsOpen(true)}
-                      onMouseDown={() => setCustomerOptionsOpen(true)}
+                      onPointerDown={() => setCustomerOptionsOpen(true)}
                       onBlur={() => window.setTimeout(() => setCustomerOptionsOpen(false), 140)}
                       onChange={(event) => { handleCustomerInput(event.target.value); setCustomerOptionsOpen(true) }}
                     />
@@ -1850,7 +1851,7 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
                 </Field>
               </div>
               <Field label="最晚交付日期" editable={editable} readonlyText={textValue(calculated.latestDeliveryDate)}>
-                <Input type="date" value={calculated.latestDeliveryDate || ''} onChange={(e) => patch({ latestDeliveryDate: e.target.value })} />
+                <DatePicker value={calculated.latestDeliveryDate || ''} onChange={(value) => patch({ latestDeliveryDate: value })} placeholder="选择最晚交付日期" ariaLabel="最晚交付日期" />
               </Field>
               <Field label="是否允许分批交付" editable={editable} readonlyText={choiceValue(calculated.splitDelivery, '允许', '不允许')}>
                 <BinaryChoice value={calculated.splitDelivery} yes="允许" no="不允许" onChange={(value) => patch({ splitDelivery: value })} />
@@ -1952,7 +1953,7 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
         </div>
       </div>
 
-      <div className="sticky bottom-0 z-20 border-t bg-background/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur lg:hidden">
+      <div className="sticky bottom-0 z-20 border-t bg-background/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur xl:hidden">
         {summary('bar')}
       </div>
         </>

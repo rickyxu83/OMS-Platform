@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DatePicker } from "@/components/ui/date-picker";
+import { DateTimeFieldControl, NativeTimeInput } from "@/pages/service-report/components";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -626,27 +627,21 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                           <span className="text-xs text-muted-foreground">默认带入工单时间，可按本人实际往返修改</span>
                         </div>
                         <div className="grid gap-4 sm:grid-cols-2">
-                          <div className="space-y-1">
+                          <div className="space-y-1.5">
                             <Label className="text-xs text-muted-foreground">去程出发</Label>
-                            <Input
-                              className="h-11"
-                              type="datetime-local"
-                              data-compact-date="true"
+                            <DateTimeFieldControl
+                              label="去程出发"
                               value={travelDepartureAt}
-                              max={toDateTimeLocal(selectedOvertimeOrder.actualStartAt)}
-                              onChange={(event) => setTravelDepartureAt(event.target.value)}
+                              onChange={setTravelDepartureAt}
                             />
                             <p className="text-xs text-muted-foreground">到达（工单）：{formatDateTime(selectedOvertimeOrder.actualStartAt || undefined)}</p>
                           </div>
-                          <div className="space-y-1">
+                          <div className="space-y-1.5">
                             <Label className="text-xs text-muted-foreground">回程返回</Label>
-                            <Input
-                              className="h-11"
-                              type="datetime-local"
-                              data-compact-date="true"
+                            <DateTimeFieldControl
+                              label="回程返回"
                               value={travelReturnAt}
-                              min={toDateTimeLocal(selectedOvertimeOrder.actualEndAt)}
-                              onChange={(event) => setTravelReturnAt(event.target.value)}
+                              onChange={setTravelReturnAt}
                             />
                             <p className="text-xs text-muted-foreground">完工（工单）：{formatDateTime(selectedOvertimeOrder.actualEndAt || undefined)}</p>
                           </div>
@@ -817,7 +812,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                     </div>
                     <div className="space-y-2">
                       <Label>开始时间</Label>
-                      <Input type="time" data-compact-date="true" step="1800" className="h-11" value={compStartTime} onChange={(event) => setCompStartTime(event.target.value)} />
+                      <NativeTimeInput label="开始时间" time={compStartTime} onTimeChange={setCompStartTime} minuteStep={30} heightClass="h-11" />
                     </div>
                     <div className="space-y-2">
                       <Label>时长（整小时）</Label>

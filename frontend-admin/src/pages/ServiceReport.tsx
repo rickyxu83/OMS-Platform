@@ -971,7 +971,11 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
           }}
         />
         {showDropdown ? (
-          <div className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover p-1 text-sm shadow-md">
+          <div
+            className="absolute z-50 mt-1 max-h-56 w-full overflow-auto overscroll-contain rounded-md border bg-popover p-1 text-sm shadow-md"
+            onPointerDown={(event) => event.preventDefault()}
+            onMouseDown={(event) => event.preventDefault()}
+          >
             <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">型号库建议</div>
             {loadingSuggestions ? (
               <div className="flex items-center gap-2 px-2 py-2 text-muted-foreground">
@@ -984,8 +988,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 key={`${inputId}-${suggestion.canonicalModel}-${suggestion.partNumber}-${suggestionIndex}`}
                 type="button"
                 className="flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left hover:bg-accent"
-                onMouseDown={(event) => {
-                  event.preventDefault();
+                onClick={() => {
                   const nextValue = modelSuggestionValue(suggestion, valueMode);
                   if (!nextValue) return;
                   onChange(nextValue);
@@ -3585,16 +3588,17 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                           />
                         </Field>
                         {contactOptionsOpen ? (
-                          <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
+                          <div
+                            className="absolute z-50 mt-1 max-h-60 w-full overflow-auto overscroll-contain rounded-md border bg-popover text-sm shadow-md"
+                            onPointerDown={(event) => event.preventDefault()}
+                            onMouseDown={(event) => event.preventDefault()}
+                          >
                             {contactOptions.map((contact) => (
                               <button
                                 key={contact.id || contactKey(contact)}
                                 type="button"
                                 className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-accent"
-                                onMouseDown={(event) => {
-                                  event.preventDefault();
-                                  selectContact(contact);
-                                }}
+                                onClick={() => selectContact(contact)}
                               >
                                 <span className="font-medium">{contact.name || contact.contactName}</span>
                                 <span className="text-xs text-muted-foreground">{contact.phone || contact.contactPhone || "未维护电话"}</span>
@@ -3877,7 +3881,11 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                                     ) : null}
                                   </div>
                                   {targetDeviceOpenId === targetDevice.id ? (
-                                    <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
+                                    <div
+                                      className="absolute z-50 mt-1 max-h-72 w-full overflow-auto overscroll-contain rounded-md border bg-popover text-sm shadow-md"
+                                      onPointerDown={(event) => event.preventDefault()}
+                                      onMouseDown={(event) => event.preventDefault()}
+                                    >
                                       {loadingCustomerDevices ? (
                                         <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
                                           <span className="btn-loader" aria-hidden="true" />
@@ -3895,10 +3903,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                                               key={device.id}
                                               type="button"
                                               className="flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left hover:bg-accent"
-                                              onMouseDown={(event) => {
-                                                event.preventDefault();
-                                                chooseTargetDevice(targetDevice.id, String(device.id));
-                                              }}
+                                              onClick={() => chooseTargetDevice(targetDevice.id, String(device.id))}
                                             >
                                               <span className="font-medium">{deviceSelectLabel(device)}</span>
                                               <span className="text-xs text-muted-foreground">{deviceMeta(device) || "客户已有设备"}</span>
@@ -3920,10 +3925,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                                               key={`${suggestion.canonicalModel}-${suggestion.partNumber}-${suggestionIndex}`}
                                               type="button"
                                               className="flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left hover:bg-accent"
-                                              onMouseDown={(event) => {
-                                                event.preventDefault();
-                                                applyTargetModelSuggestion(targetDevice.id, suggestion);
-                                              }}
+                                              onClick={() => applyTargetModelSuggestion(targetDevice.id, suggestion)}
                                             >
                                               <span className="font-medium">{suggestion.canonicalModel}</span>
                                               <span className="text-xs text-muted-foreground">
@@ -4053,7 +4055,11 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 	                                  ) : null}
 	                                  </div>
 	                                  {installTargetOpenId === installDevice.id ? (
-	                                    <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
+	                                    <div
+	                                      className="absolute z-50 mt-1 max-h-72 w-full overflow-auto overscroll-contain rounded-md border bg-popover text-sm shadow-md"
+	                                      onPointerDown={(event) => event.preventDefault()}
+	                                      onMouseDown={(event) => event.preventDefault()}
+	                                    >
 	                                      {loadingCustomerDevices ? (
 	                                        <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
 	                                          <span className="btn-loader" aria-hidden="true" />
@@ -4071,10 +4077,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 		                                              key={device.id}
 		                                              type="button"
 		                                              className="flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left hover:bg-accent"
-		                                              onMouseDown={(event) => {
-		                                                event.preventDefault();
-		                                                chooseInstallDevice(installDevice.id, String(device.id));
-		                                              }}
+		                                              onClick={() => chooseInstallDevice(installDevice.id, String(device.id))}
 		                                            >
 		                                              <span className="font-medium">{deviceSelectLabel(device)}</span>
 		                                              <span className="text-xs text-muted-foreground">{deviceMeta(device) || "客户已有设备"}</span>
@@ -4096,10 +4099,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 		                                              key={`${suggestion.canonicalModel}-${suggestion.partNumber}-${suggestionIndex}`}
 		                                              type="button"
 		                                              className="flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left hover:bg-accent"
-		                                              onMouseDown={(event) => {
-		                                                event.preventDefault();
-		                                                applyInstallModelSuggestion(installDevice.id, suggestion);
-		                                              }}
+		                                              onClick={() => applyInstallModelSuggestion(installDevice.id, suggestion)}
 		                                            >
 		                                              <span className="font-medium">{suggestion.canonicalModel}</span>
 		                                              <span className="text-xs text-muted-foreground">
@@ -4262,7 +4262,11 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                                       onChange={(event) => { setPartDeviceOpenIndex(index); setPartDeviceFilter(event.target.value); }}
                                     />
                                     {partDeviceOpenIndex === index ? (
-                                      <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover text-sm shadow-md">
+                                      <div
+                                        className="absolute z-50 mt-1 max-h-72 w-full overflow-auto overscroll-contain rounded-md border bg-popover text-sm shadow-md"
+                                        onPointerDown={(event) => event.preventDefault()}
+                                        onMouseDown={(event) => event.preventDefault()}
+                                      >
                                         {loadingCustomerDevices ? (
                                           <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
                                             <span className="btn-loader" aria-hidden="true" />
@@ -4280,8 +4284,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                                                 key={device.id}
                                                 type="button"
                                                 className="flex w-full flex-col gap-0.5 rounded-md px-2 py-2 text-left hover:bg-accent"
-                                                onMouseDown={(event) => {
-                                                  event.preventDefault();
+                                                onClick={() => {
                                                   updatePart(index, { deviceInputMode: "existing", newDeviceRefDraftId: "" });
                                                   choosePartDevice(index, String(device.id));
                                                   setPartDeviceOpenIndex(null);
@@ -4298,8 +4301,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                                           <button
                                             type="button"
                                             className="flex w-full rounded-md px-2 py-2 text-left font-medium text-primary hover:bg-accent"
-                                            onMouseDown={(event) => {
-                                              event.preventDefault();
+                                            onClick={() => {
                                               updatePart(index, { deviceInputMode: "new", deviceId: "", newDeviceRefDraftId: "" });
                                               setPartDeviceOpenIndex(null);
                                               setPartDeviceFilter("");
@@ -4312,8 +4314,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                                               key={other.draftId}
                                               type="button"
                                               className="flex w-full rounded-md px-2 py-2 text-left text-primary hover:bg-accent"
-                                              onMouseDown={(event) => {
-                                                event.preventDefault();
+                                              onClick={() => {
                                                 updatePart(index, { deviceInputMode: "new", newDeviceRefDraftId: other.draftId || "", deviceId: "", newDeviceModel: "", newDeviceSerialNo: "", newDeviceName: "", newDeviceRemark: "" });
                                                 setPartDeviceOpenIndex(null);
                                                 setPartDeviceFilter("");

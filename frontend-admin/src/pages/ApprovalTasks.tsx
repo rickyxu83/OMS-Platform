@@ -148,7 +148,7 @@ function TaskStatusHover({ task }: { task: ApprovalTask }) {
 
   useEffect(() => {
     if (!pinned) return
-    const onDown = (event: MouseEvent) => {
+    const onDown = (event: PointerEvent) => {
       if (ref.current?.contains(event.target as Node)) return
       setPinned(false)
       setHover(false)
@@ -156,10 +156,10 @@ function TaskStatusHover({ task }: { task: ApprovalTask }) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') { setPinned(false); setHover(false) }
     }
-    document.addEventListener('mousedown', onDown)
+    document.addEventListener('pointerdown', onDown)
     document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('pointerdown', onDown)
       document.removeEventListener('keydown', onKey)
     }
   }, [pinned])

@@ -348,7 +348,7 @@ export function SmartCombobox({
           className="pr-8"
           onChange={(event) => { setText(event.target.value); onChange(event.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
-          onMouseDown={() => setOpen(true)}
+          onPointerDown={() => setOpen(true)}
           onKeyDown={onKeyDown}
         />
         <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/60" />
@@ -357,7 +357,9 @@ export function SmartCombobox({
         <div
           ref={dropdownRef}
           style={{ position: 'fixed', top: dropdownRect.top, left: dropdownRect.left, width: dropdownRect.width }}
-          className="z-[100] max-h-64 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md"
+          className="z-[100] max-h-64 overflow-y-auto overscroll-contain rounded-md border bg-popover text-popover-foreground shadow-md"
+          onPointerDown={(event) => event.preventDefault()}
+          onMouseDown={(event) => event.preventDefault()}
         >
           {filtered.map((option, index) => (
             <button
@@ -365,7 +367,7 @@ export function SmartCombobox({
               key={option.value}
               className={`flex w-full items-baseline gap-2 px-3 py-2 text-left text-sm ${index === activeIndex ? 'bg-accent text-accent-foreground' : ''}`}
               onMouseEnter={() => setActiveIndex(index)}
-              onPointerDown={(event) => { event.preventDefault(); onChange(option.label); setText(option.label); onSelect?.(option); setOpen(false) }}
+              onClick={() => { onChange(option.label); setText(option.label); onSelect?.(option); setOpen(false) }}
             >
               <span title={option.label} className="truncate font-medium">{option.label}</span>
               {option.hint ? <span title={option.hint} className="truncate text-xs text-muted-foreground">{option.hint}</span> : null}

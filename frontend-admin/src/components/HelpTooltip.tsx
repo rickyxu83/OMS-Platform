@@ -35,17 +35,17 @@ export function HelpTooltip({ label }: { label: string }) {
 
   useEffect(() => {
     if (!pos) return;
-    const onPointerDown = (event: MouseEvent) => {
+    const onPointerDown = (event: PointerEvent) => {
       if (triggerRef.current?.contains(event.target as Node)) return;
       hide();
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") hide();
     };
-    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [pos]);

@@ -30,7 +30,7 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       const t = e.target as Node | null;
       const inPanel = t instanceof Element && !!t.closest?.("[data-date-picker-panel]");
       if (ref.current && !ref.current.contains(t) && !inPanel) setOpen(false);
@@ -39,11 +39,11 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
       if (e.key === "Escape") setOpen(false);
     };
     const onResize = () => setOpen(false);
-    document.addEventListener("mousedown", onDown);
+    document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKeyDown);
     window.addEventListener("resize", onResize);
     return () => {
-      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("resize", onResize);
     };

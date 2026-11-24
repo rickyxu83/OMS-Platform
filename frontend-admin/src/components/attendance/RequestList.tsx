@@ -249,7 +249,7 @@ function LinkedOrderChip({ order, onPreview }: { order: ServiceOrderSummary; onP
 
   useEffect(() => {
     if (!pos) return undefined;
-    const onPointerDown = (event: MouseEvent) => {
+    const onPointerDown = (event: PointerEvent) => {
       if (ref.current?.contains(event.target as Node)) return;
       hide();
     };
@@ -257,11 +257,11 @@ function LinkedOrderChip({ order, onPreview }: { order: ServiceOrderSummary; onP
       if (event.key === "Escape") hide();
     };
     window.addEventListener("scroll", hide, true);
-    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("scroll", hide, true);
-      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [pos, hide]);
@@ -759,7 +759,7 @@ function StatusWithChain({ status, steps, item }: { status?: string; steps?: App
 
   useEffect(() => {
     if (!pos) return undefined;
-    const onPointerDown = (event: MouseEvent) => {
+    const onPointerDown = (event: PointerEvent) => {
       if (triggerRef.current?.contains(event.target as Node)) return;
       hide();
     };
@@ -767,11 +767,11 @@ function StatusWithChain({ status, steps, item }: { status?: string; steps?: App
       if (event.key === "Escape") hide();
     };
     window.addEventListener("scroll", hide, true);
-    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("scroll", hide, true);
-      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [pos, hide]);
@@ -848,7 +848,7 @@ function SegmentsHoverCard({ group }: { group: AttendanceRequest[] }) {
 
   useEffect(() => {
     if (!pos) return undefined;
-    const onPointerDown = (event: MouseEvent) => {
+    const onPointerDown = (event: PointerEvent) => {
       if (triggerRef.current?.contains(event.target as Node)) return;
       hide();
     };
@@ -856,11 +856,11 @@ function SegmentsHoverCard({ group }: { group: AttendanceRequest[] }) {
       if (event.key === "Escape") hide();
     };
     window.addEventListener("scroll", hide, true);
-    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("scroll", hide, true);
-      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [pos, hide]);

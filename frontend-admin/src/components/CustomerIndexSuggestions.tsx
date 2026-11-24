@@ -52,10 +52,7 @@ export function CustomerIndexSuggestions<T extends IndexedCustomer>({
         className={`flex w-full items-start justify-between gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
           selected ? "border-primary/60 bg-primary/5" : "border-border bg-background hover:border-primary/40 hover:bg-accent/40"
         }`}
-        onMouseDown={(event) => {
-          event.preventDefault();
-          onSelect(customer);
-        }}
+        onClick={() => onSelect(customer)}
       >
         <span className="min-w-0">
           <span title={customerName(customer)} className="block truncate text-base font-semibold text-foreground sm:text-sm">{customerName(customer)}</span>
@@ -67,9 +64,13 @@ export function CustomerIndexSuggestions<T extends IndexedCustomer>({
   }
 
   return (
-    <div className="absolute left-0 right-0 top-[calc(100%+0.375rem)] z-50 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg">
+    <div
+      className="absolute left-0 right-0 top-[calc(100%+0.375rem)] z-50 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg"
+      onPointerDown={(event) => event.preventDefault()}
+      onMouseDown={(event) => event.preventDefault()}
+    >
       <div className="relative">
-        <div ref={listRef} className="max-h-[68vh] supports-[height:100dvh]:max-h-[68dvh] overflow-y-auto p-2 pr-7 sm:max-h-96 sm:pr-8">
+        <div ref={listRef} className="max-h-[68vh] supports-[height:100dvh]:max-h-[68dvh] overflow-y-auto overscroll-contain p-2 pr-7 sm:max-h-96 sm:pr-8">
           {searching ? (
             <div className="mb-2 flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
               <span className="btn-loader" aria-hidden="true" />
@@ -108,10 +109,7 @@ export function CustomerIndexSuggestions<T extends IndexedCustomer>({
                 disabled={!availableLetters.has(letter)}
                 aria-label={`跳转到 ${letter} 分组`}
                 className="flex h-4 w-4 items-center justify-center rounded-sm text-[10px] font-medium leading-none text-muted-foreground/80 transition-colors disabled:pointer-events-none disabled:text-muted-foreground/25 enabled:hover:bg-primary/10 enabled:hover:text-primary enabled:focus-visible:bg-primary/10 enabled:focus-visible:text-primary enabled:focus-visible:outline-none enabled:focus-visible:ring-1 enabled:focus-visible:ring-primary/30"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  scrollToLetter(letter);
-                }}
+                onClick={() => scrollToLetter(letter)}
               >
                 {letter}
               </button>
