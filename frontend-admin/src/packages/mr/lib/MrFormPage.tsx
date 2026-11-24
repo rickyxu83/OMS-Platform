@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, ArrowLeft, BellRing, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, Paperclip, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Undo2, Upload, X, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, BellRing, CopyPlus, Download, Eye, File, FileDown, FileSpreadsheet, FileText, ImageIcon, Loader2, MoreHorizontal, Paperclip, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Undo2, Upload, X, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { SHOW_MR_QUOTE_V2 } from '@/lib/feature-flags'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { CustomerIndexSuggestions } from '@/components/CustomerIndexSuggestions'
@@ -1264,19 +1265,111 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
       <datalist id="mr-delivery-location-options">{deliveryLocations.map((location) => <option key={location.value} value={location.value}>{location.label}</option>)}</datalist>
 
       <div data-mr-sticky-header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1700px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            <Button variant="ghost" size="icon" title="返回列表" onClick={() => navigateAway('/mr')}><ArrowLeft className="size-4" /></Button>
+        <div className="mx-auto flex max-w-[1700px] flex-wrap items-center justify-between gap-2 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial sm:gap-3">
+            <Button variant="ghost" size="icon" className="size-8 shrink-0 sm:size-9" title="返回列表" onClick={() => navigateAway('/mr')}><ArrowLeft className="size-4" /></Button>
             <div className="min-w-0">
-              <div className="truncate text-lg font-semibold">MR 申请工作台</div>
+              <div className="flex items-center gap-2">
+                <span className="truncate text-base font-semibold sm:text-lg">MR 申请工作台</span>
+                <StatusBadge status={status} />
+              </div>
               <div className="truncate text-xs text-muted-foreground">
                 {calculated.customerName || `草稿 #${calculated.id}`} · {calculated.ctrlNo || 'Ctrl.NO 未填写'}
                 {dirty ? ' · 未保存' : ''}
               </div>
             </div>
-            <StatusBadge status={status} />
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
+
+          {/* 移动端精简操作栏：高频主操作常驻，低频操作收纳进「更多」 */}
+          <div className="flex shrink-0 items-center gap-1.5 sm:hidden">
+            {assistantReview && !editing ? <Button size="sm" className="h-8 px-2.5" onClick={() => setEditing(true)}><Pencil className="mr-1 size-3.5" />编辑</Button> : null}
+            {assistantReview && editing ? <Button size="sm" variant="outline" className="h-8 px-2.5" onClick={() => { if (!dirty || window.confirm('确认放弃未保存的修改吗？')) { setDirty(false); setEditing(false); void load() } }}><Undo2 className="mr-1 size-3.5" />退出</Button> : null}
+            {editable ? (
+              <Button size="sm" variant="outline" className="h-8 px-2.5" disabled={busy || !dirty} onClick={() => void save()}>
+                {busy ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Save className="mr-1 size-3.5" />}{status === 'in_review' ? '保存' : '存草稿'}
+              </Button>
+            ) : null}
+            {editable && ['draft', 'rejected'].includes(status) ? (
+              <Button size="sm" className="h-8 px-2.5" disabled={busy} onClick={() => void submit()}>
+                <Send className="mr-1 size-3.5" />提交
+              </Button>
+            ) : null}
+            {(status !== 'in_review'
+              || calculated.permissions?.canWithdraw
+              || calculated.permissions?.canRemind
+              || (user?.role === 'admin' && !['approved', 'voided'].includes(status))
+              || calculated.permissions?.canVoid
+              || calculated.permissions?.canVoidApprove
+              || calculated.permissions?.canDelete) ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" className="size-8" aria-label="更多操作">
+                    <MoreHorizontal className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  {status !== 'in_review' ? (
+                    <DropdownMenuItem onSelect={() => navigate(`/mr/${id}/print`, { state: { previewOrder: calculated } })}>
+                      <Eye className="mr-2 size-4" />预览签核单
+                    </DropdownMenuItem>
+                  ) : null}
+                  {status === 'approved' ? (
+                    <DropdownMenuItem disabled={!approvedDocumentReady} onSelect={() => { if (id) void downloadMrDocument(id, 'approved').catch((err) => setError((err as Error).message || 'PDF 下载失败')) }}>
+                      <FileDown className="mr-2 size-4" />{approvedDocumentReady ? '下载正式 PDF' : calculated.archiveStatus === 'failed' ? '归档重试中' : '归档处理中'}
+                    </DropdownMenuItem>
+                  ) : null}
+                  {status === 'voided' ? (
+                    <DropdownMenuItem disabled={busy} onSelect={() => void duplicateAsNew()}>
+                      <CopyPlus className="mr-2 size-4" />复制为新申请
+                    </DropdownMenuItem>
+                  ) : null}
+                  {status === 'voided' ? (
+                    <DropdownMenuItem disabled={!voidedDocumentReady} onSelect={() => { if (id) void downloadMrDocument(id, 'voided').catch((err) => setError((err as Error).message || 'PDF 下载失败')) }}>
+                      <FileDown className="mr-2 size-4" />{voidedDocumentReady ? '作废归档 PDF' : calculated.archiveStatus === 'failed' ? '作废归档重试中' : '作废归档处理中'}
+                    </DropdownMenuItem>
+                  ) : null}
+                  {calculated.permissions?.canWithdraw ? (
+                    <DropdownMenuItem onSelect={() => { setDecision('withdraw'); setReason('') }}>
+                      <Undo2 className="mr-2 size-4" />撤回
+                    </DropdownMenuItem>
+                  ) : null}
+                  {calculated.permissions?.canRemind ? (
+                    <DropdownMenuItem disabled={busy || reminding || remindThrottled} onSelect={() => void remind()}>
+                      <BellRing className="mr-2 size-4" />{remindThrottled ? '24h 内已催办' : '催办'}
+                    </DropdownMenuItem>
+                  ) : null}
+                  {user?.role === 'admin' && !['approved', 'voided'].includes(status) ? (
+                    <DropdownMenuItem onSelect={() => { setReassignSalesId(String(calculated.salesOwnerId || salespeople[0]?.id || '')); setReassignOpen(true) }}>
+                      变更业务负责人
+                    </DropdownMenuItem>
+                  ) : null}
+                  {calculated.permissions?.canVoid ? (
+                    <DropdownMenuItem onSelect={() => { setDecision('void'); setReason('') }}>
+                      申请作废
+                    </DropdownMenuItem>
+                  ) : null}
+                  {calculated.permissions?.canVoidApprove ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => { setDecision('voidApprove'); setReason('') }}>同意作废</DropdownMenuItem>
+                      <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => { setDecision('voidReject'); setReason('') }}>驳回作废申请</DropdownMenuItem>
+                    </>
+                  ) : null}
+                  {calculated.permissions?.canDelete ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem disabled={busy} className="text-destructive focus:text-destructive" onSelect={() => void removeDraft()}>
+                        <Trash2 className="mr-2 size-4" />删除草稿
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </div>
+
+          {/* 平板/桌面完整操作栏 */}
+          <div className="hidden flex-wrap items-center justify-end gap-2 sm:flex">
             {status !== 'in_review' ? (
               <Button variant="outline" onClick={() => navigate(`/mr/${id}/print`, { state: { previewOrder: calculated } })}>
                 <Eye className="mr-2 size-4" />预览
@@ -1339,12 +1432,15 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
           />
           </div>
         ) : null}
-        {!documentMode ? <div className="border-t"><WorkbenchMetrics order={calculated} animationKey={importAnimationKey} /></div> : null}
+        {!documentMode ? <div className="hidden border-t lg:block"><WorkbenchMetrics order={calculated} animationKey={importAnimationKey} /></div> : null}
       </div>
 
+      {!documentMode ? <div className="border-b bg-card lg:hidden"><WorkbenchMetrics order={calculated} animationKey={importAnimationKey} /></div> : null}
+
       {documentMode ? (
-        <div className="mx-auto grid max-w-[1700px] gap-5 px-3 py-4 sm:px-6 min-[1600px]:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="min-w-0 overflow-hidden rounded-xl border bg-white shadow-sm"><MrDocumentView order={form || calculated} toolbar={approvalDocumentToolbar} embedded /></div>
+        <>
+        <div className="mx-auto grid max-w-[1700px] gap-5 px-3 py-4 pb-20 sm:px-6 lg:pb-4 min-[1600px]:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="min-w-0 overflow-x-auto overscroll-x-contain rounded-xl border bg-white shadow-sm"><MrDocumentView order={form || calculated} toolbar={approvalDocumentToolbar} embedded /></div>
           <aside className="min-w-0 space-y-4">
             <div className="rounded-xl border bg-card p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2"><h2 className="font-semibold">当前签核信息</h2><StatusBadge status={status} /></div>
@@ -1406,6 +1502,10 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
             <div className="rounded-xl border bg-card p-4 shadow-sm"><ApprovalPanel order={calculated} /></div>
           </aside>
         </div>
+        <div className="sticky bottom-0 z-20 border-t bg-background/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur lg:hidden">
+          {summary('bar')}
+        </div>
+        </>
       ) : (
         <>
       <div className="mx-auto max-w-[1700px] space-y-6 px-4 py-5 sm:px-6">
@@ -1852,7 +1952,7 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
         </div>
       </div>
 
-      <div className="sticky bottom-0 z-20 border-t bg-background/95 backdrop-blur lg:hidden">
+      <div className="sticky bottom-0 z-20 border-t bg-background/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur lg:hidden">
         {summary('bar')}
       </div>
         </>
@@ -1877,7 +1977,7 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
       ) : null}
 
       <Dialog open={Boolean(pdfPreview)} onOpenChange={(open) => { if (!open) setPdfPreview(null) }}>
-        <DialogContent className="flex max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[980px]">
+        <DialogContent className="flex max-h-[92vh] supports-[height:100dvh]:max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[980px]">
           <DialogHeader className="border-b px-5 pb-4 pt-5 pr-12 sm:px-6 sm:pt-6">
             <DialogTitle title={pdfPreview?.file.name || '附件预览'} className="truncate">{pdfPreview?.file.name || '附件预览'}</DialogTitle>
             <DialogDescription>
@@ -1908,7 +2008,7 @@ const allowedPricingModes = constants.pricingModes.filter((mode) => activeCompan
       </Dialog>
 
       <Dialog open={Boolean(officePreview)} onOpenChange={(open) => { if (!open) setOfficePreview(null) }}>
-        <DialogContent className="flex max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[980px]">
+        <DialogContent className="flex max-h-[92vh] supports-[height:100dvh]:max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[980px]">
           <DialogHeader className="border-b px-5 pb-4 pt-5 pr-12 sm:px-6 sm:pt-6">
             <DialogTitle title={officePreview?.file.name || '附件预览'} className="truncate">{officePreview?.file.name || '附件预览'}</DialogTitle>
             <DialogDescription>

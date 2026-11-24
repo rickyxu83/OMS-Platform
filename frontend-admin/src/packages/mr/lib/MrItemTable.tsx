@@ -236,8 +236,9 @@ export function MrItemTable({
 
       {editable ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">点击品项行即可编辑；按住左键拖过品项行可多选，Shift+点击选连续区间，用于批量复制、批量删除。</p>
-          <div className="flex items-center gap-2">
+          <p className="hidden text-xs text-muted-foreground md:block">点击品项行即可编辑；按住左键拖过品项行可多选，Shift+点击选连续区间，用于批量复制、批量删除。</p>
+          <p className="text-xs text-muted-foreground md:hidden">点击卡片即可编辑品项；勾选多张卡片可批量复制或删除。</p>
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedRows(new Set(items.map((_, index) => index)))}>全选</Button>
             {editable && selectedRows.size ? (
               <>
@@ -257,7 +258,110 @@ export function MrItemTable({
         </div>
       ) : null}
 
-      <div>
+      {/* 移动端品项卡片视图 */}
+      <div className="space-y-2.5 md:hidden">
+        {items.map((item, index) => {
+          const low = isLowMargin(item)
+          const selected = selectedIndex === index
+          const rowChecked = selectedRows.has(index)
+          const desc = stripNamePrefixDisplay(item.name, item.description)
+          return (
+            <div
+              key={item.id || `mcard-${index}`}
+              role={rowSelectionEnabled ? 'button' : undefined}
+              tabIndex={rowSelectionEnabled ? 0 : undefined}
+              onClick={rowSelectionEnabled ? () => onRowClick(index) : undefined}
+              onKeyDown={rowSelectionEnabled ? (event) => {
+                if (event.target !== event.currentTarget) return
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onRowClick(index)
+                }
+              } : undefined}
+              className={`rounded-lg border bg-card p-3 transition-colors active:bg-muted/30 ${
+                selected ? 'border-primary/50 bg-primary/5' : ''
+              } ${rowChecked ? 'bg-primary/5 ring-2 ring-primary/25' : ''} ${
+                low ? 'border-l-2 border-l-red-500' : ''
+              } ${rowSelectionEnabled ? 'cursor-pointer' : ''}`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 flex-1 items-start gap-2">
+                  {editable ? (
+                    <span className="pt-0.5" onClick={(event) => event.stopPropagation()}>
+                      <Checkbox
+                        checked={rowChecked}
+                        onCheckedChange={(checked) => {
+                          setSelectedRows((prev) => {
+                            const next = new Set(prev)
+                            if (checked) next.add(index)
+                            else next.delete(index)
+                            return next
+                          })
+                        }}
+                        aria-label={`选择第 ${index + 1} 项`}
+                      />
+                    </span>
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground tabular-nums">#{index + 1}</span>
+                      <span className="break-words text-sm font-medium">{item.name || '未填写品名'}</span>
+                    </div>
+                    {desc ? <div className="mt-1 line-clamp-2 break-words text-xs text-muted-foreground">{desc}</div> : null}
+                    <div className="mt-0.5 break-words text-xs text-muted-foreground">{item.oemSpec || '未填写原厂规格'}</div>
+                  </div>
+                </div>
+                {editable ? (
+                  <div className="flex shrink-0 items-center gap-0.5" onClick={(event) => event.stopPropagation()}>
+                    <Button type="button" variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" title="复制此行为新行" aria-label={`复制第 ${index + 1} 项`} onClick={() => duplicateItem(index)}>
+                      <Copy className="size-3.5" />
+                    </Button>
+                    {mode !== 2 ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-muted-foreground hover:text-destructive"
+                        title="删除此品项"
+                        aria-label={`删除第 ${index + 1} 项`}
+                        onClick={() => {
+                          if (window.confirm(`确定删除“${itemFullText(item).replace(/\s*\n\s*/g, ' ') || `第 ${index + 1} 项`}”吗？删除后不可恢复。`)) {
+                            remove(index)
+                          }
+                        }}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-2.5 grid grid-cols-4 gap-2 rounded-md bg-muted/30 px-2.5 py-2 text-xs tabular-nums">
+                <div>
+                  <div className="text-[11px] text-muted-foreground">数量</div>
+                  <div className="mt-0.5 font-medium">{item.qty ?? '-'}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-muted-foreground">未税单价</div>
+                  <div className="mt-0.5 truncate font-medium">{item.unitPrice == null ? '-' : money(item.unitPrice)}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-muted-foreground">未税小计</div>
+                  <div className="mt-0.5 truncate font-semibold">¥ {money(item.subtotal)}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[11px] text-muted-foreground">毛利率</div>
+                  <div className={`mt-0.5 ${low ? 'font-semibold text-red-600' : 'font-medium'}`}>{percent(item.marginRate)}</div>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* 桌面端品项表格视图 */}
+      <div className="hidden md:block">
         <div className="overflow-hidden rounded-lg border">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] table-fixed text-sm">
@@ -325,7 +429,7 @@ export function MrItemTable({
 
       {/* 编辑品项弹窗：点击品项行弹出，不再在表格内下拉展开 */}
       <Dialog open={Boolean(selectedIndex !== null && items[selectedIndex])} onOpenChange={(open) => { if (!open) setSelectedIndex(null) }}>
-        <DialogContent className="w-[calc(100vw-2rem)] max-h-[92vh] max-w-3xl overflow-y-auto sm:max-w-3xl">
+        <DialogContent className="w-[calc(100vw-1rem)] max-h-[92vh] supports-[height:100dvh]:max-h-[92dvh] max-w-3xl overflow-y-auto overscroll-contain p-4 sm:max-w-3xl sm:p-6">
           {selectedIndex !== null && items[selectedIndex] ? (
             <ItemEditorPanel
               item={items[selectedIndex]}
