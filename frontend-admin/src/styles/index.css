@@ -212,6 +212,62 @@ button:disabled:has(.btn-loader) {
   }
 }
 
+/* 登录页极光背景慢呼吸与表单切步微动效（纯 GPU 合成层） */
+@keyframes login-aurora-drift-a {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(26px, -22px, 0) scale(1.06);
+  }
+  66% {
+    transform: translate3d(-20px, 18px, 0) scale(0.96);
+  }
+}
+
+@keyframes login-aurora-drift-b {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  40% {
+    transform: translate3d(-28px, 22px, 0) scale(1.05);
+  }
+  75% {
+    transform: translate3d(22px, -16px, 0) scale(0.97);
+  }
+}
+
+@keyframes login-step-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.login-aurora-breathe-a {
+  animation: login-aurora-drift-a var(--aurora-duration, 22s) ease-in-out infinite;
+}
+
+.login-aurora-breathe-b {
+  animation: login-aurora-drift-b var(--aurora-duration, 25s) ease-in-out infinite;
+}
+
+.login-step-enter {
+  animation: login-step-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-aurora-breathe-a,
+  .login-aurora-breathe-b,
+  .login-step-enter {
+    animation: none;
+  }
+}
+
 /* 减少动态偏好：停用装饰性动画，状态指示（三点 loader 等）保持静态可见 */
 @media (prefers-reduced-motion: reduce) {
   .list-row-enter,
