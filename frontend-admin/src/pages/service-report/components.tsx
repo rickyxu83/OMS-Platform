@@ -96,14 +96,15 @@ export function NativeTimeInput({ label, time, onTimeChange }: TimeInputProps) {
       <input
         aria-label={`${label}时间`}
         type="time"
+        data-compact-date="true"
         step={300}
         value={time}
         onChange={(event) => onTimeChange(event.target.value)}
         onPointerDown={handlePointerDown}
-        className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+        className="h-9 w-full min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1 text-base text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 sm:px-2.5 md:text-sm"
       />
       {open ? (
-        <div className="absolute left-0 top-full z-50 mt-1 flex w-44 overflow-hidden rounded-md border bg-popover text-sm text-popover-foreground shadow-md">
+        <div className="absolute right-0 top-full z-50 mt-1 flex w-44 overflow-hidden rounded-md border bg-popover text-sm text-popover-foreground shadow-md sm:left-0 sm:right-auto">
           <div className="w-1/2 border-r border-border/60">
             <div className="border-b border-border/60 py-1 text-center text-xs font-medium text-muted-foreground">时</div>
             <div ref={hourListRef} className="max-h-48 overflow-auto p-1">
@@ -451,9 +452,9 @@ export function FullscreenSignatureDialog({
 
   const dialogClassName = signatureViewport.touch
     ? signatureViewport.landscape
-      ? "!fixed !inset-0 !left-0 !top-0 !h-[100dvh] !max-h-none !w-[100dvw] !max-w-none !translate-x-0 !translate-y-0 overflow-hidden rounded-none border-0 p-3 shadow-none sm:!max-w-none"
-      : "h-[100dvw] max-h-none w-[100dvh] max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3"
-    : "h-[90dvh] max-h-none w-[90vw] max-w-none overflow-hidden rounded-lg border p-4";
+      ? "!fixed !inset-0 !left-0 !top-0 !h-screen supports-[height:100dvh]:!h-[100dvh] !max-h-none !w-screen supports-[width:100dvw]:!w-[100dvw] !max-w-none !translate-x-0 !translate-y-0 overflow-hidden rounded-none border-0 p-3 shadow-none sm:!max-w-none"
+      : "h-[100vw] supports-[height:100dvw]:h-[100dvw] max-h-none w-[100vh] supports-[width:100dvh]:w-[100dvh] max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3"
+    : "h-[90vh] supports-[height:100dvh]:h-[90dvh] max-h-none w-[90vw] max-w-none overflow-hidden rounded-lg border p-4";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -703,14 +704,15 @@ export function DateTimeFieldControl({
   }
 
   return (
-    <div className={`grid min-w-0 gap-2 ${value ? "grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)_auto]" : "grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]"}`}>
+    <div className={`grid min-w-0 gap-2 ${value ? "grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)_auto]" : "grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)]"}`}>
       <input
         aria-label={`${label}日期`}
         type="date"
+        data-compact-date="true"
         value={draftDate}
         onChange={(event) => setDate(event.target.value)}
         onClick={openPickerOnClick}
-        className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+        className="h-9 w-full min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1 text-base text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 sm:px-2.5 md:text-sm"
       />
       <NativeTimeInput label={label} time={time} onTimeChange={setTime} />
       {value ? (

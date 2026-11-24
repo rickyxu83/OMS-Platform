@@ -3021,7 +3021,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
           }
         }}>
           <DialogContent
-            className="flex max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[900px]"
+            className="flex max-h-[92vh] supports-[height:100dvh]:max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[900px]"
             onOpenAutoFocus={(event) => event.preventDefault()}
           >
             <DialogHeader className="border-b px-5 pb-4 pt-5 pr-12 sm:px-6 sm:pt-6">
@@ -3323,7 +3323,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
         </Dialog>
 
         <Dialog open={Boolean(attachmentPreviewFile)} onOpenChange={(open) => { if (!open) clearAttachmentPreview(); }}>
-          <DialogContent className="flex max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[980px]">
+          <DialogContent className="flex max-h-[92vh] supports-[height:100dvh]:max-h-[92dvh] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[980px]">
             <DialogHeader className="border-b px-5 pb-4 pt-5 pr-12 sm:px-6 sm:pt-6">
               <DialogTitle title={attachmentPreviewFile?.originalName || "附件预览"} className="truncate">{attachmentPreviewFile?.originalName || "附件预览"}</DialogTitle>
               <DialogDescription>
@@ -3394,16 +3394,26 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     <>
     <div className={`mx-auto flex w-full max-w-[1040px] flex-col gap-3 p-3 sm:gap-4 sm:p-6 ${FORM_SKIN}`}>
       <div className={`sticky top-0 z-20 -mx-3 flex flex-col gap-2 border-b bg-background/95 px-3 py-2.5 backdrop-blur transition-transform duration-200 md:flex-row md:items-center md:justify-between sm:mx-0 sm:translate-y-0 sm:gap-3 sm:rounded-lg sm:border sm:px-4 sm:py-3 ${formHeaderVisible ? "translate-y-0" : "-translate-y-full"}`}>
-        <div className="flex min-w-0 items-center gap-3">
-          <Button variant="outline" size="icon" onClick={() => navigate("/service-report")} aria-label="返回工单填写列表">
+        <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+          <Button variant="outline" size="icon" className="size-8 shrink-0 sm:size-9" onClick={() => navigate("/service-report")} aria-label="返回工单填写列表">
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="hidden text-sm text-muted-foreground sm:block">管理工作台 / 工单填写</div>
             <h1 className="truncate text-base font-semibold tracking-normal text-foreground sm:mt-1 sm:text-xl">
               {id ? `填写服务记录 · ${currentOrder?.orderNo || `工单 #${id}`}` : `新建${MODE_OPTIONS.find((mode) => mode.value === form.serviceMode)?.label || ""}服务记录`}
             </h1>
           </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 shrink-0 px-2.5 sm:hidden"
+            onClick={() => saveDraft(false)}
+            disabled={saving || formLoading}
+          >
+            {saving ? <span className="btn-loader" aria-hidden="true" /> : <Save className="h-3.5 w-3.5" />}
+            保存
+          </Button>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">
           {draftSavedAt || editDraftLoaded ? (
@@ -3437,9 +3447,9 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
         </div>
       </div>
 
-      {/* 移动/平板：右侧目录指示点（D 方案）——常驻右缘,当前分区拉长紫条,点击跳分区 */}
+      {/* 移动/平板：右侧目录指示点（D 方案）——平时半透明弱化避让右侧清空按钮，触摸/激活时清晰展示 */}
       {createPortal(
-        <div className="fixed right-1.5 top-1/2 z-30 -translate-y-1/2 flex flex-col items-center gap-2.5 lg:hidden"
+        <div className="fixed right-1 top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-2 rounded-full bg-background/60 px-1 py-2 opacity-60 backdrop-blur-xs transition-opacity hover:opacity-100 active:opacity-100 lg:hidden"
           role="tablist"
           aria-label="表单分区跳转"
         >
@@ -3596,7 +3606,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                       </div>
                       <div className="lg:col-span-3">
                         <Field label="客户联系电话" required>
-                          <Input value={form.contactPhone} onChange={(event) => patchForm({ contactPhone: event.target.value })} />
+                          <Input type="tel" inputMode="tel" value={form.contactPhone} onChange={(event) => patchForm({ contactPhone: event.target.value })} />
                         </Field>
                       </div>
                     </>
@@ -4171,7 +4181,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 	                                            })}
 	                                          </Field>
 	                                          <Field label="数量" required>
-	                                            <Input value={part.quantity} onChange={(event) => updatePart(index, { quantity: event.target.value })} />
+	                                            <Input inputMode="numeric" value={part.quantity} onChange={(event) => updatePart(index, { quantity: event.target.value })} />
 	                                          </Field>
 	                                          <div className="md:col-span-3">
 	                                            <Field label="备注">
@@ -4348,7 +4358,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 	                                })}
 	                              </DenseField>
                               <DenseField label="数量">
-                                <Input value={part.quantity} onChange={(event) => updatePart(index, { quantity: event.target.value })} />
+                                <Input inputMode="numeric" value={part.quantity} onChange={(event) => updatePart(index, { quantity: event.target.value })} />
                               </DenseField>
                               
                               <Button type="button" variant="ghost" size="icon" className="self-end md:self-center" onClick={() => removePart(index)} aria-label="删除部件明细">
@@ -4475,13 +4485,25 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                             </Button>
                           </div>
                         ))}
-                        {localFiles.map((file) => (
-                          <div key={`${purpose}-${file.name}-${file.size}`} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
-                            <span className="min-w-0">
+                        {localFiles.map((file, fileIndex) => (
+                          <div key={`${purpose}-${file.name}-${file.size}`} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+                            <span className="min-w-0 flex-1">
                               <span title={file.name} className="block truncate font-medium">{file.name}</span>
                               <span className="text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
                             </span>
-                            <Badge variant="warning">待提交</Badge>
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              <Badge variant="warning">待提交</Badge>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-7 text-muted-foreground hover:text-destructive"
+                                aria-label={`移除待上传文件 ${file.name}`}
+                                onClick={() => setLocalFilesForPurpose(purpose, localFiles.filter((_, idx) => idx !== fileIndex))}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                         ))}
                         {!existingFiles.length && !localFiles.length ? (
@@ -4591,7 +4613,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             ) : null}
             {/* 保存/提交栏：文档流底部（不悬浮,避免遮挡与定位问题） */}
             <div id="report-submit-actions" className="-mx-3 border-t bg-background/95 sm:mx-0 sm:rounded-lg sm:border">
-              <div className="flex gap-2 px-3 py-3 lg:justify-end">
+              <div className="flex gap-2 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-3 sm:pb-3 lg:justify-end">
                 <Button className="h-10 flex-1 lg:flex-none" variant="outline" onClick={() => saveDraft(false)} disabled={saving || formLoading}>
                   <Save className="h-4 w-4" />
                   <span className="sm:hidden">保存</span>
@@ -4620,7 +4642,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       onChange={(value) => patchForm({ customerSignature: value, customerSignatureFileId: "" })}
     />
     <Dialog open={signatureShareOpen} onOpenChange={setSignatureShareOpen}>
-      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-[720px]">
+      <DialogContent className="max-h-[92vh] supports-[height:100dvh]:max-h-[92dvh] overflow-y-auto sm:max-w-[720px]">
         <DialogHeader>
 	          <DialogTitle>发送电子签署确认函</DialogTitle>
           <DialogDescription>
