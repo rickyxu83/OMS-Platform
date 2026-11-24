@@ -302,34 +302,32 @@ const MOBILE_NAV_LABELS: Record<"zh-CN" | "zh-TW", Record<string, string>> = {
 
 /**
  * 移动端底栏按角色定制高频关注模块（最多取前 4 项 + 右侧「菜单」= 5 格，无权限项会自动按 allNavItems 过滤）：
- * - 业务 / 业务主管：首页、MR 订购申请、假勤、待办（把工单替换为销售核心的 MR）
- * - 采购：MR（填采购单号）、待办、假勤
- * - 助理 / 助理主管：首页、MR、工单/假勤、待办
- * - 工程师：首页、工单填写、设备档案、假勤
- * - 工程主管：首页、工单派发、待办、假勤
- * - 调度：首页、工单派发、巡检计划、假勤
- * - 行政主管：首页、假勤管理、待办、MR
- * - 运营负责人 / 管理员：首页、待办、MR、工单
+ * - 全角色均保留「假勤」，且相同模块组合统一固定顺序（首页固定首位、假勤固定末位）：
+ * - 业务 / 业务主管 / 助理 / 助理主管 / 行政主管：首页、MR、待办、假勤
+ * - 工程师 / 工程主管：首页、填写（工单填写）、设备、假勤
+ * - 调度：首页、工单、巡检、假勤
+ * - 管理员 / 运营负责人：首页、工单、MR、假勤
  * - 财务 / 进出口：首页、客户、设备、假勤
- * - 司机：首页、假勤、待办
+ * - 采购：MR、待办、假勤
+ * - 司机：首页、待办、假勤
  */
 const MOBILE_NAV_PRIORITY_BY_ROLE: Record<string, string[]> = {
-  sales: ["dashboard", "mr", "attendance", "approval-tasks"],
+  sales: ["dashboard", "mr", "approval-tasks", "attendance"],
   sales_supervisor: ["dashboard", "mr", "approval-tasks", "attendance"],
-  purchaser: ["mr", "approval-tasks", "attendance"],
-  assistant: ["dashboard", "mr", "service-orders", "approval-tasks"],
+  assistant: ["dashboard", "mr", "approval-tasks", "attendance"],
   assistant_supervisor: ["dashboard", "mr", "approval-tasks", "attendance"],
+  administrative_supervisor: ["dashboard", "mr", "approval-tasks", "attendance"],
   engineer: ["dashboard", "service-report", "devices", "attendance"],
-  engineering_supervisor: ["dashboard", "service-orders", "approval-tasks", "attendance"],
+  engineering_supervisor: ["dashboard", "service-report", "devices", "attendance"],
   dispatcher: ["dashboard", "service-orders", "inspection-schedules", "attendance"],
-  administrative_supervisor: ["dashboard", "attendance", "approval-tasks", "mr"],
-  operations_director: ["dashboard", "approval-tasks", "mr", "service-orders"],
-  admin: ["dashboard", "service-orders", "mr", "approval-tasks"],
+  operations_director: ["dashboard", "service-orders", "mr", "attendance"],
+  admin: ["dashboard", "service-orders", "mr", "attendance"],
   finance: ["dashboard", "customers", "devices", "attendance"],
   import_export: ["dashboard", "customers", "devices", "attendance"],
-  driver: ["dashboard", "attendance", "approval-tasks"],
+  purchaser: ["mr", "approval-tasks", "attendance"],
+  driver: ["dashboard", "approval-tasks", "attendance"],
 };
-const MOBILE_NAV_PRIORITY_DEFAULT = ["dashboard", "service-orders", "mr", "attendance", "approval-tasks"];
+const MOBILE_NAV_PRIORITY_DEFAULT = ["dashboard", "service-orders", "approval-tasks", "attendance"];
 
 interface AdminLayoutProps {
   children: React.ReactNode;
