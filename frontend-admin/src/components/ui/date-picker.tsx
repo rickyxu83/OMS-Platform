@@ -11,6 +11,9 @@ interface DatePickerProps {
   onChange: (value: string) => void;
   placeholder?: string;
   ariaLabel?: string;
+  clearable?: boolean;
+  className?: string;
+  triggerClassName?: string;
 }
 
 const YEARS = Array.from({ length: 16 }, (_, i) => 2020 + i);
@@ -18,7 +21,7 @@ const MONTHS = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", 
 const VIEWPORT_GAP = 8;
 
 /** 单日期选择器 · D 款：桌面侧栏年份 + 月份 12 宫格 + 日历；窄屏自动折叠为顶部横向年份条，防 375px 溢出。 */
-export function DatePicker({ value, onChange, placeholder = "选择日期", ariaLabel }: DatePickerProps) {
+export function DatePicker({ value, onChange, placeholder = "选择日期", ariaLabel, clearable = true, className = "", triggerClassName = "" }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null);
@@ -28,7 +31,7 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       const t = e.target as Node | null;
       const inPanel = t instanceof Element && !!t.closest?.("[data-date-picker-panel]");
       if (ref.current && !ref.current.contains(t) && !inPanel) setOpen(false);
@@ -37,11 +40,11 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
       if (e.key === "Escape") setOpen(false);
     };
     const onResize = () => setOpen(false);
-    document.addEventListener("mousedown", onDown);
+    document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKeyDown);
     window.addEventListener("resize", onResize);
     return () => {
-      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("resize", onResize);
     };
@@ -87,8 +90,8 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
   const viewMonthIdx = viewMonth.getMonth();
 
   return (
-    <div ref={ref} className="relative">
-      <div className="flex h-9 w-full items-center rounded-md border border-slate-300 bg-white shadow-sm transition-colors hover:border-slate-400 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+    <div ref={ref} className={`relative min-w-0 ${className}`}>
+      <div className={`flex h-9 w-full min-w-0 items-center overflow-hidden rounded-md border border-slate-300 bg-white shadow-sm transition-colors hover:border-slate-400 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 ${triggerClassName}`}>
         <button
           type="button"
           aria-label={ariaLabel || placeholder}
@@ -101,7 +104,7 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
             {value || placeholder}
           </span>
         </button>
-        {value ? (
+        {clearable && value ? (
           <button
             type="button"
             aria-label="清空日期"
@@ -123,7 +126,7 @@ export function DatePicker({ value, onChange, placeholder = "选择日期", aria
           data-date-picker-panel
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="pointer-events-auto fixed z-[100] flex max-h-[calc(100dvh-16px)] max-w-[calc(100vw-16px)] flex-col overflow-auto rounded-xl border border-slate-200 bg-white shadow-xl sm:flex-row sm:overflow-hidden"
+          className="pointer-events-auto fixed z-[100] flex max-h-[calc(100vh-16px)] supports-[height:100dvh]:max-h-[calc(100dvh-16px)] max-w-[calc(100vw-16px)] flex-col overflow-auto rounded-xl border border-slate-200 bg-white shadow-xl sm:flex-row sm:overflow-hidden"
           style={panelPos ? { top: panelPos.top, left: panelPos.left } : undefined}
         >
           {/* 年份：窄屏顶部横向滚动条，桌面左侧纵列 */}

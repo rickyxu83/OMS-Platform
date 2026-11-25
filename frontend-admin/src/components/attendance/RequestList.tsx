@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/EmptyState";
-import { ResponsiveCard, ResponsiveList } from "@/components/ResponsiveList";
 import { SkeletonList } from "@/components/Skeleton";
 import {
   LEAVE_TYPE_LABELS,
@@ -219,8 +218,8 @@ function batchTotalHours(group: RequestGroup) {
 /** 关联工单 chip：扳手 + "工单 · 客户名" 一行轻量展示；
  *  单号/设备/类型/问题收进 hover 悬浮卡（fixed 定位防遮挡），点击照常开工单预览。 */
 function LinkedOrderChip({ order, onPreview }: { order: ServiceOrderSummary; onPreview?: (order: ServiceOrderSummary) => void }) {
-  const [hover, setHover] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; above: boolean } | null>(null);
+  const [pinned, setPinned] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   const orderLabel = order.orderNo || `#${order.id}`;
   const typeLabel = serviceOrderTypeLabel(order);
@@ -232,37 +231,86 @@ function LinkedOrderChip({ order, onPreview }: { order: ServiceOrderSummary; onP
     { label: "问题", value: order.issueDescription },
   ].filter((row) => row.value && row.value !== "-");
   const text = `工单${order.customerName ? ` · ${order.customerName}` : ""}`;
+
+  const computeAndShow = useCallback(() => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    const maxW = Math.min(300, window.innerWidth - 16);
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - maxW - 8));
+    const above = window.innerHeight - rect.bottom < 180 && rect.top > 180;
+    setPos({ top: above ? rect.top - 6 : rect.bottom + 4, left, above });
+  }, []);
+
+  const hide = useCallback(() => {
+    setPinned(false);
+    setPos(null);
+  }, []);
+
+  useEffect(() => {
+    if (!pos) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      if (ref.current?.contains(event.target as Node)) return;
+      hide();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") hide();
+    };
+    window.addEventListener("scroll", hide, true);
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("scroll", hide, true);
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [pos, hide]);
+
   return (
     <span
       ref={ref}
-      className="inline-flex shrink-0 items-center"
+      className="inline-flex max-w-full min-w-0 items-center"
       onMouseEnter={() => {
-        if (ref.current) {
-          const rect = ref.current.getBoundingClientRect();
-          setPos({ top: rect.bottom + 4, left: Math.min(rect.left, Math.max(8, window.innerWidth - 250)) });
-        }
-        setHover(true);
+        if (typeof window !== "undefined" && window.matchMedia("(hover: none)").matches && onPreview) return;
+        computeAndShow();
       }}
-      onMouseLeave={() => setHover(false)}
+      onMouseLeave={() => { if (!pinned) setPos(null); }}
     >
       {onPreview ? (
         <button
           type="button"
-          onClick={() => onPreview(order)}
-          className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-1.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          title={`工单 ${orderLabel}`}
+          onClick={() => {
+            hide();
+            onPreview(order);
+          }}
+          className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          title={`工单 ${orderLabel}${order.customerName ? ` · ${order.customerName}` : ""}`}
         >
-          <Wrench className="h-3 w-3" />
-          {text}
+          <Wrench className="h-3 w-3 shrink-0" />
+          <span className="truncate">{text}</span>
         </button>
       ) : (
-        <span className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-1.5 py-0.5 text-xs font-medium text-foreground/70" title={`工单 ${orderLabel}`}>
-          <Wrench className="h-3 w-3" />
-          {text}
-        </span>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (pinned && pos) hide();
+            else {
+              setPinned(true);
+              computeAndShow();
+            }
+          }}
+          className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-xs font-medium text-foreground/70"
+          title={`工单 ${orderLabel}${order.customerName ? ` · ${order.customerName}` : ""}`}
+        >
+          <Wrench className="h-3 w-3 shrink-0" />
+          <span className="truncate">{text}</span>
+        </button>
       )}
-      {hover && pos && rows.length ? createPortal(
-        <div className="pointer-events-none fixed z-[100] min-w-[200px] max-w-[300px] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg" style={{ top: pos.top, left: pos.left }}>
+      {pos && rows.length ? createPortal(
+        <div
+          className="pointer-events-none fixed z-[100] min-w-[200px] max-w-[min(300px,calc(100vw-16px))] rounded-lg border border-slate-200 bg-white p-2.5 text-xs shadow-lg"
+          style={{ top: pos.top, left: pos.left, transform: pos.above ? "translateY(-100%)" : undefined }}
+        >
           {rows.map((row) => (
             <div key={row.label} className="flex items-start gap-1.5 py-0.5 text-muted-foreground">
               <span className="shrink-0 text-muted-foreground/60">{row.label}</span>
@@ -371,43 +419,217 @@ export function RequestList({
       })()}
     </>
   );
-  const renderItemCard = (item: AttendanceRequest) => (
-    <ResponsiveCard
-      title={(
-        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-          {requestTypeIndicator(item.requestType)}
-          {showEmployee ? <span title={item.employeeName || "-"} className="truncate">{item.employeeName || "-"}</span> : requestDetailContent(item)}
-        </span>
-      )}
-      status={statusIndicator(item.status, item)}
-      fields={[
-        ...(showEmployee ? [{ label: "明细", value: requestDetailContent(item) }] : []),
-        { label: "时间", value: requestTimeRange(item) },
-        { label: "时长", value: requestDuration(item) || "-" },
-        ...(item.delegateEmployeeName ? [{ label: "代理人", value: item.delegateEmployeeName }] : []),
-      ]}
-      actions={hasActions ? <>{actions?.(item)}</> : undefined}
-    />
-  );
-  const renderBatchCard = (group: RequestGroup) => {
-    const rep = group[0];
+  const renderMobileItemCard = (item: AttendanceRequest) => {
+    const linkedOrderNo = item.requestType === "overtime" && item.sourceType === "service_order" ? item.serviceOrder?.orderNo : undefined;
+    const reasonRedundant = Boolean(item.reason && linkedOrderNo && String(item.reason).includes(linkedOrderNo));
+    const order = item.requestType === "overtime" && item.sourceType === "service_order"
+      ? (item.serviceOrder || ({ id: item.sourceId || "-", unavailable: true } as ServiceOrderSummary))
+      : null;
+    const actionNodes = groupActions.get(item.id) ?? (hasActions ? actions?.(item) : null);
+    const durationText = requestDuration(item);
+    const draftNotice = item.status === "draft"
+      ? item.rejectedReason
+        ? `上次被驳回：${item.rejectedReason}`
+        : item.withdrawnAt
+          ? "已撤回，可修改后重新提交"
+          : ""
+      : "";
     return (
-      <ResponsiveCard
-        title={(
-          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+      <div className="rounded-xl border border-border/80 bg-muted/10 p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {requestTypeIndicator(item.requestType)}
+              {showEmployee ? (
+                <span title={item.employeeName || "-"} className="truncate text-sm font-semibold text-foreground">
+                  {item.employeeName || "-"}
+                </span>
+              ) : (
+                <div className="min-w-0">{requestDetailContent(item)}</div>
+              )}
+            </div>
+            {showEmployee ? <div className="mt-1 min-w-0">{requestDetailContent(item)}</div> : null}
+          </div>
+          <div className="shrink-0 pt-0.5">
+            <StatusWithChain status={item.status} steps={item.approvals} item={item} compact />
+          </div>
+        </div>
+
+        {draftNotice ? (
+          <div className={`mt-2 rounded-lg border px-2.5 py-1.5 text-xs ${item.rejectedReason ? "border-rose-200 bg-rose-50/70 text-rose-700" : "border-border bg-background text-muted-foreground"}`}>
+            {draftNotice}
+          </div>
+        ) : null}
+
+        <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg bg-background px-3 py-2 text-xs ring-1 ring-inset ring-border/60">
+          <div className="min-w-0 flex-1">
+            {item.requestType === "overtime" && item.travelLegs?.length ? (
+              <div className="space-y-0.5 tabular-nums font-medium text-foreground">
+                {item.travelLegs.map((leg, idx) => (
+                  <div key={idx}>
+                    {leg.label} {chineseMonthDay(String(leg.startAt || "").slice(0, 10))} {String(leg.startAt || "").slice(11, 16)}–{String(leg.endAt || "").slice(11, 16)}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              requestTimeRange(item)
+            )}
+          </div>
+          {durationText ? (
+            <span className="shrink-0 rounded-md bg-muted/70 px-2 py-0.5 font-semibold tabular-nums text-foreground">
+              {durationText}
+            </span>
+          ) : null}
+        </div>
+
+        {order || (item.reason && !reasonRedundant) || item.delegateEmployeeName || item.proofFiles?.length || item.proofFileCount ? (
+          <div className="mt-2.5 space-y-1.5 text-xs">
+            {order ? (
+              <div className="min-w-0">
+                {order.unavailable ? (
+                  <span className="text-muted-foreground">关联工单 {order.orderNo || `#${order.id}`} 暂不可用</span>
+                ) : (
+                  <LinkedOrderChip order={order} onPreview={onPreviewOrder} />
+                )}
+              </div>
+            ) : null}
+            {item.reason && !reasonRedundant ? (
+              <div className="leading-5 text-muted-foreground break-words">
+                <span className="mr-1 text-muted-foreground/70">说明：</span>
+                <span className="text-foreground/90">{item.reason}</span>
+              </div>
+            ) : null}
+            {item.delegateEmployeeName || item.proofFiles?.length || item.proofFileCount ? (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
+                {item.delegateEmployeeName ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Users className="h-3 w-3 shrink-0" />
+                    代理人 {item.delegateEmployeeName}
+                  </span>
+                ) : null}
+                {item.proofFiles?.length ? (
+                  <span className="inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1">
+                    {item.proofFiles.map((file) => (
+                      <button
+                        key={file.id}
+                        type="button"
+                        className="inline-flex max-w-full items-center gap-1 truncate text-primary underline-offset-2 hover:underline"
+                        onClick={() => onDownloadProof?.(file)}
+                      >
+                        <Paperclip className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{file.originalName || `附件 #${file.id}`}</span>
+                      </button>
+                    ))}
+                  </span>
+                ) : item.proofFileCount ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Paperclip className="h-3 w-3 shrink-0" />
+                    证明附件 {item.proofFileCount} 份
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {actionNodes ? (
+          <div className="mt-2.5 flex flex-wrap items-center justify-end gap-1.5 border-t border-border/60 pt-2">
+            {actionNodes}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderMobileBatchCard = (group: RequestGroup) => {
+    const rep = group[0];
+    const pendingItem = group.find((item) => (item.status || "").startsWith("pending"));
+    const groupStatus = pendingItem?.status || rep.status || "";
+    const actionNodes = groupActions.get(rep.id) ?? (hasActions ? actions?.(rep) : null);
+    const sortedGroup = [...group].sort((a, b) => String(a.startAt || "").localeCompare(String(b.startAt || "")));
+    const orderLabel = rep.serviceOrder?.orderNo || (rep.sourceId ? `#${rep.sourceId}` : "-");
+    const draftNotice = groupStatus === "draft"
+      ? rep.rejectedReason
+        ? `上次被驳回：${rep.rejectedReason}`
+        : rep.withdrawnAt
+          ? "已撤回，可重新提交"
+          : ""
+      : "";
+    return (
+      <div className="rounded-xl border border-border/80 bg-muted/10 p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
             {requestTypeIndicator("overtime")}
-            {showEmployee ? <span title={rep.employeeName || "-"} className="truncate">{rep.employeeName || "-"}</span> : <span className="font-medium">工单加班（{group.length} 段同组）</span>}
+            <span className="truncate text-sm font-semibold text-foreground">
+              {showEmployee ? rep.employeeName || "-" : "工单加班"}
+            </span>
+            <span className="shrink-0 rounded-full bg-cyan-50 px-2 py-0.5 text-[11px] font-medium text-cyan-700 ring-1 ring-inset ring-cyan-200">
+              {group.length} 段同组
+            </span>
+          </div>
+          <div className="shrink-0 pt-0.5">
+            <StatusWithChain status={groupStatus} steps={rep.approvals} item={rep} compact />
+          </div>
+        </div>
+
+        {draftNotice ? (
+          <div className={`mt-2 rounded-lg border px-2.5 py-1.5 text-xs ${rep.rejectedReason ? "border-rose-200 bg-rose-50/70 text-rose-700" : "border-border bg-background text-muted-foreground"}`}>
+            {draftNotice}
+          </div>
+        ) : null}
+
+        <div className="mt-2.5 flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            {rep.serviceOrder && !rep.serviceOrder.unavailable ? (
+              <LinkedOrderChip order={rep.serviceOrder as ServiceOrderSummary} onPreview={onPreviewOrder} />
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Wrench className="h-3 w-3 shrink-0" />
+                工单 {orderLabel}
+              </span>
+            )}
+          </div>
+          <span className="shrink-0 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold tabular-nums text-amber-800 ring-1 ring-inset ring-amber-200/80">
+            合计 {hours(batchTotalHours(group))} 小时
           </span>
-        )}
-        status={statusIndicator(rep.status)}
-        fields={[
-          { label: "明细", value: <div className="space-y-1">{group.map((seg) => <div key={seg.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">{requestDetailContent(seg)}<span className="text-xs text-muted-foreground">{segmentTimeText(seg)}</span></div>)}</div> },
-          { label: "时间", value: batchUnionRange(group) },
-          { label: "时长", value: `共 ${hours(batchTotalHours(group))} 小时` },
-          ...(rep.delegateEmployeeName ? [{ label: "代理人", value: rep.delegateEmployeeName }] : []),
-        ]}
-        actions={hasActions ? <>{actions?.(rep)}</> : undefined}
-      />
+        </div>
+
+        <div className="mt-2.5 divide-y divide-border/60 rounded-lg bg-background px-3 py-1 ring-1 ring-inset ring-border/60">
+          {sortedGroup.map((seg) => {
+            const segStart = String(seg.startAt || "");
+            const segEnd = String(seg.endAt || seg.startAt || "");
+            const segTimeText = seg.requestType === "overtime" && seg.travelLegs?.length
+              ? travelLegsText(seg)
+              : `${chineseMonthDay(segStart.slice(0, 10))} ${segStart.slice(11, 16)} – ${segEnd.slice(11, 16)}`;
+            return (
+              <div key={seg.id} className="py-2 first:pt-1.5 last:pb-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">{requestDetailContent(seg)}</div>
+                  {seg.hours != null ? (
+                    <span className="shrink-0 text-xs font-semibold tabular-nums text-foreground">
+                      {hours(seg.hours)} <span className="font-normal text-muted-foreground">小时</span>
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-0.5 text-xs tabular-nums text-muted-foreground break-words">{segTimeText}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {rep.delegateEmployeeName ? (
+          <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+            <Users className="h-3 w-3 shrink-0" />
+            代理人 {rep.delegateEmployeeName}
+          </div>
+        ) : null}
+
+        {actionNodes ? (
+          <div className="mt-2.5 flex flex-wrap items-center justify-end gap-1.5 border-t border-border/60 pt-2">
+            {actionNodes}
+          </div>
+        ) : null}
+      </div>
     );
   };
   const renderTableRow = (item: AttendanceRequest) => {
@@ -504,51 +726,53 @@ export function RequestList({
     );
   };
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <CalendarClock className="h-5 w-5" />
-            {title}
+    <Card className="max-md:gap-3">
+      <CardHeader className="flex flex-row items-start justify-between gap-3 max-md:px-4 max-md:pt-4 md:gap-4">
+        <div className="min-w-0">
+          <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+            <CalendarClock className="h-4 w-4 shrink-0 md:h-5 md:w-5" />
+            <span className="truncate">{title}</span>
           </CardTitle>
-          <CardDescription>{description}</CardDescription>
+          <CardDescription className="mt-0.5 text-xs md:text-sm">{description}</CardDescription>
         </div>
-        <Badge variant="secondary">{groups.length} 条</Badge>
+        <Badge variant="secondary" className="shrink-0 tabular-nums">{groups.length} 条</Badge>
       </CardHeader>
-      <CardContent>
-        {toolbar ? <div className="mb-4 flex flex-wrap items-center gap-2">{toolbar}</div> : null}
+      <CardContent className="max-md:px-3.5 max-md:[&:last-child]:pb-3.5">
+        {toolbar ? <div className="mb-3 flex flex-wrap items-center gap-2 md:mb-4">{toolbar}</div> : null}
         {loading ? (
           <div className="rounded-lg border">
             <SkeletonList rows={4} columns={5} />
           </div>
         ) : items.length === 0 ? (
-          <EmptyState title={emptyText} className="min-h-0" />
+          <EmptyState title={emptyText} className="min-h-0 max-md:py-8" />
         ) : (
-          <ResponsiveList
-            items={groups}
-            keyExtractor={(group) => group[0].id}
-            breakpoint="md"
-            renderCard={(group) => (group.length > 1 ? renderBatchCard(group) : renderItemCard(group[0]))}
-          >
-          <div className="overflow-x-auto rounded-lg border">
-            <Table className="w-full min-w-[760px]">
-              <TableHeader className="bg-muted/20 text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
-                <TableRow>
-                  {showEmployee ? <TableHead className="w-[1%] whitespace-nowrap pl-4 pr-3">员工</TableHead> : null}
-                  <TableHead className={`w-[1%] whitespace-nowrap ${showEmployee ? "px-3" : "pl-4 pr-3"}`}>类型</TableHead>
-                  <TableHead className="px-3">明细</TableHead>
-                  <TableHead className="w-[1%] whitespace-nowrap px-3">时间</TableHead>
-                  <TableHead className="w-[1%] whitespace-nowrap pl-3 pr-4 text-right">时长</TableHead>
-                  <TableHead className={`w-[1%] whitespace-nowrap ${showActionsColumn ? "px-3" : "pl-3 pr-4"}`}>状态</TableHead>
-                  {showActionsColumn ? <TableHead className="w-[1%] whitespace-nowrap pl-2 pr-4 text-right">操作</TableHead> : null}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {groups.map((group) => (group.length > 1 ? renderBatchTableRow(group) : renderTableRow(group[0])))}
-              </TableBody>
-            </Table>
-          </div>
-          </ResponsiveList>
+          <>
+            <div className="space-y-2.5 md:hidden">
+              {groups.map((group) => (
+                <div key={group[0].id} className="list-row-enter">
+                  {group.length > 1 ? renderMobileBatchCard(group) : renderMobileItemCard(group[0])}
+                </div>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto rounded-lg border md:block">
+              <Table className="w-full min-w-[760px]">
+                <TableHeader className="bg-muted/20 text-xs text-muted-foreground [&_th]:font-medium [&_th]:text-muted-foreground">
+                  <TableRow>
+                    {showEmployee ? <TableHead className="w-[1%] whitespace-nowrap pl-4 pr-3">员工</TableHead> : null}
+                    <TableHead className={`w-[1%] whitespace-nowrap ${showEmployee ? "px-3" : "pl-4 pr-3"}`}>类型</TableHead>
+                    <TableHead className="px-3">明细</TableHead>
+                    <TableHead className="w-[1%] whitespace-nowrap px-3">时间</TableHead>
+                    <TableHead className="w-[1%] whitespace-nowrap pl-3 pr-4 text-right">时长</TableHead>
+                    <TableHead className={`w-[1%] whitespace-nowrap ${showActionsColumn ? "px-3" : "pl-3 pr-4"}`}>状态</TableHead>
+                    {showActionsColumn ? <TableHead className="w-[1%] whitespace-nowrap pl-2 pr-4 text-right">操作</TableHead> : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {groups.map((group) => (group.length > 1 ? renderBatchTableRow(group) : renderTableRow(group[0])))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
@@ -647,54 +871,82 @@ function ChainSteps({ steps }: { steps: ApprovalStep[] }) {
 
 // 状态列：状态指示 + 审批链 hover 悬浮层（portal + fixed 定位，避开表格 overflow 裁切；无审批链时纯指示）
 // —— 8-27 移植 ——
-function StatusWithChain({ status, steps }: { status?: string; steps?: ApprovalStep[] }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ left: number; top: number; above: boolean }>({ left: 0, top: 0, above: true });
-  const triggerRef = useRef<HTMLSpanElement>(null);
+function StatusWithChain({ status, steps, item, compact = false }: { status?: string; steps?: ApprovalStep[]; item?: AttendanceRequest; compact?: boolean }) {
+  const [pos, setPos] = useState<{ left: number; top: number; above: boolean } | null>(null);
+  const [pinned, setPinned] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const computeAndShow = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = Math.min(256, window.innerWidth - 16);
+    const left = Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8));
+    const above = rect.top > 240;
+    setPos({ left, top: above ? rect.top - 8 : rect.bottom + 8, above });
+  }, []);
 
   const hide = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
-    setOpen(false);
+    setPinned(false);
+    setPos(null);
   }, []);
-  const show = () => {
+
+  const showHover = () => {
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const above = rect.top > 240;
-      setPos({ left: rect.left + rect.width / 2, top: above ? rect.top - 8 : rect.bottom + 8, above });
-      setOpen(true);
-    }, 120);
+    timer.current = setTimeout(computeAndShow, 100);
   };
-  // 悬浮层打开期间：滚动 / 点击任意处即关闭
+
   useEffect(() => {
-    if (!open) return undefined;
+    if (!pos) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      if (triggerRef.current?.contains(event.target as Node)) return;
+      hide();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") hide();
+    };
     window.addEventListener("scroll", hide, true);
-    document.addEventListener("mousedown", hide);
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("scroll", hide, true);
-      document.removeEventListener("mousedown", hide);
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, hide]);
+  }, [pos, hide]);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
-  if (!steps?.length) return statusIndicator(status);
+  if (!steps?.length) return statusIndicator(status, item, compact);
   return (
     <>
-      <span
+      <button
         ref={triggerRef}
-        onMouseEnter={show}
-        onMouseLeave={hide}
-        className="cursor-help underline decoration-muted-foreground/40 decoration-dotted underline-offset-4"
+        type="button"
+        aria-expanded={Boolean(pos)}
+        onMouseEnter={showHover}
+        onMouseLeave={() => {
+          if (timer.current) clearTimeout(timer.current);
+          if (!pinned) setPos(null);
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (timer.current) clearTimeout(timer.current);
+          if (pinned && pos) hide();
+          else {
+            setPinned(true);
+            computeAndShow();
+          }
+        }}
+        className="inline-flex cursor-help items-center text-left underline decoration-muted-foreground/40 decoration-dotted underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
       >
-        {statusIndicator(status)}
-      </span>
-      {open
+        {statusIndicator(status, item, compact)}
+      </button>
+      {pos
         ? createPortal(
             <div
-              className="pointer-events-none fixed z-50 w-64 rounded-lg border bg-background p-3 text-xs shadow-xl"
-              style={{ left: pos.left, top: pos.top, transform: pos.above ? "translate(-50%, -100%)" : "translate(-50%, 0)" }}
+              className="pointer-events-none fixed z-[100] w-64 max-w-[calc(100vw-16px)] rounded-lg border bg-background p-3 text-left text-xs shadow-xl"
+              style={{ left: pos.left, top: pos.top, transform: pos.above ? "translateY(-100%)" : undefined }}
             >
               <div className="mb-1.5 font-medium text-foreground">{chainSummary(steps)}</div>
               <ChainSteps steps={steps} />
@@ -706,37 +958,52 @@ function StatusWithChain({ status, steps }: { status?: string; steps?: ApprovalS
   );
 }
 
-// 组行「N 段」pill：hover 浮出段明细卡（与审批链悬浮同一交互语言），移开/滚动/点击即关
+// 组行「N 段」pill：hover/点击浮出段明细卡（与审批链悬浮同一交互语言），移开/滚动/外点即关
 // —— 8-27 移植 ——
 function SegmentsHoverCard({ group }: { group: AttendanceRequest[] }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ left: number; top: number; above: boolean }>({ left: 0, top: 0, above: true });
+  const [pos, setPos] = useState<{ left: number; top: number; above: boolean } | null>(null);
+  const [pinned, setPinned] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const computeAndShow = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = Math.min(560, window.innerWidth - 16);
+    const left = Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8));
+    const above = rect.top > 300;
+    setPos({ left, top: above ? rect.top - 8 : rect.bottom + 8, above });
+  }, []);
+
   const hide = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
-    setOpen(false);
+    setPinned(false);
+    setPos(null);
   }, []);
-  const show = () => {
+
+  const showHover = () => {
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const above = rect.top > 320;
-      setPos({ left: rect.left + rect.width / 2, top: above ? rect.top - 8 : rect.bottom + 8, above });
-      setOpen(true);
-    }, 120);
+    timer.current = setTimeout(computeAndShow, 100);
   };
+
   useEffect(() => {
-    if (!open) return undefined;
+    if (!pos) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      if (triggerRef.current?.contains(event.target as Node)) return;
+      hide();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") hide();
+    };
     window.addEventListener("scroll", hide, true);
-    document.addEventListener("mousedown", hide);
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("scroll", hide, true);
-      document.removeEventListener("mousedown", hide);
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, hide]);
+  }, [pos, hide]);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   return (
@@ -744,33 +1011,48 @@ function SegmentsHoverCard({ group }: { group: AttendanceRequest[] }) {
       <button
         ref={triggerRef}
         type="button"
-        onMouseEnter={show}
-        onMouseLeave={hide}
-        className="shrink-0 rounded-full bg-cyan-50 px-2 py-0.5 text-[11px] font-medium text-cyan-700 ring-1 ring-cyan-200"
+        aria-expanded={Boolean(pos)}
+        onMouseEnter={showHover}
+        onMouseLeave={() => {
+          if (timer.current) clearTimeout(timer.current);
+          if (!pinned) setPos(null);
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (timer.current) clearTimeout(timer.current);
+          if (pinned && pos) hide();
+          else {
+            setPinned(true);
+            computeAndShow();
+          }
+        }}
+        className="shrink-0 rounded-full bg-cyan-50 px-2 py-0.5 text-[11px] font-medium text-cyan-700 ring-1 ring-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
       >
         {group.length} 段
       </button>
-      {open
+      {pos
         ? createPortal(
             <div
-              className="pointer-events-none fixed z-50 w-[560px] rounded-lg border bg-background p-3 text-xs shadow-xl"
-              style={{ left: pos.left, top: pos.top, transform: pos.above ? "translate(-50%, -100%)" : "translate(-50%, 0)" }}
+              className="pointer-events-none fixed z-[100] w-[min(560px,calc(100vw-16px))] rounded-lg border bg-background p-3 text-left text-xs shadow-xl"
+              style={{ left: pos.left, top: pos.top, transform: pos.above ? "translateY(-100%)" : undefined }}
             >
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {group.map((item) => {
                   const duration = requestDurationParts(item);
                   return (
-                    <div key={item.id} className="flex items-center gap-3">
-                      <div className="min-w-0 flex-1">{requestDetailContent(item)}</div>
-                      <span className="shrink-0 tabular-nums text-muted-foreground">
-                        {chineseMonthDay(String(item.startAt || "").slice(0, 10))} {String(item.startAt || "").slice(11, 16)} – {String(item.endAt || item.startAt || "").slice(11, 16)}
-                      </span>
-                      {duration ? (
-                        <span className="shrink-0 tabular-nums font-semibold text-foreground">
-                          {duration.value}<span className="ml-0.5 font-normal text-muted-foreground">{duration.unit}</span>
+                    <div key={item.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border/50 pb-1.5 last:border-b-0 last:pb-0">
+                      <div className="min-w-[140px] flex-1">{requestDetailContent(item)}</div>
+                      <div className="flex items-center gap-2.5">
+                        <span className="shrink-0 tabular-nums text-muted-foreground">
+                          {chineseMonthDay(String(item.startAt || "").slice(0, 10))} {String(item.startAt || "").slice(11, 16)}–{String(item.endAt || item.startAt || "").slice(11, 16)}
                         </span>
-                      ) : null}
-                      <span className="shrink-0">{statusIndicator(item.status, item)}</span>
+                        {duration ? (
+                          <span className="shrink-0 tabular-nums font-semibold text-foreground">
+                            {duration.value}<span className="ml-0.5 font-normal text-muted-foreground">{duration.unit}</span>
+                          </span>
+                        ) : null}
+                        <span className="shrink-0">{statusIndicator(item.status, item)}</span>
+                      </div>
                     </div>
                   );
                 })}
@@ -784,11 +1066,11 @@ function SegmentsHoverCard({ group }: { group: AttendanceRequest[] }) {
 }
 
 // —— 8-27 移植 ——
-function statusIndicator(status?: string, item?: AttendanceRequest) {
+function statusIndicator(status?: string, item?: AttendanceRequest, compact = false) {
   const label = STATUS_LABELS[status || ""] || status || "-";
   const conf = STATUS_INDICATORS[status || ""];
   // spec 020：撤回/驳回回草稿，草稿行提示来源（上次驳回原因/已撤回），引导修改重提
-  const draftHint = status === "draft" && item
+  const draftHint = !compact && status === "draft" && item
     ? item.rejectedReason
       ? ` · 上次被驳回：${item.rejectedReason}`
       : item.withdrawnAt
@@ -799,7 +1081,7 @@ function statusIndicator(status?: string, item?: AttendanceRequest) {
   const Icon = conf.icon;
   return (
     <span className={`inline-flex items-center gap-1 text-xs font-medium ${conf.color}`} title={draftHint ? draftHint.slice(3) : undefined}>
-      <Icon className="h-3.5 w-3.5" />
+      <Icon className="h-3.5 w-3.5 shrink-0" />
       {label}
       {draftHint ? <span className="max-w-56 truncate font-normal text-muted-foreground">{draftHint}</span> : null}
     </span>

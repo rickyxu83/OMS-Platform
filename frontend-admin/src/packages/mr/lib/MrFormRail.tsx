@@ -121,11 +121,61 @@ export function SummaryPanel({
     { label: '整单毛利率', value: <AnimatedPercent value={margin} animationKey={animationKey} />, warn: lowMargin },
   ]
 
+  if (!rail) {
+    return (
+      <div className="flex items-center gap-2.5 px-3 py-2 sm:gap-3 sm:px-4">
+        <div className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto">
+          <dl className="flex shrink-0 items-center gap-3.5 sm:gap-4">
+            {rows.map(({ label, value, warn }) => (
+              <div key={`${label}-${animationKey}`} className={`shrink-0 ${animationKey ? 'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-700' : ''}`}>
+                <dt className="text-[11px] text-muted-foreground sm:text-xs">{label}</dt>
+                <dd className={`text-xs font-semibold tabular-nums sm:text-sm ${warn ? 'text-red-600' : ''}`}>{value}</dd>
+              </div>
+            ))}
+          </dl>
+
+          {lowMargin ? (
+            <p className="hidden shrink-0 items-start gap-1.5 text-xs text-amber-700 sm:flex">
+              <AlertTriangle className="mt-px size-3.5 shrink-0" />
+              毛利率低于 15%，签核流程须包含副总经理步骤。
+            </p>
+          ) : null}
+
+          {order.currentStepLabel ? (
+            <div className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+              当前签核步骤：<span className="font-medium text-foreground">{order.currentStepKey === 'sales' ? '业务负责人' : order.currentStepLabel}</span>
+            </div>
+          ) : null}
+        </div>
+
+        {errorCount ? (
+          <button
+            type="button"
+            onClick={onShowErrors}
+            className="flex shrink-0 items-center gap-1 rounded-md bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/15"
+          >
+            <AlertTriangle className="size-3.5 shrink-0" />
+            <span>{errorCount} 项待补</span>
+          </button>
+        ) : null}
+
+        {canApprove ? (
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <Button size="sm" className="h-8 px-2.5 sm:px-3" disabled={busy} onClick={onApprove}>
+              {busy ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}同意
+            </Button>
+            <Button size="sm" variant="outline" className="h-8 px-2.5 sm:px-3" disabled={busy} onClick={onReject}>驳回</Button>
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
-    <div className={rail ? 'space-y-3 border-t p-3' : 'flex items-center gap-3 overflow-x-auto px-4 py-2'}>
-      <dl className={rail ? 'space-y-1.5' : 'flex shrink-0 items-center gap-4'}>
+    <div className="space-y-3 border-t p-3">
+      <dl className="space-y-1.5">
         {rows.map(({ label, value, warn }) => (
-          <div key={`${label}-${animationKey}`} className={`${rail ? 'flex items-baseline justify-between gap-2' : 'shrink-0'} ${animationKey ? 'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-700' : ''}`}>
+          <div key={`${label}-${animationKey}`} className={`flex items-baseline justify-between gap-2 ${animationKey ? 'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-700' : ''}`}>
             <dt className="text-xs text-muted-foreground">{label}</dt>
             <dd className={`text-sm font-semibold tabular-nums ${warn ? 'text-red-600' : ''}`}>{value}</dd>
           </div>
@@ -133,7 +183,7 @@ export function SummaryPanel({
       </dl>
 
       {lowMargin ? (
-        <p className={`flex items-start gap-1.5 text-xs text-amber-700 ${rail ? '' : 'hidden shrink-0 sm:flex'}`}>
+        <p className="flex items-start gap-1.5 text-xs text-amber-700">
           <AlertTriangle className="mt-px size-3.5 shrink-0" />
           毛利率低于 15%，签核流程须包含副总经理步骤。
         </p>
@@ -143,7 +193,7 @@ export function SummaryPanel({
         <button
           type="button"
           onClick={onShowErrors}
-          className={`flex items-center gap-1.5 text-xs font-medium text-destructive hover:underline ${rail ? 'w-full' : 'shrink-0'}`}
+          className="flex w-full items-center gap-1.5 text-xs font-medium text-destructive hover:underline"
         >
           <AlertTriangle className="size-3.5" />
           {errorCount} 个字段待完善，点击查看
@@ -151,13 +201,13 @@ export function SummaryPanel({
       ) : null}
 
       {order.currentStepLabel ? (
-        <div className={`text-xs text-muted-foreground ${rail ? 'border-t pt-3' : 'shrink-0 whitespace-nowrap'}`}>
+        <div className="border-t pt-3 text-xs text-muted-foreground">
           当前签核步骤：<span className="font-medium text-foreground">{order.currentStepKey === 'sales' ? '业务负责人' : order.currentStepLabel}</span>
         </div>
       ) : null}
 
       {canApprove ? (
-        <div className={rail ? 'flex flex-col gap-2' : 'ml-auto flex shrink-0 gap-2'}>
+        <div className="flex flex-col gap-2">
           <Button size="sm" disabled={busy} onClick={onApprove}>
             {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}同意签核
           </Button>

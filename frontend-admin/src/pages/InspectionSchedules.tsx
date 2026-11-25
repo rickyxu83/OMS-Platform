@@ -608,6 +608,7 @@ export function InspectionSchedules() {
           width: customerDropdownBox.width,
           maxHeight: customerDropdownBox.maxHeight,
         }}
+        onPointerDown={(event) => event.preventDefault()}
         onMouseDown={(event) => event.preventDefault()}
       >
         {filteredCustomerOptions.length ? (
@@ -621,10 +622,7 @@ export function InspectionSchedules() {
                 className={`flex w-full items-center justify-between gap-2 rounded-sm px-3 py-2 text-left text-sm transition-colors ${
                   selected ? "bg-primary/10 text-primary" : "hover:bg-accent"
                 }`}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  updateCustomer(customerId);
-                }}
+                onClick={() => updateCustomer(customerId)}
               >
                 <span className="min-w-0 truncate" title={c.name || `客户 #${c.id}`}>{c.name || `客户 #${c.id}`}</span>
                 {selected && <Badge variant="outline">已选</Badge>}
@@ -641,13 +639,14 @@ export function InspectionSchedules() {
   const engineerOptionsDropdown = dialogOpen && engineerOptionsOpen && engineerDropdownBox
     ? (
       <div
-        className="absolute z-[80] space-y-1.5 overflow-y-auto rounded-md border border-border bg-background p-3 shadow-xl"
+        className="absolute z-[80] space-y-1.5 overflow-y-auto overscroll-contain rounded-md border border-border bg-background p-3 shadow-xl"
         style={{
           top: engineerDropdownBox.top,
           left: engineerDropdownBox.left,
           width: engineerDropdownBox.width,
           maxHeight: engineerDropdownBox.maxHeight,
         }}
+        onPointerDown={(event) => event.preventDefault()}
         onMouseDown={(event) => event.preventDefault()}
       >
         {filteredEngineerOptions.length ? (
@@ -660,10 +659,7 @@ export function InspectionSchedules() {
                 role="checkbox"
                 aria-checked={checked}
                 tabIndex={0}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  toggleEngineer(engineerId);
-                }}
+                onClick={() => toggleEngineer(engineerId)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();

@@ -2381,7 +2381,7 @@ export function ServiceOrders() {
       />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-[640px]">
+        <DialogContent className="flex max-h-[calc(100vh-2rem)] supports-[height:100dvh]:max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-[640px]">
           <DialogHeader>
             <DialogTitle>{t.actions.create}</DialogTitle>
             <DialogDescription>{t.dialogs.createDesc}</DialogDescription>
@@ -2476,11 +2476,11 @@ export function ServiceOrders() {
             </div>
             <div className="space-y-2">
               <Label>{t.dialogs.plannedStart}</Label>
-              <Input type="datetime-local" value={createForm.plannedStartAt} onChange={(e) => setCreateForm({ ...createForm, plannedStartAt: e.target.value })} />
+              <Input type="datetime-local" data-compact-date="true" value={createForm.plannedStartAt} onChange={(e) => setCreateForm({ ...createForm, plannedStartAt: e.target.value })} />
             </div>
             <div className="space-y-2">
               <Label>{t.dialogs.plannedEnd}</Label>
-              <Input type="datetime-local" value={createForm.plannedEndAt} onChange={(e) => setCreateForm({ ...createForm, plannedEndAt: e.target.value })} />
+              <Input type="datetime-local" data-compact-date="true" value={createForm.plannedEndAt} onChange={(e) => setCreateForm({ ...createForm, plannedEndAt: e.target.value })} />
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label>{t.dialogs.issueDescription} *</Label>
@@ -2519,7 +2519,7 @@ export function ServiceOrders() {
       </Dialog>
 
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
-        <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-[520px]">
+        <DialogContent className="flex max-h-[calc(100vh-2rem)] supports-[height:100dvh]:max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>{t.actions.assign}</DialogTitle>
             <DialogDescription>{t.dialogs.assignDesc}</DialogDescription>

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Eye, EyeOff, Fingerprint, Globe, Loader2, TriangleAlert } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Fingerprint, Globe, Loader2, LockKeyhole, TriangleAlert, UserRound } from "lucide-react";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,87 +21,69 @@ import { preloadAdminCore } from "@/lib/preload-admin";
 import { cancelLoginTransition, finishLoginTransition, startLoginTransition } from "@/lib/login-transition";
 
 const LOGIN_BACKGROUND_BLOBS = [
-  { left: "50%", top: "45%", sizeClass: "h-[620px] w-[620px]", moveX: -190, moveY: 135, scale: 1.04, scaleMove: 0.045 },
-  { left: "41%", top: "34%", sizeClass: "h-[430px] w-[430px]", moveX: 240, moveY: 180, scale: 1.1, scaleMove: 0.06 },
-  { left: "59%", top: "58%", sizeClass: "h-[470px] w-[470px]", moveX: -230, moveY: -190, scale: 1.08, scaleMove: 0.055 },
-  { left: "30%", top: "63%", sizeClass: "h-[520px] w-[520px]", moveX: 260, moveY: -150, scale: 1.06, scaleMove: 0.05 },
-  { left: "74%", top: "30%", sizeClass: "h-[500px] w-[500px]", moveX: -250, moveY: 165, scale: 1.08, scaleMove: 0.055 },
-  { left: "18%", top: "18%", sizeClass: "h-[430px] w-[430px]", moveX: 320, moveY: 230, scale: 1.12, scaleMove: 0.07 },
-  { left: "84%", top: "80%", sizeClass: "h-[500px] w-[500px]", moveX: -310, moveY: -250, scale: 1.08, scaleMove: 0.055 },
-  { left: "54%", top: "12%", sizeClass: "h-[380px] w-[380px]", moveX: 210, moveY: 270, scale: 1.14, scaleMove: 0.075 },
+  { left: "50%", top: "44%", sizeClass: "h-[580px] w-[580px]", moveX: -170, moveY: 120, scale: 1.04, scaleMove: 0.04, duration: "22s", delay: "-3s" },
+  { left: "38%", top: "32%", sizeClass: "h-[430px] w-[430px]", moveX: 210, moveY: 160, scale: 1.08, scaleMove: 0.05, duration: "25s", delay: "-9s" },
+  { left: "62%", top: "58%", sizeClass: "h-[460px] w-[460px]", moveX: -200, moveY: -165, scale: 1.06, scaleMove: 0.05, duration: "20s", delay: "-14s" },
+  { left: "28%", top: "66%", sizeClass: "h-[500px] w-[500px]", moveX: 230, moveY: -135, scale: 1.05, scaleMove: 0.045, duration: "27s", delay: "-6s" },
+  { left: "76%", top: "28%", sizeClass: "h-[480px] w-[480px]", moveX: -220, moveY: 145, scale: 1.06, scaleMove: 0.05, duration: "24s", delay: "-17s" },
+  { left: "16%", top: "18%", sizeClass: "h-[420px] w-[420px]", moveX: 280, moveY: 200, scale: 1.1, scaleMove: 0.06, duration: "28s", delay: "-11s" },
+  { left: "84%", top: "80%", sizeClass: "h-[480px] w-[480px]", moveX: -270, moveY: -210, scale: 1.07, scaleMove: 0.05, duration: "23s", delay: "-4s" },
+  { left: "54%", top: "12%", sizeClass: "h-[380px] w-[380px]", moveX: 190, moveY: 230, scale: 1.1, scaleMove: 0.06, duration: "26s", delay: "-19s" },
 ];
 
-const LOGIN_VIEWPORT_BACKGROUND = "#f7f1ea";
+const LOGIN_VIEWPORT_BACKGROUND = "#f7f3ee";
 const IS_TEST_SERVER = String(import.meta.env.VITE_APP_ENVIRONMENT || "").toLowerCase() === "test";
-const LOGIN_MOTION_EASE = 0.22;
+const LOGIN_MOTION_EASE = 0.2;
 const LOGIN_MOTION_SETTLE_EPSILON = 0.002;
-const LOGIN_DEEP_BLOB_COUNT = 4;
-const LOGIN_DEEP_BLOB_FOCUS_SLOTS = [0, 1, 2, 3];
-const LOGIN_DEEP_BLOB_EDGE_SLOTS = [4, 5, 6, 7];
-const LOGIN_LIGHT_BLOB_COLOR_GROUPS = [
+
+/**
+ * 4 套与敦阳品牌紫（#582b8b）和谐配色的精选极光色板：
+ * 每次进入随机抽取一整套同调色板，避免单球随机混抽出现红绿黄撞色浑浊感。
+ */
+const LOGIN_AURORA_THEMES: string[][] = [
+  // 1. 暮光紫韵（品牌紫 · 鸢尾蓝 · 柔粉玫瑰 · 暖香槟）
   [
-    "rgba(254, 226, 226, 0.34)",
-    "rgba(255, 228, 230, 0.34)",
-    "rgba(255, 241, 242, 0.34)",
-    "rgba(255, 237, 213, 0.34)",
+    "rgba(124, 58, 237, 0.30)",
+    "rgba(168, 85, 247, 0.28)",
+    "rgba(236, 72, 153, 0.22)",
+    "rgba(99, 102, 241, 0.24)",
+    "rgba(251, 207, 232, 0.42)",
+    "rgba(233, 213, 255, 0.44)",
+    "rgba(254, 243, 199, 0.38)",
+    "rgba(224, 231, 255, 0.40)",
   ],
+  // 2. 晨曦暖紫（梅子紫 · 珊瑚蜜桃 · 琥珀柔光 · 薰衣草雾）
   [
-    "rgba(252, 231, 243, 0.34)",
-    "rgba(243, 232, 255, 0.34)",
-    "rgba(237, 233, 254, 0.34)",
-    "rgba(250, 245, 255, 0.34)",
+    "rgba(139, 92, 246, 0.28)",
+    "rgba(244, 114, 182, 0.25)",
+    "rgba(251, 146, 60, 0.20)",
+    "rgba(168, 85, 247, 0.24)",
+    "rgba(255, 228, 230, 0.44)",
+    "rgba(243, 232, 255, 0.45)",
+    "rgba(254, 215, 170, 0.36)",
+    "rgba(250, 232, 255, 0.42)",
   ],
+  // 3. 星云靛蓝（深紫罗兰 · 矢车菊蓝 · 冰透天青 · 丁香云）
   [
-    "rgba(224, 231, 255, 0.34)",
-    "rgba(219, 234, 254, 0.34)",
-    "rgba(224, 242, 254, 0.34)",
-    "rgba(240, 249, 255, 0.34)",
+    "rgba(109, 40, 217, 0.27)",
+    "rgba(79, 70, 229, 0.26)",
+    "rgba(56, 189, 248, 0.22)",
+    "rgba(147, 51, 234, 0.23)",
+    "rgba(224, 242, 254, 0.44)",
+    "rgba(237, 233, 254, 0.46)",
+    "rgba(219, 234, 254, 0.42)",
+    "rgba(245, 243, 255, 0.44)",
   ],
+  // 4. 冰川紫青（紫水晶 · 湖水青 · 薄荷薄雾 · 浅靛紫）
   [
-    "rgba(207, 250, 254, 0.34)",
-    "rgba(204, 251, 241, 0.34)",
-    "rgba(209, 250, 229, 0.32)",
-    "rgba(240, 253, 250, 0.32)",
-  ],
-  [
-    "rgba(220, 252, 231, 0.32)",
-    "rgba(236, 252, 203, 0.30)",
-    "rgba(254, 249, 195, 0.34)",
-    "rgba(254, 243, 199, 0.34)",
-    "rgba(255, 247, 237, 0.34)",
-    "rgba(248, 250, 252, 0.30)",
-  ],
-];
-const LOGIN_DEEP_BLOB_COLOR_GROUPS = [
-  [
-    "rgba(244, 63, 94, 0.52)",
-    "rgba(239, 68, 68, 0.50)",
-    "rgba(249, 115, 22, 0.52)",
-    "rgba(245, 158, 11, 0.50)",
-  ],
-  [
-    "rgba(236, 72, 153, 0.52)",
-    "rgba(217, 70, 239, 0.50)",
-    "rgba(192, 38, 211, 0.48)",
-    "rgba(168, 85, 247, 0.50)",
-  ],
-  [
-    "rgba(124, 58, 237, 0.50)",
-    "rgba(99, 102, 241, 0.52)",
-    "rgba(37, 99, 235, 0.50)",
-    "rgba(59, 130, 246, 0.52)",
-  ],
-  [
-    "rgba(14, 165, 233, 0.50)",
-    "rgba(6, 182, 212, 0.48)",
-    "rgba(20, 184, 166, 0.48)",
-    "rgba(16, 185, 129, 0.48)",
-  ],
-  [
-    "rgba(34, 197, 94, 0.46)",
-    "rgba(132, 204, 22, 0.46)",
-    "rgba(202, 138, 4, 0.48)",
-    "rgba(217, 119, 6, 0.50)",
+    "rgba(124, 58, 237, 0.27)",
+    "rgba(20, 184, 166, 0.20)",
+    "rgba(99, 102, 241, 0.25)",
+    "rgba(168, 85, 247, 0.23)",
+    "rgba(204, 251, 241, 0.38)",
+    "rgba(237, 233, 254, 0.45)",
+    "rgba(224, 231, 255, 0.42)",
+    "rgba(250, 245, 255, 0.44)",
   ],
 ];
 
@@ -118,44 +100,6 @@ function normalizedPointerPosition(clientX: number, clientY: number) {
   };
 }
 
-function shuffledCopy<T>(values: T[]) {
-  const list = [...values];
-  for (let index = list.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [list[index], list[swapIndex]] = [list[swapIndex], list[index]];
-  }
-  return list;
-}
-
-function groupedRandomColors(colorGroups: string[][], count: number) {
-  const groups = shuffledCopy(colorGroups).map((group) => shuffledCopy(group));
-  const colors: string[] = [];
-
-  while (colors.length < count) {
-    for (const group of groups) {
-      const color = group.shift();
-      if (color) colors.push(color);
-      if (colors.length >= count) break;
-    }
-  }
-
-  return colors;
-}
-
-function randomDeepBlobSlots() {
-  const focusSlots = shuffledCopy(LOGIN_DEEP_BLOB_FOCUS_SLOTS).slice(0, 2);
-  const slots = [
-    ...focusSlots,
-    shuffledCopy(LOGIN_DEEP_BLOB_EDGE_SLOTS)[0],
-  ].filter((slot): slot is number => typeof slot === "number");
-  const remainingSlots = shuffledCopy([
-    ...LOGIN_DEEP_BLOB_FOCUS_SLOTS,
-    ...LOGIN_DEEP_BLOB_EDGE_SLOTS,
-  ]).filter((slot) => !slots.includes(slot));
-
-  return [...slots, ...remainingSlots].slice(0, LOGIN_DEEP_BLOB_COUNT);
-}
-
 function motionBlobTransform(
   config: (typeof LOGIN_BACKGROUND_BLOBS)[number],
   point: LoginMotionPoint,
@@ -165,14 +109,8 @@ function motionBlobTransform(
 }
 
 function randomLoginPalette() {
-  const palette = groupedRandomColors(LOGIN_LIGHT_BLOB_COLOR_GROUPS, LOGIN_BACKGROUND_BLOBS.length);
-  const deepColors = groupedRandomColors(LOGIN_DEEP_BLOB_COLOR_GROUPS, LOGIN_DEEP_BLOB_COUNT);
-  const deepSlots = randomDeepBlobSlots();
-
-  for (let index = 0; index < deepSlots.length; index += 1) {
-    palette[deepSlots[index]] = deepColors[index];
-  }
-  return palette;
+  const theme = LOGIN_AURORA_THEMES[Math.floor(Math.random() * LOGIN_AURORA_THEMES.length)] || LOGIN_AURORA_THEMES[0];
+  return theme;
 }
 
 function isTouchOrCoarsePointer() {
@@ -283,7 +221,7 @@ function LoginMotionBackground() {
           className="absolute inset-0"
           style={{
             background:
-              "radial-gradient(circle at 50% 43%, rgba(255,255,255,0.18), rgba(255,255,255,0.04) 28%, transparent 42%), linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.18))",
+              "radial-gradient(circle at 50% 42%, rgba(255,255,255,0.42), rgba(255,255,255,0.08) 34%, transparent 56%), linear-gradient(135deg, rgba(255,255,255,0.16), rgba(255,255,255,0.22))",
           }}
         />
         {LOGIN_BACKGROUND_BLOBS.map((blob, index) => (
@@ -294,22 +232,32 @@ function LoginMotionBackground() {
           >
             <div
               data-motion-blob
-              className={`absolute rounded-full blur-3xl will-change-transform motion-reduce:transition-none ${blob.sizeClass}`}
+              className={`absolute will-change-transform motion-reduce:transition-none ${blob.sizeClass}`}
               style={{
-                background: blobColors[index % blobColors.length],
                 transform: motionBlobTransform(blob, { x: 0, y: 0 }),
               }}
-            />
+            >
+              <div
+                className={`h-full w-full rounded-full blur-3xl ${index % 2 === 0 ? "login-aurora-breathe-a" : "login-aurora-breathe-b"}`}
+                style={
+                  {
+                    background: blobColors[index % blobColors.length],
+                    "--aurora-duration": blob.duration,
+                    animationDelay: blob.delay,
+                  } as CSSProperties
+                }
+              />
+            </div>
           </div>
         ))}
       </div>
       <div
-        className="absolute inset-x-0 top-0 h-[12svh] md:hidden"
-        style={{ background: `linear-gradient(to bottom, ${LOGIN_VIEWPORT_BACKGROUND} 0%, rgba(247,241,234,0.58) 42%, rgba(247,241,234,0) 100%)` }}
+        className="absolute inset-x-0 top-0 h-[10svh] md:hidden"
+        style={{ background: `linear-gradient(to bottom, ${LOGIN_VIEWPORT_BACKGROUND} 0%, rgba(247,243,238,0.45) 45%, rgba(247,243,238,0) 100%)` }}
       />
       <div
-        className="absolute inset-x-0 bottom-0 h-[12svh] md:hidden"
-        style={{ background: `linear-gradient(to top, ${LOGIN_VIEWPORT_BACKGROUND} 0%, rgba(247,241,234,0.58) 42%, rgba(247,241,234,0) 100%)` }}
+        className="absolute inset-x-0 bottom-0 h-[10svh] md:hidden"
+        style={{ background: `linear-gradient(to top, ${LOGIN_VIEWPORT_BACKGROUND} 0%, rgba(247,243,238,0.5) 45%, rgba(247,243,238,0) 100%)` }}
       />
     </div>
   );
@@ -651,281 +599,316 @@ export function Login() {
   return (
     <div
       id="login-root"
-      className="fixed inset-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4"
+      className="fixed inset-0 overflow-y-auto overflow-x-hidden"
       style={{
         backgroundColor: LOGIN_VIEWPORT_BACKGROUND,
         colorScheme: "light",
-        minHeight: "100dvh",
+        minHeight: "100vh",
         overscrollBehavior: "none",
         WebkitOverflowScrolling: "touch",
       }}
     >
       <LoginMotionBackground />
-      {IS_TEST_SERVER && (
-        <div
-          role="status"
-          className="fixed inset-x-0 top-0 z-30 flex min-h-16 items-center justify-center border-b-2 border-amber-700 bg-amber-300 px-4 py-2 text-amber-950 shadow-lg"
-        >
-          <div className="flex max-w-3xl items-center gap-3">
-            <TriangleAlert className="h-7 w-7 shrink-0" aria-hidden="true" />
-            <div>
-              <p className="text-sm font-bold sm:text-base">{t.testServer}</p>
-              <p className="text-xs font-medium sm:text-sm">{t.testServerNotice}</p>
-            </div>
-          </div>
-        </div>
-      )}
 
-      <div className={`absolute right-4 z-20 sm:right-6 ${IS_TEST_SERVER ? "top-20" : "top-4 sm:top-6"}`}>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 gap-2 rounded-full border bg-white/80 px-3.5 shadow-md backdrop-blur-sm transition-all duration-300 hover:bg-white hover:shadow-lg"
-              style={{ borderColor: "rgba(88, 43, 139, 0.2)" }}
+      <div className="relative z-10 mx-auto flex min-h-full w-full max-w-5xl flex-col justify-between px-4 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] pt-[max(0.75rem,env(safe-area-inset-top,0px))] supports-[min-height:100dvh]:min-h-[100dvh] sm:px-6 sm:pb-5 sm:pt-5">
+        {/* 顶部栏：测试服紧凑警示胶囊 + 语言切换同排，不遮挡不跳位 */}
+        <div className="flex items-start justify-between gap-2.5">
+          {IS_TEST_SERVER ? (
+            <div
+              role="status"
+              className="inline-flex min-w-0 items-center gap-2 rounded-2xl border border-amber-400/90 bg-amber-100/90 px-3 py-1.5 text-amber-950 shadow-sm backdrop-blur-md sm:px-3.5 sm:py-2"
             >
-              <Globe className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium text-gray-700">{t.langLabel}</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="mt-2 min-w-[120px] rounded-xl">
-            <DropdownMenuItem
-              onClick={() => setLang("zh-CN")}
-              className={`cursor-pointer ${lang === "zh-CN" ? "bg-primary/10 font-bold text-primary" : ""}`}
-            >
-              {t.langOptionCn}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => setLang("zh-TW")}
-              className={`cursor-pointer ${lang === "zh-TW" ? "bg-primary/10 font-bold text-primary" : ""}`}
-            >
-              {t.langOptionTw}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      <div
-        className={`relative z-10 flex min-h-full items-center justify-center pb-28 ${
-          IS_TEST_SERVER ? "pt-28" : "pt-16 sm:pt-20"
-        }`}
-      >
-        <div className="w-full max-w-sm">
-          <div className="rounded-3xl border border-white/20 bg-white/80 p-6 shadow-2xl backdrop-blur-xl sm:p-7">
-            <div className="mb-4 flex justify-center">
-              <div className="relative flex h-24 w-24 items-center justify-center">
-                <div
-                  className="absolute h-20 w-20 rounded-full blur-2xl"
-                  style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.35) 0%, rgba(168, 85, 247, 0.18) 50%, transparent 70%)" }}
-                />
-                <div
-                  className="absolute h-24 w-24 rounded-full blur-3xl"
-                  style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.25) 0%, rgba(168, 85, 247, 0.12) 50%, transparent 70%)" }}
-                />
-                <div
-                  className="absolute h-28 w-28 rounded-full blur-3xl"
-                  style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.18) 0%, rgba(168, 85, 247, 0.08) 50%, transparent 70%)" }}
-                />
-                <div
-                  className="absolute h-[72px] w-[72px] rounded-full blur-xl"
-                  style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.4) 0%, rgba(168, 85, 247, 0.25) 40%, transparent 70%)" }}
-                />
-                <img
-                  src={logoSrc}
-                  alt="Dunyang Technology Logo"
-                  className="relative z-10 h-[72px] w-[72px] object-contain"
-                  style={{ filter: "drop-shadow(0 0 10px rgba(88, 43, 139, 0.5))" }}
-                />
+              <TriangleAlert className="h-4 w-4 shrink-0 text-amber-700 sm:h-4.5 sm:w-4.5" aria-hidden="true" />
+              <div className="min-w-0 text-xs leading-snug">
+                <span className="font-bold">{t.testServer}</span>
+                <span className="mx-1.5 hidden text-amber-700/50 sm:inline">·</span>
+                <span className="block truncate font-medium text-amber-900/90 sm:inline">{t.testServerNotice}</span>
               </div>
             </div>
+          ) : (
+            <div />
+          )}
 
-            <div className="mb-6 text-center">
-              <h1 className="mb-1.5 text-2xl font-bold text-primary">
-                {t.title}
-              </h1>
-              <p className="text-sm text-gray-500">{t.subtitle}</p>
-              <p className="mt-1 text-xs text-gray-400">{t.pleaseLogin}</p>
-            </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 shrink-0 gap-1.5 rounded-full border-white/80 bg-white/78 px-3.5 shadow-[0_4px_14px_-2px_rgba(46,16,101,0.08)] ring-1 ring-slate-900/[0.05] backdrop-blur-md transition-all hover:bg-white hover:shadow-[0_6px_18px_-2px_rgba(46,16,101,0.13)]"
+              >
+                <Globe className="h-3.5 w-3.5 text-primary sm:h-4 sm:w-4" />
+                <span className="text-xs font-medium text-slate-700 sm:text-sm">{t.langLabel}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="mt-1.5 min-w-[124px] rounded-xl border-white/80 bg-white/95 backdrop-blur-xl">
+              <DropdownMenuItem
+                onClick={() => setLang("zh-CN")}
+                className={`cursor-pointer rounded-lg ${lang === "zh-CN" ? "bg-primary/10 font-semibold text-primary" : ""}`}
+              >
+                {t.langOptionCn}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setLang("zh-TW")}
+                className={`cursor-pointer rounded-lg ${lang === "zh-TW" ? "bg-primary/10 font-semibold text-primary" : ""}`}
+              >
+                {t.langOptionTw}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
-            <form onSubmit={step === "identifier" ? handleContinue : handleSubmit} className="space-y-4">
-              {error && (
-                <div role="alert" className="rounded-[10px] border border-red-100 bg-red-50 p-3 text-center text-sm font-medium text-red-600">
-                  {error}
+        {/* 主卡片区：垂直居中，弹起手机键盘时自然滚动不重叠 */}
+        <main className="my-auto flex w-full justify-center py-5 sm:py-8">
+          <div className="w-full max-w-[392px]">
+            <div className="relative overflow-hidden rounded-[28px] border border-white/85 bg-white/[0.84] p-6 shadow-[0_24px_60px_-15px_rgba(46,16,101,0.16),0_8px_20px_-6px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,0.95)] ring-1 ring-slate-900/[0.04] backdrop-blur-2xl sm:p-8">
+              {/* 顶部高光掠影 */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent"
+              />
+
+              <div className="mb-4 flex justify-center">
+                <div className="relative flex h-24 w-24 items-center justify-center">
+                  <div
+                    className="absolute h-20 w-20 rounded-full blur-2xl"
+                    style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.35) 0%, rgba(168, 85, 247, 0.18) 50%, transparent 70%)" }}
+                  />
+                  <div
+                    className="absolute h-24 w-24 rounded-full blur-3xl"
+                    style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.25) 0%, rgba(168, 85, 247, 0.12) 50%, transparent 70%)" }}
+                  />
+                  <div
+                    className="absolute h-28 w-28 rounded-full blur-3xl"
+                    style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.18) 0%, rgba(168, 85, 247, 0.08) 50%, transparent 70%)" }}
+                  />
+                  <div
+                    className="absolute h-[72px] w-[72px] rounded-full blur-xl"
+                    style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.4) 0%, rgba(168, 85, 247, 0.25) 40%, transparent 70%)" }}
+                  />
+                  <img
+                    src={logoSrc}
+                    alt="Dunyang Technology Logo"
+                    className="relative z-10 h-[72px] w-[72px] object-contain"
+                    style={{ filter: "drop-shadow(0 0 10px rgba(88, 43, 139, 0.5))" }}
+                  />
                 </div>
-              )}
+              </div>
 
-              {step === "identifier" ? (
-                <>
-                  <div>
-                    <Label htmlFor="username" className="sr-only">
-                      {t.username}
-                    </Label>
-                    <Input
-                      id="username"
-                      name="username"
-                      placeholder={t.usernamePlaceholder || t.username}
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      autoComplete="username webauthn"
-                      className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 shadow-none transition-all placeholder:text-gray-400 hover:border-primary focus-visible:border-primary focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/20"
-                    />
+              <div className="mb-6 text-center">
+                <h1 className="mb-1.5 text-2xl font-bold text-primary">
+                  {t.title}
+                </h1>
+                <p className="text-sm text-gray-500">{t.subtitle}</p>
+                <p className="mt-1 text-xs text-gray-400">{t.pleaseLogin}</p>
+              </div>
+
+              <form onSubmit={step === "identifier" ? handleContinue : handleSubmit} className="space-y-4">
+                {error && (
+                  <div role="alert" className="rounded-xl border border-rose-200/80 bg-rose-50/90 px-3.5 py-2.5 text-center text-sm font-medium text-rose-600">
+                    {error}
                   </div>
+                )}
 
-                  <div className="flex items-center text-sm">
-                    <label className="group flex cursor-pointer items-center">
-                      <Checkbox
-                        id="remember"
-                        checked={rememberMe}
-                        onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                        className="h-4 w-4 rounded border-gray-300 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
-                      />
-                      <span className="ml-2 text-gray-600 transition-colors group-hover:text-primary">{t.remember}</span>
-                    </label>
+                {step === "identifier" ? (
+                  <div key="identifier" className="login-step-enter space-y-4">
+                    <div>
+                      <Label htmlFor="username" className="sr-only">
+                        {t.username}
+                      </Label>
+                      <div className="group relative">
+                        <UserRound
+                          aria-hidden="true"
+                          className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-primary"
+                        />
+                        <Input
+                          id="username"
+                          name="username"
+                          type="text"
+                          placeholder={t.usernamePlaceholder || t.username}
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
+                          autoComplete="username webauthn"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          enterKeyHint="next"
+                          className="h-[46px] rounded-xl border border-slate-200/90 bg-slate-50/70 pl-10 pr-3.5 shadow-none transition-all placeholder:text-slate-400 hover:border-primary/50 focus-visible:border-primary focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-primary/12"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center text-sm">
+                      <label className="group flex cursor-pointer select-none items-center py-0.5">
+                        <Checkbox
+                          id="remember"
+                          checked={rememberMe}
+                          onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                          className="h-4 w-4 rounded border-slate-300 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
+                        />
+                        <span className="ml-2 text-slate-600 transition-colors group-hover:text-primary">{t.remember}</span>
+                      </label>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      disabled={loading || passkeyLoading}
+                      className="group h-[46px] w-full rounded-xl bg-gradient-to-b from-[color-mix(in_oklab,var(--primary)_92%,white)] to-primary text-[15px] font-semibold text-white shadow-[0_8px_20px_-4px_rgba(88,43,139,0.42),inset_0_1px_0_rgba(255,255,255,0.22)] transition-all hover:brightness-[1.03] hover:shadow-[0_10px_24px_-4px_rgba(88,43,139,0.5)] active:scale-[0.985]"
+                    >
+                      {passkeyLoading ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t.passkeyLoggingIn}</>
+                      ) : (
+                        <>
+                          {t.continue}
+                          <ArrowRight className="ml-1.5 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                        </>
+                      )}
+                    </Button>
+
+                    {passkeyAvailable ? (
+                      <div className="flex items-center justify-center gap-1.5 px-1 text-center text-xs leading-relaxed text-slate-500">
+                        <Fingerprint className="h-3.5 w-3.5 shrink-0 text-primary/75" />
+                        <span>{t.passkeyAutoHint}</span>
+                        <HelpTooltip label={t.passkeyTip} />
+                      </div>
+                    ) : null}
                   </div>
-
-                  <Button
-                    type="submit"
-                    disabled={loading || passkeyLoading}
-                    className="h-11 w-full rounded-[10px] bg-primary text-base font-semibold text-white shadow-[0_4px_14px_rgba(88,43,139,0.4)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_85%,black)] hover:shadow-[0_6px_20px_rgba(88,43,139,0.5)] active:scale-[0.98]"
-                  >
-                    {passkeyLoading ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t.passkeyLoggingIn}</>
-                    ) : t.continue}
-                  </Button>
-
-                  {passkeyAvailable ? (
-                    <p className="flex items-center justify-center gap-1.5 text-center text-xs text-gray-400">
-                      <Fingerprint className="h-3.5 w-3.5 shrink-0" />
-                      <span className="whitespace-nowrap">{t.passkeyAutoHint}</span>
-                      <HelpTooltip label={t.passkeyTip} />
-                    </p>
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between rounded-[10px] border border-gray-200 bg-gray-50/80 px-3.5 py-2.5">
-                    <span title={username} className="truncate text-sm font-medium text-gray-700">{username}</span>
+                ) : (
+                  <div key="password" className="login-step-enter space-y-4">
                     <button
                       type="button"
                       onClick={backToIdentifierStep}
-                      className="ml-2 shrink-0 text-sm font-medium text-primary transition-colors hover:underline"
+                      className="group flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200/90 bg-slate-50/80 px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-white"
                     >
-                      {t.changeAccount}
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <UserRound className="h-3.5 w-3.5" />
+                        </span>
+                        <span title={username} className="truncate text-sm font-medium text-slate-700">{username}</span>
+                      </span>
+                      <span className="shrink-0 rounded-md bg-primary/[0.08] px-2 py-0.5 text-xs font-medium text-primary transition-colors group-hover:bg-primary/15">
+                        {t.changeAccount}
+                      </span>
                     </button>
-                  </div>
 
-                  <div>
-                    <Label htmlFor="password" className="sr-only">
-                      {t.password}
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="password"
-                        name="password"
-                        type={showPassword ? "text" : "password"}
-                        placeholder={t.passwordPlaceholder || t.password}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        autoComplete="current-password"
-                        autoFocus
-                        className="h-11 rounded-[10px] border-[1.5px] border-gray-200 bg-gray-50/80 px-3.5 pr-11 shadow-none transition-all placeholder:text-gray-400 hover:border-primary focus-visible:border-primary focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-primary/20"
-                      />
-                      <button
-                        type="button"
-                        className="absolute right-2.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-primary/10 hover:text-primary"
-                        onClick={() => setShowPassword((value) => !value)}
-                        aria-label={showPassword ? t.hidePassword : t.showPassword}
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
+                    <div>
+                      <Label htmlFor="password" className="sr-only">
+                        {t.password}
+                      </Label>
+                      <div className="group relative">
+                        <LockKeyhole
+                          aria-hidden="true"
+                          className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-primary"
+                        />
+                        <Input
+                          id="password"
+                          name="password"
+                          type={showPassword ? "text" : "password"}
+                          placeholder={t.passwordPlaceholder || t.password}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          autoComplete="current-password"
+                          enterKeyHint="go"
+                          autoFocus
+                          className="h-[46px] rounded-xl border border-slate-200/90 bg-slate-50/70 pl-10 pr-11 shadow-none transition-all placeholder:text-slate-400 hover:border-primary/50 focus-visible:border-primary focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-primary/12"
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-primary/10 hover:text-primary"
+                          onClick={() => setShowPassword((value) => !value)}
+                          aria-label={showPassword ? t.hidePassword : t.showPassword}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center text-sm">
-                    <label className="group flex cursor-pointer items-center">
-                      <Checkbox
-                        id="remember-password"
-                        checked={rememberMe}
-                        onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                        className="h-4 w-4 rounded border-gray-300 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
-                      />
-                      <span className="ml-2 text-gray-600 transition-colors group-hover:text-primary">{t.remember}</span>
-                    </label>
-                  </div>
-
-                  <Button
-                    type="submit"
-                    disabled={loading || passkeyLoading}
-                    className="h-11 w-full rounded-[10px] bg-primary text-base font-semibold text-white shadow-[0_4px_14px_rgba(88,43,139,0.4)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_85%,black)] hover:shadow-[0_6px_20px_rgba(88,43,139,0.5)] active:scale-[0.98]"
-                  >
-                    {loading ? t.loggingIn : t.login}
-                  </Button>
-
-                  {passkeyAvailable ? (
-                    <div className="flex items-center justify-center gap-1.5">
-                      <button
-                        type="button"
-                        disabled={passkeyLoading}
-                        onClick={() => { setError(""); void attemptPasskeyLogin(username.trim()); }}
-                        className="flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:underline disabled:opacity-50"
-                      >
-                        {passkeyLoading
-                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          : <Fingerprint className="h-3.5 w-3.5" />}
-                        {t.usePasskeyInstead}
-                      </button>
-                      <HelpTooltip label={t.passkeyTip} />
+                    <div className="flex items-center text-sm">
+                      <label className="group flex cursor-pointer select-none items-center py-0.5">
+                        <Checkbox
+                          id="remember-password"
+                          checked={rememberMe}
+                          onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                          className="h-4 w-4 rounded border-slate-300 data-[state=checked]:border-primary data-[state=checked]:bg-primary"
+                        />
+                        <span className="ml-2 text-slate-600 transition-colors group-hover:text-primary">{t.remember}</span>
+                      </label>
                     </div>
-                  ) : null}
-                </>
-              )}
-            </form>
 
-            {workspaceChoices.length > 0 && (
-              <div className="mt-4 space-y-2.5">
-                <p className="text-center text-sm font-medium text-gray-500">{t.chooseWorkspace}</p>
-                <div className="grid gap-2">
-                  {workspaceChoices.map((workspace) => (
                     <Button
-                      key={workspace.key}
-                      type="button"
-                      variant="outline"
-                      className="h-11 justify-between rounded-[10px] border-primary/20 bg-white/70 hover:border-primary hover:bg-primary/10"
-                      onClick={() => enterWorkspace(workspace.key, workspace.home || "")}
+                      type="submit"
+                      disabled={loading || passkeyLoading}
+                      className="h-[46px] w-full rounded-xl bg-gradient-to-b from-[color-mix(in_oklab,var(--primary)_92%,white)] to-primary text-[15px] font-semibold text-white shadow-[0_8px_20px_-4px_rgba(88,43,139,0.42),inset_0_1px_0_rgba(255,255,255,0.22)] transition-all hover:brightness-[1.03] hover:shadow-[0_10px_24px_-4px_rgba(88,43,139,0.5)] active:scale-[0.985]"
                     >
-                      <span>{workspaceLabel(workspace.key, workspace.label)}</span>
-                      <span className="text-xs text-gray-500">{t.enterWorkspace}</span>
+                      {loading ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t.loggingIn}</>
+                      ) : t.login}
                     </Button>
-                  ))}
-                </div>
-              </div>
-            )}
 
-            <div className="mt-5 flex items-center justify-center gap-2 border-t border-white/60 pt-4">
-              <span className="text-xs font-bold uppercase text-gray-400">{t.version}</span>
-              <span className="font-mono text-xs text-gray-400">{appVersion}</span>
+                    {passkeyAvailable ? (
+                      <div className="flex items-center justify-center gap-1.5 pt-0.5">
+                        <button
+                          type="button"
+                          disabled={passkeyLoading}
+                          onClick={() => { setError(""); void attemptPasskeyLogin(username.trim()); }}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-primary/15 bg-primary/[0.05] px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+                        >
+                          {passkeyLoading
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <Fingerprint className="h-3.5 w-3.5" />}
+                          {t.usePasskeyInstead}
+                        </button>
+                        <HelpTooltip label={t.passkeyTip} />
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </form>
+
+              {workspaceChoices.length > 0 && (
+                <div className="mt-4 space-y-2.5">
+                  <p className="text-center text-sm font-medium text-slate-500">{t.chooseWorkspace}</p>
+                  <div className="grid gap-2">
+                    {workspaceChoices.map((workspace) => (
+                      <Button
+                        key={workspace.key}
+                        type="button"
+                        variant="outline"
+                        className="h-11 justify-between rounded-xl border-primary/20 bg-white/80 hover:border-primary hover:bg-primary/10"
+                        onClick={() => enterWorkspace(workspace.key, workspace.home || "")}
+                      >
+                        <span>{workspaceLabel(workspace.key, workspace.label)}</span>
+                        <span className="text-xs text-slate-500">{t.enterWorkspace}</span>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-5 flex items-center justify-center gap-2">
+                <span className="text-[11px] font-semibold tracking-wider text-slate-400">{t.version}</span>
+                <span className="rounded-md bg-slate-100/90 px-2 py-0.5 font-mono text-[11px] text-slate-500">{appVersion}</span>
+              </div>
             </div>
           </div>
+        </main>
 
-        </div>
-      </div>
-
-      <div className="fixed bottom-3 left-1/2 z-20 w-full -translate-x-1/2 px-4 text-center text-xs leading-relaxed sm:bottom-4">
-        <p className="text-gray-600">
-          {t.copyrightNotice}
-          <span className="mx-1.5 text-gray-300">│</span>
-          <a className="text-gray-600 underline-offset-2 hover:text-gray-600 hover:underline" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">
-            {t.icpNotice}
-          </a>
-        </p>
-        <p className="text-gray-600">
-          {t.licenseLine}
-          <span className="mx-1 text-sm text-red-500">❤</span>
-          <a className="text-gray-600 underline-offset-2 hover:text-gray-600 hover:underline" href="https://github.com/rickyxu83/OMS-Platform" rel="noreferrer" target="_blank">
-            github.com/rickyxu83/OMS-Platform
-          </a>
-        </p>
+        {/* 底部版权与备案信息：随弹性流沉底，弹起手机键盘时不悬浮遮挡输入框 */}
+        <footer className="pt-2 text-center text-[11px] leading-relaxed text-slate-500 sm:text-xs">
+          <p className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5">
+            <span>{t.copyrightNotice}</span>
+            <span className="text-slate-300">│</span>
+            <a className="underline-offset-2 transition-colors hover:text-slate-700 hover:underline" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">
+              {t.icpNotice}
+            </a>
+          </p>
+          <p className="mt-0.5 flex flex-wrap items-center justify-center gap-x-1 gap-y-0.5">
+            <span>{t.licenseLine}</span>
+            <span className="text-rose-500" aria-hidden="true">❤</span>
+            <a className="underline-offset-2 transition-colors hover:text-slate-700 hover:underline" href="https://github.com/rickyxu83/OMS-Platform" rel="noreferrer" target="_blank">
+              github.com/rickyxu83/OMS-Platform
+            </a>
+          </p>
+        </footer>
       </div>
     </div>
   );

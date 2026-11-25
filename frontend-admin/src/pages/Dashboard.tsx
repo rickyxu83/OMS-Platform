@@ -1002,7 +1002,7 @@ export function Dashboard() {
           <p className="mt-1 text-sm text-muted-foreground sm:text-base">{t.subtitle}</p>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:flex-nowrap">
-          <div className="relative min-w-0 flex-1 md:w-48 md:flex-none lg:w-52 xl:w-64">
+          <div className="relative min-w-0 basis-full sm:basis-auto sm:flex-1 md:w-48 md:flex-none lg:w-52 xl:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               className="h-10 w-full bg-card pl-9"

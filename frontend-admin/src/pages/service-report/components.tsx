@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type * as React from "react";
 import { CheckCircle, Eye, FileText, PenLine, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { cropSignatureDataUrl } from "@/lib/signature-crop";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -13,21 +14,27 @@ import { Textarea } from "@/components/ui/textarea";
 import { MarkdownContent } from "@/lib/markdown";
 import type { MarkdownAction } from "./types";
 import { MARKDOWN_TOOLS } from "./constants";
-import { openPickerOnClick, splitInputDateTime, displayText, inputToday } from "./utils";
+import { splitInputDateTime, displayText, inputToday } from "./utils";
 
 export interface TimeInputProps {
   label: string;
   time: string;
   onTimeChange: (time: string) => void;
+  minuteStep?: 5 | 30;
+  heightClass?: string;
+  className?: string;
+  wrapperClassName?: string;
 }
 
-// 时/分双列选项：小时 00–23，分钟 5 分钟步进 00–55
+// 时/分双列选项：小时 00–23，分钟默认 5 分钟步进（考勤调休支持 30 分钟步进）
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
-const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index * 5).padStart(2, "0"));
+const MINUTE_OPTIONS_5 = Array.from({ length: 12 }, (_, index) => String(index * 5).padStart(2, "0"));
+const MINUTE_OPTIONS_30 = ["00", "30"];
 const TIME_OPTION_HEIGHT = 32; // 与选项按钮 h-8 对应
 const DEFAULT_HOUR_INDEX = 8; // 空值打开时小时列默认定位到 08
 
-export function NativeTimeInput({ label, time, onTimeChange }: TimeInputProps) {
+export function NativeTimeInput({ label, time, onTimeChange, minuteStep = 5, heightClass = "h-9", className = "", wrapperClassName = "" }: TimeInputProps) {
+  const minuteOptions = minuteStep === 30 ? MINUTE_OPTIONS_30 : MINUTE_OPTIONS_5;
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hourListRef = useRef<HTMLDivElement | null>(null);
@@ -70,7 +77,7 @@ export function NativeTimeInput({ label, time, onTimeChange }: TimeInputProps) {
   useEffect(() => {
     if (!open) return;
     const hourIndex = HOUR_OPTIONS.indexOf(currentHour);
-    const minuteIndex = MINUTE_OPTIONS.indexOf(currentMinute);
+    const minuteIndex = minuteOptions.indexOf(currentMinute);
     if (hourListRef.current) {
       const target = hourIndex >= 0 ? hourIndex : DEFAULT_HOUR_INDEX;
       hourListRef.current.scrollTop = Math.max(0, target - 2) * TIME_OPTION_HEIGHT;
@@ -92,18 +99,23 @@ export function NativeTimeInput({ label, time, onTimeChange }: TimeInputProps) {
   }
 
   return (
-    <div ref={rootRef} className="relative min-w-0">
-      <input
-        aria-label={`${label}时间`}
-        type="time"
-        step={300}
-        value={time}
-        onChange={(event) => onTimeChange(event.target.value)}
-        onPointerDown={handlePointerDown}
-        className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
-      />
+    <div ref={rootRef} className={`relative min-w-0 ${className}`}>
+      <div
+        className={`flex ${heightClass} w-full min-w-0 items-center overflow-hidden rounded-md border border-slate-300 bg-white shadow-sm transition-colors hover:border-slate-400 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 ${wrapperClassName}`}
+      >
+        <input
+          aria-label={`${label}时间`}
+          type="time"
+          data-compact-date="true"
+          step={minuteStep * 60}
+          value={time}
+          onChange={(event) => onTimeChange(event.target.value)}
+          onPointerDown={handlePointerDown}
+          className="h-full w-full min-w-0 max-w-full cursor-pointer border-0 bg-transparent px-2.5 py-1 text-base text-slate-900 shadow-none [color-scheme:light] focus-visible:outline-none md:text-sm"
+        />
+      </div>
       {open ? (
-        <div className="absolute left-0 top-full z-50 mt-1 flex w-44 overflow-hidden rounded-md border bg-popover text-sm text-popover-foreground shadow-md">
+        <div className="absolute right-0 top-full z-50 mt-1 flex w-44 overflow-hidden rounded-md border bg-popover text-sm text-popover-foreground shadow-md sm:left-0 sm:right-auto">
           <div className="w-1/2 border-r border-border/60">
             <div className="border-b border-border/60 py-1 text-center text-xs font-medium text-muted-foreground">时</div>
             <div ref={hourListRef} className="max-h-48 overflow-auto p-1">
@@ -122,7 +134,7 @@ export function NativeTimeInput({ label, time, onTimeChange }: TimeInputProps) {
           <div className="w-1/2">
             <div className="border-b border-border/60 py-1 text-center text-xs font-medium text-muted-foreground">分</div>
             <div ref={minuteListRef} className="max-h-48 overflow-auto p-1">
-              {MINUTE_OPTIONS.map((minute) => (
+              {minuteOptions.map((minute) => (
                 <button
                   key={minute}
                   type="button"
@@ -451,9 +463,9 @@ export function FullscreenSignatureDialog({
 
   const dialogClassName = signatureViewport.touch
     ? signatureViewport.landscape
-      ? "!fixed !inset-0 !left-0 !top-0 !h-[100dvh] !max-h-none !w-[100dvw] !max-w-none !translate-x-0 !translate-y-0 overflow-hidden rounded-none border-0 p-3 shadow-none sm:!max-w-none"
-      : "h-[100dvw] max-h-none w-[100dvh] max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3"
-    : "h-[90dvh] max-h-none w-[90vw] max-w-none overflow-hidden rounded-lg border p-4";
+      ? "!fixed !inset-0 !left-0 !top-0 !h-screen supports-[height:100dvh]:!h-[100dvh] !max-h-none !w-screen supports-[width:100dvw]:!w-[100dvw] !max-w-none !translate-x-0 !translate-y-0 overflow-hidden rounded-none border-0 p-3 shadow-none sm:!max-w-none"
+      : "h-[100vw] supports-[height:100dvw]:h-[100dvw] max-h-none w-[100vh] supports-[width:100dvh]:w-[100dvh] max-w-none rotate-90 overflow-hidden rounded-none border-0 p-3"
+    : "h-[90vh] supports-[height:100dvh]:h-[90dvh] max-h-none w-[90vw] max-w-none overflow-hidden rounded-lg border p-4";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -661,14 +673,41 @@ export function MarkdownTextarea({
 }
 
 /** 工单填写专用 Field：仅填写态（预览态统一走 ReportPreviewField）。与 MR 的 Field（双模）是有意分化，勿合并。 */
-export function Field({ label, children, required = false }: { label: string; children: React.ReactNode; required?: boolean }) {
+export function Field({
+  label,
+  children,
+  required = false,
+  action,
+}: {
+  label: string;
+  children: React.ReactNode;
+  required?: boolean;
+  action?: React.ReactNode;
+}) {
   return (
     <div className="space-y-2">
-      <Label className="block text-sm font-medium text-foreground">
-        {required ? <span className="mr-0.5 text-destructive">*</span> : null}{label}
-      </Label>
+      <div className="flex min-h-5 items-center justify-between gap-2">
+        <Label className="block text-sm font-medium text-foreground">
+          {required ? <span className="mr-0.5 text-destructive">*</span> : null}{label}
+        </Label>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </div>
       {children}
     </div>
+  );
+}
+
+export function FieldClearButton({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClear}
+      aria-label={`清空${label}`}
+      className="-my-1 inline-flex items-center gap-0.5 rounded-md px-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted"
+    >
+      <X className="h-3.5 w-3.5" />
+      清空
+    </button>
   );
 }
 
@@ -703,21 +742,23 @@ export function DateTimeFieldControl({
   }
 
   return (
-    <div className={`grid min-w-0 gap-2 ${value ? "grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)_auto]" : "grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]"}`}>
-      <input
-        aria-label={`${label}日期`}
-        type="date"
+    <div className="grid w-full min-w-0 grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] items-center gap-2.5 sm:gap-3">
+      <DatePicker
         value={draftDate}
-        onChange={(event) => setDate(event.target.value)}
-        onClick={openPickerOnClick}
-        className="h-9 min-w-0 cursor-pointer rounded-md border border-slate-300 bg-white px-2.5 py-1 text-sm text-slate-900 shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+        onChange={setDate}
+        clearable={false}
+        ariaLabel={`${label}日期`}
+        className="min-w-0"
+        triggerClassName="h-[42px] rounded-lg border-border bg-input-background shadow-none hover:border-primary/40 focus-within:bg-background"
       />
-      <NativeTimeInput label={label} time={time} onTimeChange={setTime} />
-      {value ? (
-        <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => onChange("")} aria-label={`清空${label}`}>
-          <X className="h-4 w-4" />
-        </Button>
-      ) : null}
+      <NativeTimeInput
+        label={label}
+        time={time}
+        onTimeChange={setTime}
+        heightClass="h-[42px]"
+        className="min-w-0"
+        wrapperClassName="rounded-lg border-border bg-input-background shadow-none hover:border-primary/40 focus-within:bg-background"
+      />
     </div>
   );
 }

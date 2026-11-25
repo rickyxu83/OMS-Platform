@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DatePicker } from "@/components/ui/date-picker";
+import { DateTimeFieldControl, FieldClearButton, NativeTimeInput } from "@/pages/service-report/components";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -464,8 +465,8 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!submitting) onOpenChange(next); }}>
-      <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden sm:max-w-[720px]">
-        <DialogHeader className="border-b pb-4">
+      <DialogContent className="flex w-full max-w-full flex-col overflow-hidden rounded-t-2xl rounded-b-none border-x-0 border-b-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] max-h-[90vh] supports-[height:100dvh]:max-h-[90dvh] max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:translate-x-0 max-sm:translate-y-0 sm:max-w-[720px] sm:rounded-lg sm:border sm:p-6">
+        <DialogHeader className="border-b pb-3 text-left sm:pb-4">
           <DialogTitle>{editingRequest ? "修改申请" : "新建申请"}</DialogTitle>
           <DialogDescription>
             {step === 1 ? "选择申请类型" : step === 2 ? `填写${typeLabel}信息` : "确认并提交"}
@@ -481,7 +482,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
           </div>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto py-5">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-4 sm:py-5">
           {step === 1 ? (
             <div className="grid gap-3">
               {visibleTypeCards.map((item) => {
@@ -626,25 +627,27 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                           <span className="text-xs text-muted-foreground">默认带入工单时间，可按本人实际往返修改</span>
                         </div>
                         <div className="grid gap-4 sm:grid-cols-2">
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">去程出发</Label>
-                            <Input
-                              className="h-11"
-                              type="datetime-local"
+                          <div className="space-y-1.5">
+                            <div className="flex min-h-5 items-center justify-between gap-2">
+                              <Label className="text-xs text-muted-foreground">去程出发</Label>
+                              {travelDepartureAt ? <FieldClearButton label="去程出发" onClear={() => setTravelDepartureAt("")} /> : null}
+                            </div>
+                            <DateTimeFieldControl
+                              label="去程出发"
                               value={travelDepartureAt}
-                              max={toDateTimeLocal(selectedOvertimeOrder.actualStartAt)}
-                              onChange={(event) => setTravelDepartureAt(event.target.value)}
+                              onChange={setTravelDepartureAt}
                             />
                             <p className="text-xs text-muted-foreground">到达（工单）：{formatDateTime(selectedOvertimeOrder.actualStartAt || undefined)}</p>
                           </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">回程返回</Label>
-                            <Input
-                              className="h-11"
-                              type="datetime-local"
+                          <div className="space-y-1.5">
+                            <div className="flex min-h-5 items-center justify-between gap-2">
+                              <Label className="text-xs text-muted-foreground">回程返回</Label>
+                              {travelReturnAt ? <FieldClearButton label="回程返回" onClear={() => setTravelReturnAt("")} /> : null}
+                            </div>
+                            <DateTimeFieldControl
+                              label="回程返回"
                               value={travelReturnAt}
-                              min={toDateTimeLocal(selectedOvertimeOrder.actualEndAt)}
-                              onChange={(event) => setTravelReturnAt(event.target.value)}
+                              onChange={setTravelReturnAt}
                             />
                             <p className="text-xs text-muted-foreground">完工（工单）：{formatDateTime(selectedOvertimeOrder.actualEndAt || undefined)}</p>
                           </div>
@@ -753,7 +756,7 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                     {annualSingleDay ? (
                       <div className="space-y-2">
                         <Label>时段</Label>
-                        <div className="grid gap-2 sm:grid-cols-3">
+                        <div className="grid grid-cols-3 gap-2">
                           {[
                             { value: "morning" as AnnualLeavePeriod, label: "上午", time: "09:00-14:00" },
                             { value: "afternoon" as AnnualLeavePeriod, label: "下午", time: "14:00-18:00" },
@@ -767,14 +770,14 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                                
                                 onClick={() => setAnnualDraft({ annualPeriod: item.value })}
                                 className={`${active
-                                  ? "rounded-lg border border-primary bg-primary/5 p-3 text-left ring-1 ring-primary/25 transition"
-                                  : "rounded-lg border p-3 text-left transition hover:bg-muted/40"} disabled:cursor-not-allowed disabled:opacity-60`}
+                                  ? "rounded-lg border border-primary bg-primary/5 p-2.5 text-left ring-1 ring-primary/25 transition sm:p-3"
+                                  : "rounded-lg border p-2.5 text-left transition hover:bg-muted/40 sm:p-3"} disabled:cursor-not-allowed disabled:opacity-60`}
                               >
-                                <div className="flex items-center justify-between gap-2 text-sm font-medium">
+                                <div className="flex items-center justify-between gap-1 text-sm font-medium">
                                   {item.label}
-                                  {active ? <Check className="h-4 w-4 text-primary" /> : null}
+                                  {active ? <Check className="h-3.5 w-3.5 shrink-0 text-primary sm:h-4 sm:w-4" /> : null}
                                 </div>
-                                <div className="mt-1 text-xs text-muted-foreground">{item.time}</div>
+                                <div className="mt-0.5 text-[11px] tabular-nums text-muted-foreground sm:mt-1 sm:text-xs">{item.time}</div>
                               </button>
                             );
                           })}
@@ -808,20 +811,20 @@ export function AttendanceApplyDrawer({ open, onOpenChange, onSubmitted, myProfi
                 ) : null}
 
                 {form.requestType === "comp_time" ? (
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+                    <div className="col-span-2 space-y-2 sm:col-span-1">
                       <Label>调休日期</Label>
                       <DatePicker value={compDate} onChange={setCompDate} placeholder="选择日期" ariaLabel="调休日期" />
                     </div>
                     <div className="space-y-2">
                       <Label>开始时间</Label>
-                      <Input type="time" step="1800" className="h-11" value={compStartTime} onChange={(event) => setCompStartTime(event.target.value)} />
+                      <NativeTimeInput label="开始时间" time={compStartTime} onTimeChange={setCompStartTime} minuteStep={30} heightClass="h-11" />
                     </div>
                     <div className="space-y-2">
-                      <Label>时长（小时，整小时）</Label>
-                      <Input type="number" min="1" max="24" step="1" className="h-11" value={compHours} onChange={(event) => setCompHours(event.target.value)} />
+                      <Label>时长（整小时）</Label>
+                      <Input type="number" inputMode="numeric" min="1" max="24" step="1" className="h-11" value={compHours} onChange={(event) => setCompHours(event.target.value)} />
                     </div>
-                    <div className="text-xs text-muted-foreground sm:col-span-3">
+                    <div className="col-span-2 text-xs text-muted-foreground sm:col-span-3">
                       {compPreview
                         ? `结束于 ${compPreview.endAt} · 时长 ${compPreview.hours} 小时（已扣除 12:00-13:00 午休，可用余额 ${hours(compBalance)} 小时）`
                         : "选择日期、开始时间并填写整小时的时长（12:00-13:00 午休不计入）"}

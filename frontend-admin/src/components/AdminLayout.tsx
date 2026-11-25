@@ -265,19 +265,68 @@ const NAV_CONFIG: Array<{ groupKey: string; items: NavConfigItem[] }> = [
 
 /** 考勤 2026-10-20 内测上线：菜单常驻，不再按开关剔除 */
 
-const MOBILE_NAV_LABELS: Record<string, string> = {
-  dashboard: "首页",
-  "service-orders": "工单",
-  "service-report": "填写",
-  attendance: "假勤",
-  "approval-tasks": "待办",
+const MOBILE_NAV_LABELS: Record<"zh-CN" | "zh-TW", Record<string, string>> = {
+  "zh-CN": {
+    dashboard: "首页",
+    "service-orders": "工单",
+    "service-report": "填写",
+    mr: "MR",
+    "inspection-schedules": "巡检",
+    customers: "客户",
+    devices: "设备",
+    "maintenance-parties": "维保方",
+    attendance: "假勤",
+    "approval-tasks": "待办",
+    "smart-report": "报表",
+    users: "人员",
+    "audit-logs": "审计",
+    settings: "设置",
+  },
+  "zh-TW": {
+    dashboard: "首頁",
+    "service-orders": "工單",
+    "service-report": "填寫",
+    mr: "MR",
+    "inspection-schedules": "巡檢",
+    customers: "客戶",
+    devices: "設備",
+    "maintenance-parties": "維保方",
+    attendance: "假勤",
+    "approval-tasks": "待辦",
+    "smart-report": "報表",
+    users: "人員",
+    "audit-logs": "審計",
+    settings: "設定",
+  },
 };
 
-/** 移动端底栏入口按角色排序（无权限项会被 allNavItems 访问过滤自动去掉） */
+/**
+ * 移动端底栏按角色定制高频关注模块（最多取前 4 项 + 右侧「菜单」= 5 格，无权限项会自动按 allNavItems 过滤）：
+ * - 全角色均保留「假勤」，且相同模块组合统一固定顺序（首页固定首位、假勤固定末位）：
+ * - 业务 / 业务主管 / 采购 / 助理 / 助理主管 / 行政主管：首页、MR、待办、假勤
+ * - 工程师 / 工程主管：首页、填写（工单填写）、设备、假勤
+ * - 调度：首页、工单、巡检、假勤
+ * - 管理员 / 运营负责人：首页、工单、MR、假勤
+ * - 财务 / 进出口：首页、客户、设备、假勤
+ * - 司机：首页、待办、假勤
+ */
 const MOBILE_NAV_PRIORITY_BY_ROLE: Record<string, string[]> = {
-  engineer: ["dashboard", "service-report", "service-orders", "attendance"],
+  sales: ["dashboard", "mr", "approval-tasks", "attendance"],
+  sales_supervisor: ["dashboard", "mr", "approval-tasks", "attendance"],
+  purchaser: ["dashboard", "mr", "approval-tasks", "attendance"],
+  assistant: ["dashboard", "mr", "approval-tasks", "attendance"],
+  assistant_supervisor: ["dashboard", "mr", "approval-tasks", "attendance"],
+  administrative_supervisor: ["dashboard", "mr", "approval-tasks", "attendance"],
+  engineer: ["dashboard", "service-report", "devices", "attendance"],
+  engineering_supervisor: ["dashboard", "service-report", "devices", "attendance"],
+  dispatcher: ["dashboard", "service-orders", "inspection-schedules", "attendance"],
+  operations_director: ["dashboard", "service-orders", "mr", "attendance"],
+  admin: ["dashboard", "service-orders", "mr", "attendance"],
+  finance: ["dashboard", "customers", "devices", "attendance"],
+  import_export: ["dashboard", "customers", "devices", "attendance"],
+  driver: ["dashboard", "approval-tasks", "attendance"],
 };
-const MOBILE_NAV_PRIORITY_DEFAULT = ["dashboard", "service-orders", "service-report", "attendance", "approval-tasks"];
+const MOBILE_NAV_PRIORITY_DEFAULT = ["dashboard", "service-orders", "approval-tasks", "attendance"];
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -316,9 +365,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const scrollPositionsRef = useRef(new Map<string, number>());
   const currentUser = user || { name: "", role: "" };
   const rawCurrentPage = location.pathname.replace(/^\//, "") || "dashboard";
-  const currentPage = rawCurrentPage.startsWith("service-report") ? "service-report" : rawCurrentPage;
+  const currentPage = rawCurrentPage.startsWith("service-report")
+    ? "service-report"
+    : rawCurrentPage.startsWith("mr")
+      ? "mr"
+      : rawCurrentPage;
   const isServiceReportFormPage = /^\/service-report\/(?:new|[^/]+)/.test(location.pathname);
-  const hideMobileChrome = isServiceReportFormPage;
+  const isMrDetailOrPrintPage = /^\/mr\/[^/]+/.test(location.pathname);
+  const hideMobileChrome = isServiceReportFormPage || isMrDetailOrPrintPage;
   const [sidebarOpen, setSidebarOpen] = useState(() => (
     typeof window === "undefined" ? true : window.matchMedia("(min-width: 1024px)").matches
   ));
@@ -486,9 +540,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const allNavItems = navGroups.flatMap(g => g.items).filter(item => hasAccess(item.requiredPermissions));
 
   const mobileNavPriority = MOBILE_NAV_PRIORITY_BY_ROLE[user?.role || ""] || MOBILE_NAV_PRIORITY_DEFAULT;
-  const mobileNavItems = mobileNavPriority
+  const mobileNavItems = (mobileNavPriority
     .map((path) => allNavItems.find((item) => item.path === path))
-    .filter(Boolean) as NavItem[];
+    .filter(Boolean) as NavItem[]).slice(0, 4);
 
   const navigateTo = (path: string) => {
     if (typeof window !== "undefined") {
@@ -768,7 +822,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         {/* Page Content：key 随 pathname 变化触发进入动画，PUSH 右滑入、POP（返回）左滑入 */}
         <main
           ref={contentRef}
-          className={`mobile-admin-content relative z-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-transparent lg:pb-0 ${hideMobileChrome ? "pb-0" : "pb-[calc(5rem_+_env(safe-area-inset-bottom))]"}`}
+          className={`mobile-admin-content relative z-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-transparent lg:pb-0 ${hideMobileChrome ? "pb-0" : "pb-[calc(5rem_+_env(safe-area-inset-bottom,0px))]"}`}
         >
           {/* h-full 把 main 的高度传给整页高度型页面（如智能报表对话+预览布局）；普通列表页内容超高时随 main 滚动，行为不变 */}
           <div key={location.pathname} className={`h-full ${navigationType === "POP" ? "route-enter-pop" : "route-enter-push"}`}>
@@ -778,7 +832,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
         {!hideMobileChrome && mobileNavItems.length > 0 && (
           <nav
-            className={`mobile-bottom-nav fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 px-3 pb-[calc(0.35rem_+_env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur-md transition-transform duration-200 lg:hidden ${
+            className={`mobile-bottom-nav fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 px-3 pb-[calc(0.35rem_+_env(safe-area-inset-bottom,0px))] pt-1.5 shadow-[0_-12px_30px_rgba(15,23,42,0.08)] backdrop-blur-md transition-transform duration-200 lg:hidden ${
               mobileNavVisible ? "translate-y-0" : "translate-y-[calc(100%-0.35rem)]"
             }`}
             onFocusCapture={() => setMobileNavVisible(true)}
@@ -790,19 +844,34 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               {mobileNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentPage === item.path;
-                const label = MOBILE_NAV_LABELS[item.path] || item.label;
+                const label = MOBILE_NAV_LABELS[lang]?.[item.path] || item.label;
+                const badgeCount = item.path === "approval-tasks"
+                  ? pendingTaskCount
+                  : item.path === "mr"
+                    ? mrPendingCount
+                    : item.path === "attendance"
+                      ? attendancePendingCount
+                      : 0;
+                const badgeTone = item.path === "approval-tasks" ? "bg-red-600" : "bg-primary";
                 return (
                   <button
                     key={item.path}
                     type="button"
                     onClick={() => navigateTo(item.path)}
-                    className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 py-1.5 text-[11px] font-medium transition-colors sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-2.5 sm:py-2 sm:text-xs ${
+                    className={`relative flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 py-1.5 text-[11px] font-medium transition-colors sm:flex-row sm:gap-1.5 sm:rounded-full sm:px-2.5 sm:py-2 sm:text-xs ${
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground"
                     }`}
                   >
-                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="relative inline-flex shrink-0">
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {badgeCount > 0 ? (
+                        <span className={`absolute -right-2 -top-1.5 min-w-3.5 rounded-full px-1 text-center text-[9px] font-bold leading-3.5 text-white ${badgeTone}`}>
+                          {badgeCount > 99 ? "99+" : badgeCount}
+                        </span>
+                      ) : null}
+                    </span>
                     <span title={label} className="truncate">{label}</span>
                   </button>
                 );
@@ -827,7 +896,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         {!hideMobileChrome && mobileNavItems.length > 0 && !mobileNavVisible && (
           <button
             type="button"
-            className="fixed bottom-[calc(0.45rem_+_env(safe-area-inset-bottom))] left-1/2 z-30 flex h-8 w-14 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-card/95 text-muted-foreground shadow-lg backdrop-blur-md lg:hidden"
+            className="fixed bottom-[calc(0.45rem_+_env(safe-area-inset-bottom,0px))] left-1/2 z-30 flex h-8 w-14 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-card/95 text-muted-foreground shadow-lg backdrop-blur-md lg:hidden"
             onClick={() => setMobileNavVisible(true)}
             aria-label="显示底部导航"
           >

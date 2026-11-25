@@ -29,6 +29,7 @@ const ROLE_PERMISSION_BASELINES = Object.freeze({
   engineering_supervisor: Object.freeze(inheritedPermissions('engineer')),
   sales: BUSINESS_ASSET_PERMISSIONS,
   sales_supervisor: Object.freeze([...new Set([...BUSINESS_ASSET_PERMISSIONS, ...inheritedPermissions('sales')])]),
+  purchaser: Object.freeze(['dashboard.view']),
 })
 const ADMIN_SUPERUSER_EXCLUDED_PERMISSIONS = Object.freeze([
   'order.engineer.own',

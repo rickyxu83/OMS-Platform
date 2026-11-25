@@ -30,7 +30,7 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       const t = e.target as Node | null;
       const inPanel = t instanceof Element && !!t.closest?.("[data-date-picker-panel]");
       if (ref.current && !ref.current.contains(t) && !inPanel) setOpen(false);
@@ -39,11 +39,11 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
       if (e.key === "Escape") setOpen(false);
     };
     const onResize = () => setOpen(false);
-    document.addEventListener("mousedown", onDown);
+    document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKeyDown);
     window.addEventListener("resize", onResize);
     return () => {
-      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("resize", onResize);
     };
@@ -127,7 +127,7 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
           data-date-picker-panel
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="pointer-events-auto fixed z-[100] flex max-h-[calc(100dvh-16px)] max-w-[calc(100vw-16px)] flex-col overflow-auto rounded-xl border border-slate-200 bg-white shadow-xl sm:flex-row sm:overflow-hidden"
+          className="pointer-events-auto fixed z-[100] flex max-h-[calc(100vh-16px)] supports-[height:100dvh]:max-h-[calc(100dvh-16px)] max-w-[calc(100vw-16px)] flex-col overflow-auto rounded-xl border border-slate-200 bg-white shadow-xl sm:flex-row sm:overflow-hidden"
           style={panelPos ? { top: panelPos.top, left: panelPos.left } : undefined}
         >
           {/* 年份：窄屏顶部横向滚动条，桌面左侧纵列 */}

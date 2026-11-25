@@ -2262,7 +2262,7 @@ export function Customers() {
       </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-sm:top-0 max-sm:left-0 max-sm:h-dvh max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:p-4 max-sm:gap-3 sm:max-w-[900px] sm:max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-sm:top-0 max-sm:left-0 max-sm:h-screen max-sm:supports-[height:100dvh]:h-dvh max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:p-4 max-sm:gap-3 sm:max-w-[900px] sm:max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId != null ? t.dialog.editTitle : t.dialog.title}</DialogTitle>
             <DialogDescription>

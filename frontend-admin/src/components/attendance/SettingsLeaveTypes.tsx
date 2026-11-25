@@ -253,7 +253,47 @@ export function SettingsLeaveTypes({ canManage, onChanged }: { canManage: boolea
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />正在加载…
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="space-y-2.5 md:hidden">
+            {items.length ? items.map((item) => (
+              <div key={item.id} className={`rounded-xl border border-border/80 bg-muted/10 p-3.5 text-xs ${item.enabled ? "" : "opacity-55"}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-sm font-semibold text-foreground">{item.label}</span>
+                      <span className="font-mono text-muted-foreground">{item.code}</span>
+                      {item.systemReserved ? <Badge variant="secondary">内置</Badge> : null}
+                      {!item.countsBalance && !item.referenceDays && item.paidQuotaDays === null ? (
+                        <Badge variant="info">申请前问行政</Badge>
+                      ) : null}
+                    </div>
+                    {item.policyNote ? <div className="mt-1 text-muted-foreground break-words">{item.policyNote}</div> : null}
+                  </div>
+                  <Switch checked={item.enabled} disabled={!canManage || item.systemReserved} onCheckedChange={(checked) => toggleEnabled(item, checked)} aria-label={`启用 ${item.label}`} />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
+                  <span>证明：{item.requiresProof ? "必填" : "免"}</span>
+                  <span>口径：{item.includeNonWorkingDays ? "自然日" : "工作日"}</span>
+                  {item.referenceDays ? <span>参考：{item.referenceDays}</span> : null}
+                  {item.paidQuotaDays !== null ? <span>带薪：{item.paidQuotaDays}天{item.exceedDeductionPercent !== null ? `（超扣${item.exceedDeductionPercent}%）` : ""}</span> : null}
+                  <span>引用：{item.referenced || 0} 条</span>
+                </div>
+                {canManage ? (
+                  <div className="mt-2 flex justify-end gap-1 border-t border-border/60 pt-2">
+                    <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs" onClick={() => openEdit(item)}>
+                      <Pencil className="mr-1 h-3.5 w-3.5" />编辑
+                    </Button>
+                    {!item.systemReserved ? (
+                      <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs text-red-600" onClick={() => remove(item)}>
+                        <Trash2 className="mr-1 h-3.5 w-3.5" />删除
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            )) : <div className="py-8 text-center text-sm text-muted-foreground">暂无假别</div>}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
             <Table className="min-w-[880px]">
               <TableHeader>
                 <TableRow>
@@ -316,11 +356,12 @@ export function SettingsLeaveTypes({ canManage, onChanged }: { canManage: boolea
               </TableBody>
             </Table>
           </div>
+          </>
         )}
       </CardContent>
 
       <Dialog open={dialogOpen} onOpenChange={(next) => { if (!saving) setDialogOpen(next); }}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[560px]">
+        <DialogContent className="max-h-[92vh] supports-[height:100dvh]:max-h-[92dvh] overflow-y-auto sm:max-w-[560px]">
           <DialogHeader>
             <DialogTitle>{editing ? `编辑假别「${editing.label}」` : "新增假别"}</DialogTitle>
           </DialogHeader>
