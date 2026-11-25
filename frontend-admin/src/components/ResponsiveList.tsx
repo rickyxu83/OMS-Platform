@@ -23,6 +23,8 @@ interface ResponsiveListProps<T> {
   breakpoint?: ResponsiveListBreakpoint;
   /** 追加到卡片行上的类名 */
   cardClassName?: string;
+  /** 卡片内容区内边距类名（默认 p-4） */
+  contentClassName?: string;
   /** 卡片入场动画（默认 true，与桌面行 list-row-enter 一致，封顶 400ms） */
   animateRows?: boolean;
   /** 移动端卡片左滑露出的操作（触摸端常见交互）；返回 null/undefined 则该行无手势 */
@@ -46,6 +48,7 @@ export function ResponsiveList<T>({
   children,
   breakpoint = "lg",
   cardClassName = "",
+  contentClassName = "p-4",
   animateRows = true,
   swipeAction,
 }: ResponsiveListProps<T>) {
@@ -60,7 +63,7 @@ export function ResponsiveList<T>({
             className={`border-b last:border-b-0 ${animateRows ? "list-row-enter" : ""} ${cardClassName}`}
             style={animateRows ? { animationDelay: `${Math.min(index * 30, 400)}ms` } : undefined}
           >
-            <SwipeableRow action={swipeAction?.(item, index) ?? null}>
+            <SwipeableRow action={swipeAction?.(item, index) ?? null} contentClassName={contentClassName}>
               {renderCard(item, index)}
             </SwipeableRow>
           </div>
@@ -87,13 +90,13 @@ interface SwipeGesture {
  * - 展开后点击内容区 → 收起（吞掉这次点击，不触发卡片自身点击）
  * - 无 action 时退化为普通容器，不挂任何手势
  */
-function SwipeableRow({ action, children }: { action: ResponsiveSwipeAction | null; children: ReactNode }) {
+function SwipeableRow({ action, contentClassName = "p-4", children }: { action: ResponsiveSwipeAction | null; contentClassName?: string; children: ReactNode }) {
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
   const gesture = useRef<SwipeGesture | null>(null);
   const suppressClick = useRef(false);
 
-  if (!action) return <div className="p-4">{children}</div>;
+  if (!action) return <div className={contentClassName}>{children}</div>;
 
   const close = () => setOffset(0);
 
@@ -115,7 +118,7 @@ function SwipeableRow({ action, children }: { action: ResponsiveSwipeAction | nu
       </div>
       {/* 滑动内容层 */}
       <div
-        className={`relative bg-card p-4 ${dragging ? "" : "transition-transform duration-150 ease-out"}`}
+        className={`relative bg-card ${contentClassName} ${dragging ? "" : "transition-transform duration-150 ease-out"}`}
         style={{ transform: offset ? `translateX(${offset}px)` : undefined, touchAction: "pan-y" }}
         onTouchStart={(event) => {
           const touch = event.touches[0];

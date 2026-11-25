@@ -12,6 +12,9 @@ interface DateRangePickerProps {
   onChange: (start: string, end: string) => void;
   placeholder?: string;
   ariaLabel?: string;
+  /** 移动端紧凑胶囊模式：未选时仅显示「📅 日期」按钮，与搜索框并排占一行 */
+  compact?: boolean;
+  compactLabel?: string;
 }
 
 const YEARS = Array.from({ length: 16 }, (_, i) => 2020 + i);
@@ -19,7 +22,15 @@ const MONTHS = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", 
 const VIEWPORT_GAP = 8;
 
 /** 日期范围选择器 · D 款：桌面侧栏年份 + 月份 12 宫格 + 日历；窄屏自动折叠为顶部横向年份条，防 375px 溢出。 */
-export function DateRangePicker({ start, end, onChange, placeholder = "选择日期范围", ariaLabel }: DateRangePickerProps) {
+export function DateRangePicker({
+  start,
+  end,
+  onChange,
+  placeholder = "选择日期范围",
+  ariaLabel,
+  compact = false,
+  compactLabel = "日期",
+}: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null);
@@ -86,22 +97,39 @@ export function DateRangePicker({ start, end, onChange, placeholder = "选择日
   };
 
   const hasValue = Boolean(start || end);
-  const label = start && end ? `${start} ~ ${end}` : start ? `${start} ~` : placeholder;
+  const shortDate = (d: string) => (d.length >= 10 ? d.slice(5) : d);
+  const label = compact
+    ? (start && end ? `${shortDate(start)}~${shortDate(end)}` : start ? `${shortDate(start)}~` : compactLabel)
+    : (start && end ? `${start} ~ ${end}` : start ? `${start} ~` : placeholder);
   const viewYear = viewMonth.getFullYear();
   const viewMonthIdx = viewMonth.getMonth();
 
   return (
     <div ref={ref} className="relative">
-      <div className="flex h-9 w-full items-center rounded-md border border-slate-300 bg-white shadow-sm transition-colors hover:border-slate-400 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+      <div
+        className={
+          compact
+            ? `flex h-9 items-center rounded-xl border transition-colors ${
+                hasValue
+                  ? "border-primary/35 bg-primary/[0.06] text-primary"
+                  : "border-border bg-card text-muted-foreground hover:border-slate-300"
+              }`
+            : "flex h-9 w-full items-center rounded-md border border-slate-300 bg-white shadow-sm transition-colors hover:border-slate-400 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20"
+        }
+      >
         <button
           type="button"
           aria-label={ariaLabel || placeholder}
           aria-expanded={open}
           onClick={toggleOpen}
-          className="flex h-full min-w-0 flex-1 items-center gap-2 px-2.5 text-left text-sm focus:outline-none"
+          className={
+            compact
+              ? `flex h-full items-center gap-1.5 text-left text-xs font-medium tabular-nums focus:outline-none ${hasValue ? "pl-2.5 pr-1" : "px-2.5"}`
+              : "flex h-full min-w-0 flex-1 items-center gap-2 px-2.5 text-left text-sm focus:outline-none"
+          }
         >
-          <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span title={label} className={hasValue ? "truncate text-slate-900" : "truncate text-slate-400"}>
+          <CalendarDays className={compact ? `h-3.5 w-3.5 shrink-0 ${hasValue ? "text-primary" : "text-muted-foreground"}` : "h-4 w-4 shrink-0 text-muted-foreground"} />
+          <span title={label} className={compact ? " whitespace-nowrap" : hasValue ? "truncate text-slate-900" : "truncate text-slate-400"}>
             {label}
           </span>
         </button>
