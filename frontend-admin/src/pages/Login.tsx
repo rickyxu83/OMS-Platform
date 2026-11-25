@@ -667,36 +667,39 @@ export function Login() {
                 className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent"
               />
 
-              {/* 白瓷玻璃徽章底座 + 单层柔和呼吸背光 */}
               <div className="mb-4 flex justify-center">
-                <div className="relative flex h-20 w-20 items-center justify-center">
+                <div className="relative flex h-24 w-24 items-center justify-center">
                   <div
-                    aria-hidden="true"
                     className="absolute h-20 w-20 rounded-full blur-2xl"
-                    style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.24) 0%, rgba(168, 85, 247, 0.12) 55%, transparent 75%)" }}
+                    style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.35) 0%, rgba(168, 85, 247, 0.18) 50%, transparent 70%)" }}
                   />
-                  <div className="relative flex h-[72px] w-[72px] items-center justify-center rounded-[22px] border border-white/95 bg-gradient-to-b from-white/95 to-white/75 shadow-[0_10px_28px_-6px_rgba(88,43,139,0.22),0_2px_6px_rgba(15,23,42,0.05),inset_0_1px_0_rgba(255,255,255,1)] ring-1 ring-primary/[0.08]">
-                    <img
-                      src={logoSrc}
-                      alt="Dunyang Technology Logo"
-                      className="h-12 w-12 object-contain"
-                      style={{ filter: "drop-shadow(0 2px 6px rgba(88, 43, 139, 0.18))" }}
-                    />
-                  </div>
+                  <div
+                    className="absolute h-24 w-24 rounded-full blur-3xl"
+                    style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.25) 0%, rgba(168, 85, 247, 0.12) 50%, transparent 70%)" }}
+                  />
+                  <div
+                    className="absolute h-28 w-28 rounded-full blur-3xl"
+                    style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.18) 0%, rgba(168, 85, 247, 0.08) 50%, transparent 70%)" }}
+                  />
+                  <div
+                    className="absolute h-[72px] w-[72px] rounded-full blur-xl"
+                    style={{ background: "radial-gradient(circle, rgba(88, 43, 139, 0.4) 0%, rgba(168, 85, 247, 0.25) 40%, transparent 70%)" }}
+                  />
+                  <img
+                    src={logoSrc}
+                    alt="Dunyang Technology Logo"
+                    className="relative z-10 h-[72px] w-[72px] object-contain"
+                    style={{ filter: "drop-shadow(0 0 10px rgba(88, 43, 139, 0.5))" }}
+                  />
                 </div>
               </div>
 
-              {/* 品牌眉标 + 欢迎主标题 */}
               <div className="mb-6 text-center">
-                <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/12 bg-primary/[0.05] px-3 py-0.5 text-xs font-semibold tracking-wide text-primary">
-                  <span>{t.title}</span>
-                  <span className="text-primary/35">·</span>
-                  <span>{t.subtitle}</span>
-                </div>
-                <h1 className="mt-2.5 text-2xl font-bold tracking-tight text-slate-900">
-                  {t.welcome}
+                <h1 className="mb-1.5 text-2xl font-bold text-primary">
+                  {t.title}
                 </h1>
-                <p className="mt-1 text-xs text-slate-500 sm:text-[13px]">{t.pleaseLogin}</p>
+                <p className="text-sm text-gray-500">{t.subtitle}</p>
+                <p className="mt-1 text-xs text-gray-400">{t.pleaseLogin}</p>
               </div>
 
               <form onSubmit={step === "identifier" ? handleContinue : handleSubmit} className="space-y-4">
@@ -881,7 +884,7 @@ export function Login() {
                 </div>
               )}
 
-              <div className="mt-6 flex items-center justify-center gap-2 border-t border-slate-200/75 pt-4">
+              <div className="mt-5 flex items-center justify-center gap-2">
                 <span className="text-[11px] font-semibold tracking-wider text-slate-400">{t.version}</span>
                 <span className="rounded-md bg-slate-100/90 px-2 py-0.5 font-mono text-[11px] text-slate-500">{appVersion}</span>
               </div>
