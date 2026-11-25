@@ -2400,11 +2400,17 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     const isDeletingRecord = deletingOrderId === order.id;
     const destructiveActionLabel = canDeleteRecord ? "删除" : "作废";
     const serviceTime = reportOrderServiceTime(order);
-    // 同天展示"09:00 ~ 17:00"紧凑区间,空数据用 — 
-    const timeShort = (value: string) => (value.length >= 16 ? value.slice(11, 16) : value);
-    const timeRange = serviceTime.start && serviceTime.end
-      ? `${timeShort(serviceTime.start)} ~ ${timeShort(serviceTime.end)}`
-      : serviceTime.start || serviceTime.end || "—";
+    const startRaw = serviceTime.start && serviceTime.start !== "-" ? serviceTime.start : "";
+    const endRaw = serviceTime.end && serviceTime.end !== "-" ? serviceTime.end : "";
+    const startDay = startRaw.length >= 10 ? startRaw.slice(5, 10) : "";
+    const endDay = endRaw.length >= 10 ? endRaw.slice(5, 10) : "";
+    const startClock = startRaw.length >= 16 ? startRaw.slice(11, 16) : startRaw;
+    const endClock = endRaw.length >= 16 ? endRaw.slice(11, 16) : endRaw;
+    const timeRange = startRaw && endRaw
+      ? (startDay && endDay && startDay !== endDay
+          ? `${startDay} ${startClock}~${endDay} ${endClock}`
+          : `${startDay ? `${startDay} ` : ""}${startClock}~${endClock}`)
+      : startRaw || endRaw || "—";
     return (
       <div
         role="button"
@@ -2417,26 +2423,27 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             openPreviewOrder(order);
           }
         }}
-        className="group cursor-pointer space-y-2 select-none active:bg-muted/40"
+        className="group cursor-pointer space-y-1 select-none active:bg-muted/40"
       >
-        {/* 首行：客户名（大字,信息主角）+ 状态 */}
+        {/* 首行：客户名 + 状态 */}
         <div className="flex items-center justify-between gap-2">
-          <span title={order.customerName || "未填写客户"} className="min-w-0 truncate text-[15px] font-semibold">{order.customerName || "未填写客户"}</span>
+          <span title={order.customerName || "未填写客户"} className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">{order.customerName || "未填写客户"}</span>
           <span className="shrink-0">{statusIndicator(workflowStatus, statusLabel)}</span>
         </div>
-        {/* 次行：模式胶囊 + 服务内容两行 */}
-        <div className="flex items-start gap-2">
-          <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{modeLabel}</span>
-          <span title={reportOrderMainContent(order)} className="min-w-0 flex-1 line-clamp-2 break-all text-[13px] leading-5 text-muted-foreground">{reportOrderMainContent(order)}</span>
+        {/* 次行：模式胶囊 + 单行紧凑内容 */}
+        <div className="flex items-center gap-1.5">
+          <span className="shrink-0 rounded bg-muted px-1.5 py-0 text-[11px] font-medium leading-[18px] text-muted-foreground">{modeLabel}</span>
+          <span title={reportOrderMainContent(order)} className="min-w-0 flex-1 truncate text-[13px] leading-5 text-muted-foreground">{reportOrderMainContent(order)}</span>
         </div>
-        {/* 末行：工程师 / 服务时间 + 操作菜单 */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-3 text-[12.5px] text-muted-foreground">
-            <span className="min-w-0 truncate" title={reportOrderEngineerText(order)}><span className="mr-0.5">🧑‍🔧</span>{reportOrderEngineerText(order)}</span>
-            <span className="shrink-0 text-[12.5px]">{timeRange}</span>
+        {/* 末行：工程师 · 日期时段 + 操作菜单 */}
+        <div className="flex items-center justify-between gap-2 pt-0.5 text-xs leading-4 text-muted-foreground">
+          <div className="flex min-w-0 items-center gap-1.5 tabular-nums">
+            <span className="min-w-0 truncate" title={reportOrderEngineerText(order)}>{reportOrderEngineerText(order)}</span>
+            <span className="text-muted-foreground/40">·</span>
+            <span className="shrink-0">{timeRange}</span>
           </div>
           {canExportRecord || canRemoveOrCancelRecord ? (
-            <span className="shrink-0" onClick={(event) => event.stopPropagation()}>{renderReportOrderActions(order)}</span>
+            <span className="-my-1.5 -mr-1 shrink-0" onClick={(event) => event.stopPropagation()}>{renderReportOrderActions(order)}</span>
           ) : null}
         </div>
       </div>
@@ -2518,7 +2525,8 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             正在加载工单…
           </div>
         ) : orderList.length ? (
-          <ResponsiveList items={orderList} keyExtractor={(order) => order.id} renderCard={renderReportOrderCard} breakpoint="md" cardClassName="px-3.5 py-3">
+          <div className="max-md:overflow-hidden max-md:rounded-xl max-md:border max-md:bg-card">
+          <ResponsiveList items={orderList} keyExtractor={(order) => order.id} renderCard={renderReportOrderCard} breakpoint="md" contentClassName="px-3 py-2.5">
             <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
                 <col className="w-[20%]" />
@@ -2628,6 +2636,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
               </TableBody>
             </table>
           </ResponsiveList>
+          </div>
         ) : (
           <div className="flex min-h-[220px] items-center justify-center text-center text-sm text-muted-foreground">{displayEmptyText}</div>
         )}
@@ -2652,7 +2661,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
       ? draftEngineerNames.join("、")
       : user?.realName || user?.username || user?.name || "本人草稿";
     const updatedText = formatDateTime(draftItem.updatedAt || draftItem.createdAt || "");
-    const timeShort = (value: string) => (value.length >= 16 ? value.slice(11, 16) : value);
+    const timeShort = (value: string) => (value.length >= 16 ? value.slice(5, 16) : value);
     return (
       <div
         role="button"
@@ -2665,22 +2674,23 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             navigate(draftRoute);
           }
         }}
-        className="group cursor-pointer space-y-2 select-none active:bg-muted/40"
+        className="group cursor-pointer space-y-1 select-none active:bg-muted/40"
       >
         <div className="flex items-center justify-between gap-2">
-          <span title={createDraft.customerName || "未填写客户"} className="min-w-0 truncate text-[15px] font-semibold">{createDraft.customerName || "未填写客户"}</span>
+          <span title={createDraft.customerName || "未填写客户"} className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground">{createDraft.customerName || "未填写客户"}</span>
           <span className="shrink-0">{indicatorSpan(Pencil, "text-slate-400", "草稿")}</span>
         </div>
-        <div className="flex items-start gap-2">
-          <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">{draftModeLabel}</span>
-          <span title={compactDraftLabel(createDraft)} className="min-w-0 flex-1 line-clamp-2 break-all text-[13px] leading-5 text-muted-foreground">{compactDraftLabel(createDraft)}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="shrink-0 rounded bg-muted px-1.5 py-0 text-[11px] font-medium leading-[18px] text-muted-foreground">{draftModeLabel}</span>
+          <span title={compactDraftLabel(createDraft)} className="min-w-0 flex-1 truncate text-[13px] leading-5 text-muted-foreground">{compactDraftLabel(createDraft)}</span>
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-3 text-[12.5px] text-muted-foreground">
-            <span className="min-w-0 truncate" title={draftEngineerText}><span className="mr-0.5">🧑‍🔧</span>{draftEngineerText}</span>
-            <span className="shrink-0 text-[12.5px]">更新于 {timeShort(updatedText)}</span>
+        <div className="flex items-center justify-between gap-2 pt-0.5 text-xs leading-4 text-muted-foreground">
+          <div className="flex min-w-0 items-center gap-1.5 tabular-nums">
+            <span className="min-w-0 truncate" title={draftEngineerText}>{draftEngineerText}</span>
+            <span className="text-muted-foreground/40">·</span>
+            <span className="shrink-0">更新于 {timeShort(updatedText)}</span>
           </div>
-          <span className="shrink-0" onClick={(event) => event.stopPropagation()}>
+          <span className="-my-1.5 -mr-1 shrink-0" onClick={(event) => event.stopPropagation()}>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -2720,7 +2730,8 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
     return (
       <div>
         {filteredCreateDrafts.length ? (
-          <ResponsiveList items={filteredCreateDrafts} keyExtractor={(item) => item.draftKey} renderCard={renderDraftCard}>
+          <div className="max-lg:overflow-hidden max-lg:rounded-xl max-lg:border max-lg:border-rose-200/80 max-lg:bg-card">
+          <ResponsiveList items={filteredCreateDrafts} keyExtractor={(item) => item.draftKey} renderCard={renderDraftCard} contentClassName="px-3 py-2.5">
             <table className="w-full table-fixed caption-bottom text-sm">
               <colgroup>
                 <col className="w-[20%]" />
@@ -2859,6 +2870,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
               </TableBody>
             </table>
           </ResponsiveList>
+          </div>
         ) : (
           <div className="flex min-h-[120px] items-center justify-center text-center text-sm text-muted-foreground">
             {filtersActive ? "无匹配当前筛选的结果" : "暂无草稿"}
@@ -2871,13 +2883,23 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
   if (!isFormRoute) {
     return (
       <>
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 p-2.5 sm:gap-5 sm:p-6">
-          <div className="flex flex-row items-center justify-between gap-3 md:items-end">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-3 py-2.5 sm:gap-5 sm:p-6">
+          <div className="flex flex-row items-center justify-between gap-2 md:items-end">
             <div className="min-w-0">
               <div className="hidden text-sm text-muted-foreground sm:block">管理工作台 / 工单填写</div>
-              <h1 className="truncate text-xl font-semibold tracking-normal text-foreground sm:mt-1 sm:text-2xl">工单填写</h1>
+              <h1 className="truncate text-lg font-semibold tracking-normal text-foreground sm:mt-1 sm:text-2xl">工单填写</h1>
             </div>
-            <Button className="h-9 shrink-0 px-3 sm:h-10" variant="outline" onClick={loadHome} disabled={loading}>
+            <Button
+              size="icon"
+              variant="outline"
+              className="h-8 w-8 shrink-0 rounded-lg sm:hidden"
+              onClick={loadHome}
+              disabled={loading}
+              aria-label="刷新工单"
+            >
+              {loading ? <span className="btn-loader" aria-hidden="true" /> : <RotateCcw className="h-3.5 w-3.5" />}
+            </Button>
+            <Button className="hidden h-10 shrink-0 px-3 sm:inline-flex" variant="outline" onClick={loadHome} disabled={loading}>
               {loading ? <span className="btn-loader" aria-hidden="true" /> : <RotateCcw className="h-4 w-4" />}
               刷新
             </Button>
@@ -2886,6 +2908,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
           <ErrorToast message={error} />
           <InlineError message={error} />
 
+          {/* 手机端改为紧凑横向新建胶囊（省去方块留白）；桌面端保持原三宫格大卡片 */}
           <div className="grid grid-cols-3 gap-2 md:gap-2.5">
             {MODE_OPTIONS.map((mode) => {
               const Icon = mode.icon;
@@ -2894,13 +2917,13 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                   key={mode.value}
                   type="button"
                   onClick={() => navigate(`/service-report/new?mode=${mode.value}`)}
-                  className="flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-lg border bg-card p-2 text-center shadow-sm transition-colors hover:border-primary hover:bg-primary/5 sm:min-h-[112px] sm:items-start sm:justify-start sm:gap-3 sm:p-4 sm:text-left md:flex-row"
+                  className="flex h-9 flex-row items-center justify-center gap-1.5 rounded-xl border bg-card px-2 text-center shadow-xs transition-colors hover:border-primary hover:bg-primary/5 active:scale-[0.98] sm:h-auto sm:min-h-[112px] sm:flex-col sm:items-start sm:justify-start sm:gap-3 sm:rounded-lg sm:p-4 sm:text-left sm:shadow-sm md:flex-row"
                 >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary sm:h-10 sm:w-10">
-                    <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-primary/10 text-primary sm:h-10 sm:w-10 sm:rounded-md">
+                    <Icon className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
                   </span>
                   <span className="min-w-0">
-                    <span title={mode.label} className="block truncate text-xs font-semibold text-foreground sm:hidden">{mode.label}</span>
+                    <span title={`新建${mode.label}服务记录`} className="block truncate text-[13px] font-semibold text-foreground sm:hidden">+{mode.label}</span>
                     <span className="hidden truncate text-base font-semibold text-foreground sm:block" title={`新建${mode.label}服务记录`}>新建{mode.label}服务记录</span>
                     <span className="mt-1 hidden text-sm leading-5 text-muted-foreground sm:block">{mode.description}</span>
                   </span>
@@ -2909,7 +2932,41 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             })}
           </div>
 
-          <Card>
+          {/* 手机端单行搜索 + 日期胶囊（省去三行外框卡片）；桌面端保留原筛选卡片 */}
+          <div className="flex items-center gap-2 sm:hidden">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-9 rounded-xl border-border bg-card pl-8 pr-7 text-sm shadow-xs"
+                placeholder="搜索客户 / 单号 / 内容 / 工程师"
+                aria-label="全文搜索工单与草稿"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+              {searchQuery ? (
+                <button
+                  type="button"
+                  aria-label="清空搜索"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </div>
+            <div className="shrink-0">
+              <DateRangePicker
+                compact
+                start={startDate}
+                end={endDate}
+                onChange={(nextStart, nextEnd) => { setStartDate(nextStart); setEndDate(nextEnd); }}
+                placeholder="服务日期范围"
+                ariaLabel="服务日期范围"
+              />
+            </div>
+          </div>
+
+          <Card className="hidden sm:flex">
             <CardContent className="p-3 sm:p-4">
               <div className="flex flex-wrap items-end gap-2 sm:gap-3">
                 <div className="relative min-w-0 flex-1 basis-[260px]">
@@ -2943,8 +3000,8 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             </CardContent>
           </Card>
 
-          {/* 顶部下划线 Tab：桌面与手机共用（手机端不用自建底部栏,避免与全局移动底栏重叠） */}
-          <div className="-mx-2 flex items-end gap-1 overflow-x-auto border-b border-border px-2 sm:mx-0 sm:px-1" role="tablist" aria-label="工单分类">
+          {/* 顶部下划线 Tab：桌面与手机共用 */}
+          <div className="-mx-3 flex items-end gap-1 overflow-x-auto border-b border-border px-3 sm:mx-0 sm:px-1" role="tablist" aria-label="工单分类">
             {(
               [
                 { key: "records", label: "服务记录", count: createDrafts.length + filledOrders.length, Icon: ClipboardCheck },
@@ -2958,7 +3015,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                   type="button"
                   role="tab"
                   aria-selected={active}
-                  className={`-mb-px flex items-center gap-1.5 border-b-2 px-2.5 pb-2 pt-2.5 text-[13px] font-medium transition-colors sm:gap-2 sm:px-4 sm:pb-2.5 sm:pt-3 sm:text-sm ${
+                  className={`-mb-px flex items-center gap-1.5 border-b-2 px-2.5 pb-1.5 pt-1 text-[13px] font-medium transition-colors sm:gap-2 sm:px-4 sm:pb-2.5 sm:pt-3 sm:text-sm ${
                     active
                       ? "border-primary text-primary"
                       : "border-transparent text-muted-foreground hover:bg-accent/50 hover:text-foreground"
@@ -2985,10 +3042,10 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             ) : reportTab === "dispatch" ? (
               renderReportOrderList(dispatchOrders, "暂无派单待处理工单")
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-2.5 sm:space-y-4">
                 {filteredCreateDrafts.length ? (
                   <section>
-                    <h3 className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 text-xs font-semibold text-rose-600">
+                    <h3 className="flex items-center gap-1.5 px-1 pb-1 pt-0.5 text-xs font-semibold text-rose-600 sm:pb-1.5 sm:pt-1">
                       <Pencil className="h-3.5 w-3.5" />
                       草稿 · 未提交 ({filteredCreateDrafts.length})
                     </h3>
@@ -2997,7 +3054,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 ) : null}
                 {filledOrders.length ? (
                   <section>
-                    <h3 className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 text-xs font-semibold text-muted-foreground">
+                    <h3 className={`${filteredCreateDrafts.length ? "flex" : "hidden sm:flex"} items-center gap-1.5 px-1 pb-1 pt-0.5 text-xs font-semibold text-muted-foreground sm:pb-1.5 sm:pt-1`}>
                       <ClipboardCheck className="h-3.5 w-3.5" />
                       已完成 ({filledOrders.length})
                     </h3>
