@@ -607,8 +607,8 @@ export function MarkdownTextarea({
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-background shadow-sm focus-within:border-primary/60 focus-within:ring-[3px] focus-within:ring-primary/15">
-      <div className="flex items-center justify-between gap-1 border-b bg-muted/30 px-1.5 py-1 sm:flex-wrap sm:p-1.5">
+    <div className="w-full min-w-0 max-w-full overflow-hidden rounded-lg border bg-background shadow-sm focus-within:border-primary/60 focus-within:ring-[3px] focus-within:ring-primary/15">
+      <div className="flex min-w-0 items-center justify-between gap-1 border-b bg-muted/30 px-1.5 py-1 sm:flex-wrap sm:p-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:gap-1">
           {MARKDOWN_TOOLS.map((tool) => {
             const Icon = tool.icon;
@@ -618,7 +618,7 @@ export function MarkdownTextarea({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:text-foreground sm:h-8 sm:w-8"
+                className="h-7 w-7 !min-h-0 !min-w-0 shrink-0 rounded-md text-muted-foreground hover:text-foreground sm:h-8 sm:w-8"
                 title={tool.label}
                 aria-label={tool.label}
                 disabled={mode === "preview"}
@@ -634,7 +634,7 @@ export function MarkdownTextarea({
             type="button"
             variant={mode === "edit" ? "secondary" : "ghost"}
             size="sm"
-            className="h-7 gap-1 px-2 text-xs sm:h-8"
+            className="h-7 !min-h-0 gap-1 px-2 text-xs sm:h-8"
             onClick={() => setMode("edit")}
           >
             <PenLine className="h-3.5 w-3.5" />
@@ -644,7 +644,7 @@ export function MarkdownTextarea({
             type="button"
             variant={mode === "preview" ? "secondary" : "ghost"}
             size="sm"
-            className="h-7 gap-1 px-2 text-xs sm:h-8"
+            className="h-7 !min-h-0 gap-1 px-2 text-xs sm:h-8"
             onClick={() => setMode("preview")}
           >
             <Eye className="h-3.5 w-3.5" />
@@ -687,7 +687,7 @@ export function Field({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5 sm:space-y-2">
+    <div className="min-w-0 space-y-1.5 sm:space-y-2">
       <div className="flex min-h-5 items-center justify-between gap-2">
         <Label className="block text-sm font-medium text-foreground">
           {required ? <span className="mr-0.5 text-destructive">*</span> : null}{label}
@@ -744,7 +744,7 @@ export function DateTimeFieldControl({
   }
 
   return (
-    <div className="grid w-full min-w-0 grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] items-center gap-2.5 sm:gap-3">
+    <div className="grid w-full min-w-0 grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] items-center gap-2 sm:gap-3">
       <DatePicker
         value={draftDate}
         onChange={setDate}
@@ -795,7 +795,7 @@ export function ReportSection({
   children: React.ReactNode;
 }) {
   return (
-    <section id={sectionId ? `report-section-${sectionId}` : undefined} className="scroll-mt-20 rounded-xl border bg-card shadow-xs sm:scroll-mt-24 sm:rounded-lg sm:shadow-sm">
+    <section id={sectionId ? `report-section-${sectionId}` : undefined} className="min-w-0 max-w-full scroll-mt-20 rounded-xl border bg-card shadow-xs sm:scroll-mt-24 sm:rounded-lg sm:shadow-sm">
       <div className="flex min-h-[44px] items-center justify-between gap-2.5 px-3 py-2 sm:min-h-[64px] sm:gap-3 sm:px-5 sm:py-4">
         <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
           {Icon ? (
@@ -810,7 +810,7 @@ export function ReportSection({
         </div>
         {action ? <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">{action}</div> : null}
       </div>
-      <div className="border-t border-border/70">{children}</div>
+      <div className="min-w-0 border-t border-border/70">{children}</div>
     </section>
   );
 }

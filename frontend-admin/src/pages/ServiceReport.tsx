@@ -3579,7 +3579,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
           <ReportSection sectionId="customer" title="客户信息" icon={User} step={1} tag="客户、地址与联系人">
             <div className="p-3 sm:p-4">
               <div className="sm:rounded-lg sm:border sm:bg-background sm:p-3">
-                <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-12">
+                <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-12">
                   <div className={isOnsite ? "lg:col-span-5" : "md:col-span-2 lg:col-span-12"}>
                     <Field label="客户名称" required={!isOffice}>
                       <div className="relative">
@@ -3822,7 +3822,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
               </ReportSection>
 
 	              <ReportSection sectionId="work" title={isOffice ? "工作内容" : "处理记录"} icon={PenLine} step={workSectionStep} tag="服务时间与处理内容">
-              <div className="grid gap-3 p-3 sm:gap-4 sm:p-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 p-3 sm:gap-4 sm:p-4 md:grid-cols-2">
                 {isOnsite ? (
                   <Field
                     label="出发时间"
@@ -3869,7 +3869,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                     />
                   </Field>
                 ) : null}
-                <div className="md:col-span-2">
+                <div className="min-w-0 md:col-span-2">
                   <Field label={workContentLabel} required>
                     <MarkdownTextarea value={form.workContent} onChange={(workContent) => patchForm({ workContent })} rows={6} />
                   </Field>
@@ -4495,7 +4495,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 
             {shouldShowAttachments ? (
             <ReportSection sectionId="attachment" title="附件与支持信息" icon={Upload} step={attachmentSectionStep} tag="配置文件、现场照片、截图与日志">
-              <div className="grid gap-2.5 p-3 sm:gap-4 sm:p-4 lg:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2.5 p-3 sm:gap-4 sm:p-4 lg:grid-cols-2">
                 {visibleAttachmentPurposes.map((purpose) => {
                   const meta = ATTACHMENT_PURPOSES[purpose];
                   const Icon = meta.icon;
@@ -4617,7 +4617,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 tag={isOnsite ? "客户确认与签名" : "处理结果"}
                 action={!isOnsite ? <Badge variant="outline" className="md:hidden">免客户签名</Badge> : undefined}
               >
-                <div className="grid gap-3 p-3 sm:gap-4 sm:p-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 p-3 sm:gap-4 sm:p-4 md:grid-cols-2">
 	                  <Field label={isOnsite ? "服务结果" : "处理结果"} required>
                     <Select value={form.result || "resolved"} onValueChange={(value) => patchForm({ result: value })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
