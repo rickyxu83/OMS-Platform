@@ -608,31 +608,33 @@ export function MarkdownTextarea({
 
   return (
     <div className="overflow-hidden rounded-lg border bg-background shadow-sm focus-within:border-primary/60 focus-within:ring-[3px] focus-within:ring-primary/15">
-      <div className="flex flex-wrap items-center gap-1 border-b bg-muted/30 p-1.5">
-        {MARKDOWN_TOOLS.map((tool) => {
-          const Icon = tool.icon;
-          return (
-            <Button
-              key={tool.action}
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-md text-muted-foreground hover:text-foreground"
-              title={tool.label}
-              aria-label={tool.label}
-              disabled={mode === "preview"}
-              onClick={() => applyMarkdown(tool.action)}
-            >
-              <Icon className="h-4 w-4" />
-            </Button>
-          );
-        })}
-        <div className="ml-auto flex items-center gap-1">
+      <div className="flex items-center justify-between gap-1 border-b bg-muted/30 px-1.5 py-1 sm:flex-wrap sm:p-1.5">
+        <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:gap-1">
+          {MARKDOWN_TOOLS.map((tool) => {
+            const Icon = tool.icon;
+            return (
+              <Button
+                key={tool.action}
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:text-foreground sm:h-8 sm:w-8"
+                title={tool.label}
+                aria-label={tool.label}
+                disabled={mode === "preview"}
+                onClick={() => applyMarkdown(tool.action)}
+              >
+                <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </Button>
+            );
+          })}
+        </div>
+        <div className="ml-1 flex shrink-0 items-center gap-0.5 sm:ml-auto sm:gap-1">
           <Button
             type="button"
             variant={mode === "edit" ? "secondary" : "ghost"}
             size="sm"
-            className="h-8 gap-1 px-2 text-xs"
+            className="h-7 gap-1 px-2 text-xs sm:h-8"
             onClick={() => setMode("edit")}
           >
             <PenLine className="h-3.5 w-3.5" />
@@ -642,7 +644,7 @@ export function MarkdownTextarea({
             type="button"
             variant={mode === "preview" ? "secondary" : "ghost"}
             size="sm"
-            className="h-8 gap-1 px-2 text-xs"
+            className="h-7 gap-1 px-2 text-xs sm:h-8"
             onClick={() => setMode("preview")}
           >
             <Eye className="h-3.5 w-3.5" />
@@ -657,10 +659,10 @@ export function MarkdownTextarea({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder="支持 Markdown 源码，可直接粘贴"
-          className="min-h-[180px] resize-y rounded-none border-0 shadow-none hover:bg-white focus-visible:border-transparent focus-visible:ring-0"
+          className="min-h-[128px] resize-y rounded-none border-0 shadow-none hover:bg-white focus-visible:border-transparent focus-visible:ring-0 sm:min-h-[180px]"
         />
       ) : (
-        <div className="max-h-[360px] min-h-[180px] overflow-y-auto bg-white px-3 py-2">
+        <div className="max-h-[360px] min-h-[128px] overflow-y-auto bg-white px-3 py-2 sm:min-h-[180px]">
           {value.trim() ? (
             <MarkdownContent content={value} />
           ) : (
@@ -685,7 +687,7 @@ export function Field({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5 sm:space-y-2">
       <div className="flex min-h-5 items-center justify-between gap-2">
         <Label className="block text-sm font-medium text-foreground">
           {required ? <span className="mr-0.5 text-destructive">*</span> : null}{label}
@@ -793,20 +795,20 @@ export function ReportSection({
   children: React.ReactNode;
 }) {
   return (
-    <section id={sectionId ? `report-section-${sectionId}` : undefined} className="scroll-mt-24 rounded-lg border bg-card shadow-sm">
-      <div className="flex min-h-[52px] items-center justify-between gap-3 px-3 py-3 sm:min-h-[64px] sm:px-5 sm:py-4">
-        <div className="flex min-w-0 items-center gap-3">
+    <section id={sectionId ? `report-section-${sectionId}` : undefined} className="scroll-mt-20 rounded-xl border bg-card shadow-xs sm:scroll-mt-24 sm:rounded-lg sm:shadow-sm">
+      <div className="flex min-h-[44px] items-center justify-between gap-2.5 px-3 py-2 sm:min-h-[64px] sm:gap-3 sm:px-5 sm:py-4">
+        <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
           {Icon ? (
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Icon className="h-4 w-4" />
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary sm:h-8 sm:w-8">
+              <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </span>
           ) : null}
           <div className="min-w-0">
-            <h2 title={title} className="truncate text-base font-semibold text-foreground">{title}</h2>
+            <h2 title={title} className="truncate text-[15px] font-semibold text-foreground sm:text-base">{title}</h2>
             {tag ? <div className="mt-0.5 hidden text-xs text-muted-foreground sm:block">{tag}</div> : null}
           </div>
         </div>
-        {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
+        {action ? <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">{action}</div> : null}
       </div>
       <div className="border-t border-border/70">{children}</div>
     </section>

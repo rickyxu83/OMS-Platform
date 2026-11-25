@@ -3452,17 +3452,24 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 
   return (
     <>
-    <div className={`mx-auto flex w-full max-w-[1040px] flex-col gap-3 p-3 sm:gap-4 sm:p-6 ${FORM_SKIN}`}>
-      <div className={`sticky top-0 z-20 -mx-3 flex flex-col gap-2 border-b bg-background/95 px-3 py-2.5 backdrop-blur transition-transform duration-200 md:flex-row md:items-center md:justify-between sm:mx-0 sm:translate-y-0 sm:gap-3 sm:rounded-lg sm:border sm:px-4 sm:py-3 ${formHeaderVisible ? "translate-y-0" : "-translate-y-full"}`}>
-        <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+    <div className={`mx-auto flex w-full max-w-[1040px] flex-col gap-2.5 px-3 py-2.5 sm:gap-4 sm:p-6 ${FORM_SKIN}`}>
+      <div className={`sticky top-0 z-20 -mx-3 flex flex-col gap-1.5 border-b bg-background/95 px-3 py-2 backdrop-blur transition-transform duration-200 md:flex-row md:items-center md:justify-between sm:mx-0 sm:translate-y-0 sm:gap-3 sm:rounded-lg sm:border sm:px-4 sm:py-3 ${formHeaderVisible ? "translate-y-0" : "-translate-y-full"}`}>
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <Button variant="outline" size="icon" className="size-8 shrink-0 sm:size-9" onClick={() => navigate("/service-report")} aria-label="返回工单填写列表">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-0 flex-1">
             <div className="hidden text-sm text-muted-foreground sm:block">管理工作台 / 工单填写</div>
-            <h1 className="truncate text-base font-semibold tracking-normal text-foreground sm:mt-1 sm:text-xl">
-              {id ? `填写服务记录 · ${currentOrder?.orderNo || `工单 #${id}`}` : `新建${MODE_OPTIONS.find((mode) => mode.value === form.serviceMode)?.label || ""}服务记录`}
-            </h1>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <h1 className="truncate text-[15px] font-semibold tracking-normal text-foreground sm:mt-1 sm:text-xl">
+                {id ? `填写服务记录 · ${currentOrder?.orderNo || `工单 #${id}`}` : `新建${MODE_OPTIONS.find((mode) => mode.value === form.serviceMode)?.label || ""}服务记录`}
+              </h1>
+              {draftSavedAt && !editDraftLoaded ? (
+                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground sm:hidden">
+                  已存 {draftSavedAt.slice(-5)}
+                </span>
+              ) : null}
+            </div>
           </div>
           <Button
             size="sm"
@@ -3475,9 +3482,9 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             保存
           </Button>
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">
+        <div className={`w-full flex-wrap items-center gap-2 md:w-auto md:justify-end ${editDraftLoaded ? "flex" : "hidden sm:flex"}`}>
           {draftSavedAt || editDraftLoaded ? (
-            <div className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md border bg-muted/30 px-3 text-xs text-muted-foreground sm:h-10 sm:w-auto sm:text-sm">
+            <div className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md border bg-muted/30 px-2.5 text-xs text-muted-foreground sm:h-10 sm:w-auto sm:px-3 sm:text-sm">
               {draftSavedAt ? <span className="whitespace-nowrap">草稿 {draftSavedAt}</span> : null}
               {draftSavedAt && editDraftLoaded ? <span className="h-4 w-px shrink-0 bg-border" /> : null}
               {editDraftLoaded ? (
@@ -3568,11 +3575,11 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
         </div>
       ) : (
         <>
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           <ReportSection sectionId="customer" title="客户信息" icon={User} step={1} tag="客户、地址与联系人">
-            <div className="space-y-4 p-3 sm:p-4">
-              <div className="rounded-lg border bg-background p-3">
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-12">
+            <div className="p-3 sm:p-4">
+              <div className="sm:rounded-lg sm:border sm:bg-background sm:p-3">
+                <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-12">
                   <div className={isOnsite ? "lg:col-span-5" : "md:col-span-2 lg:col-span-12"}>
                     <Field label="客户名称" required={!isOffice}>
                       <div className="relative">
@@ -3605,22 +3612,24 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                   {isOnsite ? (
                     <div className="lg:col-span-7">
                       <Field label="客户地址" required>
-                        <div className="flex flex-col gap-2 xl:flex-row">
+                        <div className="flex items-center gap-2">
                           <Input
+                            className="min-w-0 flex-1"
                             value={form.customerAddress}
-                            placeholder="选择客户或地图位置后自动带入，可手动修正"
+                            placeholder="选择客户后自动带入，可手动修正"
                             onChange={(event) => changeCustomerAddress(event.target.value)}
                           />
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="xl:shrink-0"
+                            className="h-9 shrink-0 px-2.5 sm:px-3"
                             onClick={searchCustomerGeo}
                             disabled={geoLoading || (!form.customerName.trim() && !form.customerAddress.trim())}
                           >
                             {geoLoading ? <span className="btn-loader" aria-hidden="true" /> : <MapPin className="h-4 w-4" />}
-                            地图补全
+                            <span className="sm:hidden">定位</span>
+                            <span className="hidden sm:inline">地图补全</span>
                           </Button>
                         </div>
                       </Field>
@@ -3628,12 +3637,12 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                   ) : null}
 
                   {!isOffice ? (
-                    <>
-                      <div className="relative lg:col-span-3">
+                    <div className="relative grid grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] gap-2.5 md:contents">
+                      <div className="min-w-0 md:relative lg:col-span-3">
                         <Field label="客户联系人" required>
                           <Input
                             value={form.contactName}
-                            placeholder={contactOptions.length ? "请输入或选择客户联系人" : "请输入客户联系人姓名"}
+                            placeholder={contactOptions.length ? "选择或输入" : "联系人姓名"}
                             onFocus={() => setContactOptionsOpen(Boolean(contactOptions.length))}
                             onBlur={() => window.setTimeout(() => setContactOptionsOpen(false), 140)}
                             onChange={(event) => patchForm({
@@ -3646,7 +3655,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                         </Field>
                         {contactOptionsOpen ? (
                           <div
-                            className="absolute z-50 mt-1 max-h-60 w-full overflow-auto overscroll-contain rounded-md border bg-popover text-sm shadow-md"
+                            className="absolute left-0 right-0 z-50 mt-1 max-h-60 overflow-auto overscroll-contain rounded-md border bg-popover text-sm shadow-md md:w-full"
                             onPointerDown={(event) => event.preventDefault()}
                             onMouseDown={(event) => event.preventDefault()}
                           >
@@ -3665,38 +3674,38 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                           </div>
                         ) : null}
                       </div>
-                      <div className="lg:col-span-3">
-                        <Field label="客户联系电话" required>
-                          <Input type="tel" inputMode="tel" value={form.contactPhone} onChange={(event) => patchForm({ contactPhone: event.target.value })} />
+                      <div className="min-w-0 lg:col-span-3">
+                        <Field label="联系电话" required>
+                          <Input type="tel" inputMode="tel" placeholder="手机或座机" value={form.contactPhone} onChange={(event) => patchForm({ contactPhone: event.target.value })} />
                         </Field>
                       </div>
-                    </>
+                    </div>
                   ) : null}
 
-                  <div className={`space-y-2 md:col-span-2 ${isOffice ? "lg:col-span-12" : "lg:col-span-6"}`}>
+                  <div className={`space-y-1.5 sm:space-y-2 md:col-span-2 ${isOffice ? "lg:col-span-12" : "lg:col-span-6"}`}>
                     <Label className="block text-sm font-medium text-foreground">协作工程师</Label>
                     <div className="overflow-hidden rounded-lg border bg-muted/20">
                       <button
                         type="button"
-                        className="flex h-[42px] w-full items-center justify-between gap-3 px-3 text-left"
+                        className="flex h-9 w-full items-center justify-between gap-2 px-3 text-left sm:h-[42px] sm:gap-3"
                         onClick={() => setEngineerPanelOpen((open) => !open)}
                       >
                         <span className="flex min-w-0 items-center gap-2">
                           <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
-                          <span className="shrink-0 text-sm text-muted-foreground">已选人员</span>
+                          <span className="shrink-0 text-xs text-muted-foreground sm:text-sm">已选人员</span>
                           <Badge title={engineerSummary} variant="outline" className="min-w-0 shrink truncate">{engineerSummary}</Badge>
                         </span>
                         <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${engineerPanelOpen ? "rotate-180" : ""}`} />
                       </button>
                       {engineerPanelOpen ? (
-                        <div className="grid max-h-56 gap-2 overflow-y-auto border-t p-3 sm:grid-cols-2 xl:grid-cols-3">
+                        <div className="grid max-h-56 grid-cols-2 gap-1.5 overflow-y-auto border-t p-2.5 sm:gap-2 sm:p-3 xl:grid-cols-3">
                           {engineers.map((engineer) => {
                             const engineerId = String(engineer.id);
                             const checked = form.engineerIds.includes(engineerId) || engineerId === currentUserId;
                             return (
                               <label
                                 key={engineerId}
-                                className={`flex min-h-[42px] cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                                className={`flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors sm:min-h-[42px] sm:px-3 sm:py-2 sm:text-sm ${
                                   checked ? "border-primary/60 bg-primary/5 text-primary" : "border-border bg-background hover:border-primary/40"
                                 }`}
                               >
@@ -3751,7 +3760,8 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
           </ReportSection>
 
               <ReportSection sectionId="module" title={isOffice ? "内勤工作事项" : "服务模块"} icon={Clock} step={2} tag="可选；按需选择对应字段">
-              <div className="space-y-4 p-3 sm:p-4">
+              <div className="space-y-3 p-3 sm:space-y-4 sm:p-4">
+                {/* 手机端改为紧凑横向勾选胶囊（省去高方块留白）；桌面端保持原卡片高度与描述标签 */}
                 <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-5">
                     {moduleOptions.map((option) => {
                       const Icon = option.icon;
@@ -3760,21 +3770,21 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                         <button
                           key={option.value}
                           type="button"
-                          className={`group flex min-h-0 flex-col justify-between rounded-lg border p-3 text-left transition-colors sm:min-h-[128px] ${
-                            selected ? "border-primary bg-primary/5 text-primary shadow-sm" : "border-border bg-background hover:border-primary/40 hover:bg-accent/40"
+                          className={`group flex min-h-0 flex-row items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors sm:min-h-[128px] sm:flex-col sm:items-stretch sm:justify-between sm:gap-0 sm:p-3 ${
+                            selected ? "border-primary bg-primary/5 text-primary shadow-xs sm:shadow-sm" : "border-border bg-background hover:border-primary/40 hover:bg-accent/40"
                           }`}
                           onClick={() => toggleServiceModule(option.value)}
                         >
-                          <span className="flex items-start justify-between gap-3">
-                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground group-hover:text-foreground"}`}>
-                              <Icon className="h-4 w-4" />
+                          <span className="flex shrink-0 items-center sm:w-full sm:items-start sm:justify-between sm:gap-3">
+                            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md sm:h-9 sm:w-9 sm:rounded-lg ${selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground group-hover:text-foreground"}`}>
+                              <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             </span>
-                            <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 text-transparent"}`}>
+                            <span className={`hidden h-5 w-5 shrink-0 items-center justify-center rounded-full border sm:flex ${selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 text-transparent"}`}>
                               <CheckCircle className="h-3.5 w-3.5" />
                             </span>
                           </span>
-                          <span className="mt-3 min-w-0">
-                            <span className="block text-sm font-semibold">{option.label}</span>
+                          <span className="min-w-0 flex-1 sm:mt-3 sm:flex-initial">
+                            <span className="block truncate text-[13px] font-semibold sm:whitespace-normal sm:text-sm">{option.label}</span>
                             <span className="mt-1 hidden text-xs leading-5 text-muted-foreground sm:block">{option.description}</span>
                             {option.descriptionItems?.length ? (
                               <span className="mt-2 hidden flex-wrap gap-1 sm:flex">
@@ -3791,12 +3801,15 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                               </span>
                             ) : null}
                           </span>
+                          <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border sm:hidden ${selected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 text-transparent"}`}>
+                            <CheckCircle className="h-3 w-3" />
+                          </span>
                         </button>
                       );
                     })}
                 </div>
 
-                <div className="grid gap-4">
+                <div className="grid gap-3 sm:gap-4">
                   <Field label={issueFieldLabel} required>
                     <Input
                       value={form.issueDescription}
@@ -3809,7 +3822,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
               </ReportSection>
 
 	              <ReportSection sectionId="work" title={isOffice ? "工作内容" : "处理记录"} icon={PenLine} step={workSectionStep} tag="服务时间与处理内容">
-              <div className="grid gap-4 p-4 md:grid-cols-2">
+              <div className="grid gap-3 p-3 sm:gap-4 sm:p-4 md:grid-cols-2">
                 {isOnsite ? (
                   <Field
                     label="出发时间"
@@ -3873,19 +3886,19 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                 tag={showTargetDeviceFields && !isInstall ? "按需记录处理对象" : "根据已选模块填写"}
                 action={detailCounters.length ? detailCounters.map((item) => <Badge key={item} variant="outline">{item}</Badge>) : null}
               >
-                <div className="space-y-4 p-4">
+                <div className="space-y-3 p-3 sm:space-y-4 sm:p-4">
                   <div className="hidden">
                     资产、设备与部件明细
                   </div>
                   {showTargetDeviceFields ? (
-                    <div className="space-y-3 rounded-lg border p-3">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
+                    <div className="space-y-2.5 rounded-lg border p-2.5 sm:space-y-3 sm:p-3">
+                      <div className="flex items-center justify-between gap-2 sm:items-start sm:gap-3">
+                        <div className="min-w-0">
                           <div className="text-sm font-medium">{isRemote ? "远程目标设备（可选）" : hasOfficeMaterialsModule ? "关联设备（可选）" : "目标设备（可选）"}</div>
-                          <div className="text-xs text-muted-foreground">{hasOfficeMaterialsModule ? "可选择该客户已有的相关设备，也可以暂不关联。" : "无需关联设备也可以提交；如需记录处理对象，可选择客户已有设备或输入新设备。"}</div>
+                          <div className="hidden text-xs text-muted-foreground sm:block">{hasOfficeMaterialsModule ? "可选择该客户已有的相关设备，也可以暂不关联。" : "无需关联设备也可以提交；如需记录处理对象，可选择客户已有设备或输入新设备。"}</div>
                         </div>
-                        <Button type="button" variant="outline" size="sm" onClick={addTargetDeviceRow}>
-                          <Plus className="h-4 w-4" />
+                        <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 px-2.5" onClick={addTargetDeviceRow}>
+                          <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                           新增设备
                         </Button>
                       </div>
@@ -4238,26 +4251,28 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 	                                          </Button>
                               
 	                                        </div>
-	                                        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_96px]">
+	                                        <div className="grid gap-2.5 sm:gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_96px]">
 	                                          <Field label="名称" required>
 	                                            <Input value={part.partName} onChange={(event) => updatePart(index, { partName: event.target.value })} />
 	                                          </Field>
-	                                          <Field label="编号（或型号）">
-	                                            {renderModelCatalogSuggestionInput({
-	                                              inputId: `install-part-${index}-part-no`,
-	                                              value: part.partNo,
-	                                              valueMode: "partNo",
-	                                              placeholder: "输入编号、PN 或型号",
-	                                              onChange: (partNo) => updatePart(index, { partNo }),
-	                                            })}
-	                                          </Field>
-	                                          <Field label="数量" required>
-	                                            <Input inputMode="numeric" value={part.quantity} onChange={(event) => updatePart(index, { quantity: event.target.value })} />
-	                                          </Field>
+	                                          <div className="grid grid-cols-[minmax(0,1fr)_84px] gap-2.5 md:contents">
+	                                            <Field label="编号（或型号）">
+	                                              {renderModelCatalogSuggestionInput({
+	                                                inputId: `install-part-${index}-part-no`,
+	                                                value: part.partNo,
+	                                                valueMode: "partNo",
+	                                                placeholder: "编号 / PN",
+	                                                onChange: (partNo) => updatePart(index, { partNo }),
+	                                              })}
+	                                            </Field>
+	                                            <Field label="数量" required>
+	                                              <Input inputMode="numeric" value={part.quantity} onChange={(event) => updatePart(index, { quantity: event.target.value })} />
+	                                            </Field>
+	                                          </div>
 	                                          <div className="md:col-span-3">
 	                                            <Field label="备注">
 	                                              <Textarea
-	                                                rows={3}
+	                                                rows={2}
 	                                                value={part.remark}
 	                                                placeholder="可填写安装位置、插槽"
 	                                                onChange={(event) => updatePart(index, { remark: event.target.value })}
@@ -4420,22 +4435,23 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                               <DenseField label="备件或硬件部件名称">
                                 <Input value={part.partName} placeholder="如：硬盘、内存条、电源模块" onChange={(event) => updatePart(index, { partName: event.target.value })} />
                               </DenseField>
-	                              <DenseField label="料号 / PN">
-	                                {renderModelCatalogSuggestionInput({
-	                                  inputId: `service-part-${index}-part-no`,
-	                                  value: part.partNo,
-	                                  valueMode: "partNo",
-	                                  placeholder: "输入料号、PN 或型号",
-	                                  onChange: (partNo) => updatePart(index, { partNo }),
-	                                })}
-	                              </DenseField>
-                              <DenseField label="数量">
-                                <Input inputMode="numeric" value={part.quantity} onChange={(event) => updatePart(index, { quantity: event.target.value })} />
-                              </DenseField>
-                              
-                              <Button type="button" variant="ghost" size="icon" className="self-end md:self-center" onClick={() => removePart(index)} aria-label="删除部件明细">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+	                              <div className="grid grid-cols-[minmax(0,1fr)_76px_36px] items-end gap-2 md:contents">
+	                                <DenseField label="料号 / PN" className="min-w-0">
+	                                  {renderModelCatalogSuggestionInput({
+	                                    inputId: `service-part-${index}-part-no`,
+	                                    value: part.partNo,
+	                                    valueMode: "partNo",
+	                                    placeholder: "料号 / PN",
+	                                    onChange: (partNo) => updatePart(index, { partNo }),
+	                                  })}
+	                                </DenseField>
+	                                <DenseField label="数量" className="min-w-0">
+	                                  <Input inputMode="numeric" value={part.quantity} onChange={(event) => updatePart(index, { quantity: event.target.value })} />
+	                                </DenseField>
+	                                <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-destructive md:self-center" onClick={() => removePart(index)} aria-label="删除部件明细">
+	                                  <Trash2 className="h-4 w-4" />
+	                                </Button>
+	                              </div>
                               {part.deviceInputMode === "new" && part.newDeviceRefDraftId ? (
                                 <div className="rounded-md border border-dashed border-primary/40 bg-primary/5 p-3 text-sm text-muted-foreground md:col-span-full">
                                   与本单已登记的新设备同一台：{(() => {
@@ -4479,18 +4495,19 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
 
             {shouldShowAttachments ? (
             <ReportSection sectionId="attachment" title="附件与支持信息" icon={Upload} step={attachmentSectionStep} tag="配置文件、现场照片、截图与日志">
-              <div className="grid gap-4 p-4 lg:grid-cols-2">
+              <div className="grid gap-2.5 p-3 sm:gap-4 sm:p-4 lg:grid-cols-2">
                 {visibleAttachmentPurposes.map((purpose) => {
                   const meta = ATTACHMENT_PURPOSES[purpose];
                   const Icon = meta.icon;
                   const existingFiles = existingFilesForPurpose(purpose);
                   const localFiles = localFilesForPurpose(purpose);
+                  const hasAnyFiles = existingFiles.length + localFiles.length > 0;
                   const required = false;
                   const dragging = draggingAttachmentPurpose === purpose;
                   return (
                     <div
                       key={purpose}
-                      className={`rounded-lg border bg-background p-3 transition-colors ${
+                      className={`rounded-lg border bg-background p-2.5 transition-colors sm:p-3 ${
                         dragging ? "border-primary bg-primary/5 ring-2 ring-primary/15" : "border-border"
                       }`}
                       onDragEnter={(event) => dragAttachmentFiles(event, purpose)}
@@ -4498,7 +4515,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                       onDragLeave={(event) => leaveAttachmentDropZone(event, purpose)}
                       onDrop={(event) => dropAttachmentFiles(event, purpose)}
                     >
-                      <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className={`flex items-center justify-between gap-2.5 sm:gap-3 ${hasAnyFiles ? "mb-2.5 sm:mb-3" : "md:mb-3"}`}>
                         <div className="flex min-w-0 items-center gap-2">
                           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                             <Icon className="h-4 w-4" />
@@ -4508,13 +4525,13 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                               {meta.label}{required ? <span className="ml-0.5 text-destructive">*</span> : null}
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              {existingFiles.length + localFiles.length ? `${existingFiles.length + localFiles.length} 个文件` : "未上传"}
+                              {hasAnyFiles ? `${existingFiles.length + localFiles.length} 个文件` : "未上传"}
                             </div>
                           </div>
                         </div>
                         <Label className="shrink-0">
-                          <span className="inline-flex h-[42px] cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-sm font-medium hover:bg-accent">
-                            <Upload className="h-4 w-4" />
+                          <span className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium hover:bg-accent sm:h-[42px] sm:px-3 sm:text-sm">
+                            <Upload className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             上传文件
                           </span>
                           <Input
@@ -4530,7 +4547,7 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                         </Label>
                       </div>
 
-                      <div className="space-y-2">
+                      <div className={hasAnyFiles ? "space-y-2" : "hidden space-y-2 md:block"}>
                         <div
                           className={`hidden min-h-20 flex-col items-center justify-center rounded-lg border border-dashed px-4 py-4 text-center text-xs transition-colors md:flex ${
                             dragging ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/20 text-muted-foreground"
@@ -4592,8 +4609,15 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
             ) : null}
 
             {!isOffice ? (
-              <ReportSection sectionId="signoff" title="完工确认" icon={CheckCircle} step={signoffSectionStep} tag={isOnsite ? "客户确认与签名" : "处理结果"}>
-                <div className="grid gap-4 p-4 md:grid-cols-2">
+              <ReportSection
+                sectionId="signoff"
+                title="完工确认"
+                icon={CheckCircle}
+                step={signoffSectionStep}
+                tag={isOnsite ? "客户确认与签名" : "处理结果"}
+                action={!isOnsite ? <Badge variant="outline" className="md:hidden">免客户签名</Badge> : undefined}
+              >
+                <div className="grid gap-3 p-3 sm:gap-4 sm:p-4 md:grid-cols-2">
 	                  <Field label={isOnsite ? "服务结果" : "处理结果"} required>
                     <Select value={form.result || "resolved"} onValueChange={(value) => patchForm({ result: value })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
@@ -4604,54 +4628,66 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                   </Field>
                   {isOnsite ? (
                     <>
-                      <div className="space-y-3 md:col-span-2">
-                        <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="space-y-2.5 sm:space-y-3 md:col-span-2">
+                        <div className="grid grid-cols-2 gap-2">
                           <button
                             type="button"
-                            className={`flex min-h-16 items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${form.customerSignatureMode === "onsite" ? "border-primary bg-primary/10 text-primary" : "bg-background hover:border-primary/40"}`}
+                            className={`flex min-h-11 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors sm:min-h-16 sm:gap-3 sm:px-3 ${form.customerSignatureMode === "onsite" ? "border-primary bg-primary/10 text-primary" : "bg-background hover:border-primary/40"}`}
                             onClick={() => patchForm({ customerSignatureMode: "onsite" })}
                           >
                             <PenLine className="h-4 w-4 shrink-0" />
-                            <span>
-	                              <span className="block text-sm font-semibold">现场手写签名</span>
-	                              <span className="block text-xs text-muted-foreground">客户在工程师设备上完成手写确认</span>
+                            <span className="min-w-0">
+	                              <span className="block truncate text-[13px] font-semibold sm:text-sm">现场手写签名</span>
+	                              <span className="hidden text-xs text-muted-foreground sm:block">客户在工程师设备上完成手写确认</span>
                             </span>
                           </button>
                           <button
                             type="button"
-                            className={`flex min-h-16 items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${form.customerSignatureMode === "electronic" ? "border-primary bg-primary/10 text-primary" : "bg-background hover:border-primary/40"}`}
+                            className={`flex min-h-11 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors sm:min-h-16 sm:gap-3 sm:px-3 ${form.customerSignatureMode === "electronic" ? "border-primary bg-primary/10 text-primary" : "bg-background hover:border-primary/40"}`}
                             onClick={() => patchForm({ customerSignatureMode: "electronic", customerSignature: "", customerSignatureFileId: "" })}
                           >
                             <Share2 className="h-4 w-4 shrink-0" />
-                            <span>
-	                              <span className="block text-sm font-semibold">电子签署确认函</span>
-	                              <span className="block text-xs text-muted-foreground">提交后生成签署链接及二维码，可通过系统分享或邮件发送</span>
+                            <span className="min-w-0">
+	                              <span className="block truncate text-[13px] font-semibold sm:text-sm">电子签署确认函</span>
+	                              <span className="hidden text-xs text-muted-foreground sm:block">提交后生成签署链接及二维码，可通过系统分享或邮件发送</span>
                             </span>
                           </button>
                         </div>
                         {electronicSignatureSelected ? (
-                          <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-muted-foreground">
+                          <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground sm:text-sm">
 	                            适用于客户不在现场或无法现场签名的情况。提交后服务记录将进入待客户签署状态，并显示签署链接分享面板。
                           </div>
                         ) : (
-                          <div className="flex flex-wrap items-end gap-2">
-                            <Button type="button" variant="outline" onClick={useLatestCustomerSignature} disabled={loadingLatestSignature}>
-                              {loadingLatestSignature ? <span className="btn-loader" aria-hidden="true" /> : <History className="h-4 w-4" />}
+                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2.5 text-xs sm:hidden"
+                              onClick={() => setSignatureFullscreenOpen(true)}
+                            >
+                              <PenLine className="h-3.5 w-3.5" />
+                              横屏全屏签
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" className="h-8 px-2.5 text-xs sm:h-9 sm:px-3 sm:text-sm" onClick={useLatestCustomerSignature} disabled={loadingLatestSignature}>
+                              {loadingLatestSignature ? <span className="btn-loader" aria-hidden="true" /> : <History className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
 	                              使用最近签名
                             </Button>
                             <Button
                               type="button"
+                              size="sm"
                               variant="outline"
+                              className="h-8 px-2.5 text-xs sm:h-9 sm:px-3 sm:text-sm"
                               onClick={() => patchForm({ customerSignature: "", customerSignatureFileId: "" })}
                               disabled={!form.customerSignature && !form.customerSignatureFileId}
                             >
-                              <Trash2 className="h-4 w-4" />
-	                              清除签名
+                              <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+	                              清除
                             </Button>
                             {form.customerSignatureFileId ? (
                               <Badge variant="success">
                                 <CheckCircle className="h-3 w-3" />
-	                                已使用历史签名
+	                                已用历史签名
                               </Badge>
                             ) : null}
                           </div>
@@ -4660,23 +4696,13 @@ const [attachmentPreviewOffice, setAttachmentPreviewOffice] = useState<{ blob: B
                       {!electronicSignatureSelected ? (
                         <div className="md:col-span-2">
 	                        <Field label="客户现场签名" required>
-                          <div className="space-y-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="w-full sm:hidden"
-                              onClick={() => setSignatureFullscreenOpen(true)}
-                            >
-                              横屏全屏签名
-                            </Button>
-                            <SignaturePad value={form.customerSignature} onChange={(value) => patchForm({ customerSignature: value, customerSignatureFileId: "" })} rotated={false} />
-                          </div>
+                          <SignaturePad value={form.customerSignature} onChange={(value) => patchForm({ customerSignature: value, customerSignatureFileId: "" })} rotated={false} />
                         </Field>
                       </div>
                       ) : null}
                     </>
                   ) : (
-                    <div className="flex items-end">
+                    <div className="hidden items-end md:flex">
 	                      <Badge variant="outline">远程服务无需客户手写签名</Badge>
                     </div>
                   )}
