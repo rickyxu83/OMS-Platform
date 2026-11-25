@@ -720,11 +720,11 @@ function engineerText(order: Order, fallback: string) {
   return order.engineerName || fallback;
 }
 
-function PreviewField({ label, value }: { label: string; value?: string }) {
+function PreviewField({ label, value, className }: { label: string; value?: string; className?: string }) {
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 ${className || ""}`}>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 break-words text-sm leading-6">{textValue(value)}</div>
+      <div className="mt-0.5 break-words text-sm leading-5 sm:mt-1 sm:leading-6">{textValue(value)}</div>
     </div>
   );
 }
@@ -764,6 +764,7 @@ export function Dashboard() {
   }>>([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsOnlyMine, setNewsOnlyMine] = useState(false);
+  const [newsExpanded, setNewsExpanded] = useState(false);
   // 当前用户的客户名列表（用于「只看我的客户」过滤）
   const [myCustomerNames, setMyCustomerNames] = useState<Set<string>>(new Set());
   const [trend, setTrend] = useState<Array<{ date: string; total: number }>>([]);
@@ -995,17 +996,30 @@ export function Dashboard() {
   }
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4 p-3 sm:p-6 lg:space-y-6">
-      <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold sm:text-3xl">{t.title}</h1>
-          <p className="mt-1 text-sm text-muted-foreground sm:text-base">{t.subtitle}</p>
+    <div className="mx-auto max-w-[1600px] space-y-3 p-3 sm:space-y-4 sm:p-6 lg:space-y-6">
+      <div className="flex flex-col justify-between gap-2.5 md:flex-row md:items-center md:gap-3">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold sm:text-3xl">{t.title}</h1>
+            <p className="mt-1 hidden text-sm text-muted-foreground sm:block sm:text-base">{t.subtitle}</p>
+          </div>
+          {canUseWorkSummary && (
+            <Button
+              size="sm"
+              className="h-8 shrink-0 gap-1.5 whitespace-nowrap px-2.5 text-xs md:hidden"
+              onClick={openReportDialog}
+              disabled={exporting}
+            >
+              {exporting ? <span className="btn-loader" aria-hidden="true" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {t.exportReport}
+            </Button>
+          )}
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:flex-nowrap">
-          <div className="relative min-w-0 basis-full sm:basis-auto sm:flex-1 md:w-48 md:flex-none lg:w-52 xl:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <div className="flex w-full flex-nowrap items-center gap-2 md:w-auto">
+          <div className="relative min-w-0 flex-1 md:w-48 md:flex-none lg:w-52 xl:w-64">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="h-10 w-full bg-card pl-9"
+              className="h-9 w-full bg-card pl-9 text-sm md:h-10"
               placeholder={t.searchPlaceholder}
               aria-label={t.searchPlaceholder}
               value={searchQuery}
@@ -1015,13 +1029,13 @@ export function Dashboard() {
               }}
             />
           </div>
-          <Button className="h-10 flex-1 shrink-0 whitespace-nowrap sm:flex-none" variant="outline" onClick={submitSearch} disabled={!searchQuery.trim()}>
-            <Search className="w-4 h-4 mr-2" />
+          <Button className="h-9 shrink-0 whitespace-nowrap px-3 text-xs sm:text-sm md:h-10 md:px-4" variant="outline" onClick={submitSearch} disabled={!searchQuery.trim()}>
+            <Search className="mr-1.5 h-3.5 w-3.5 md:mr-2 md:h-4 md:w-4" />
             搜索
           </Button>
           {canUseWorkSummary && (
-            <Button className="h-10 flex-1 shrink-0 whitespace-nowrap sm:flex-none" onClick={openReportDialog} disabled={exporting}>
-              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Sparkles className="w-4 h-4 mr-2" />}
+            <Button className="hidden h-10 shrink-0 whitespace-nowrap md:inline-flex" onClick={openReportDialog} disabled={exporting}>
+              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Sparkles className="mr-2 h-4 w-4" />}
               {t.exportReport}
             </Button>
           )}
@@ -1032,12 +1046,13 @@ export function Dashboard() {
 
       {/* 客户动态轻量跑马灯：白底融入卡片体系 + 左右边缘淡出，hover/focus 暂停，点击跳原文或直达底部完整列表 */}
       {customerNews.length > 0 && (
-        <div className="news-marquee flex h-10 items-center gap-2 rounded-xl border border-border/80 bg-card px-2.5 shadow-xs sm:px-3">
-          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary-soft px-2 py-1 text-xs font-medium text-primary">
-            <Radio className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>客户动态</span>
+        <div className="news-marquee flex h-9 items-center gap-1.5 rounded-xl border border-border/80 bg-card px-2 shadow-xs sm:h-10 sm:gap-2 sm:px-3">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-primary-soft px-1.5 py-0.5 text-[11px] font-medium text-primary sm:gap-1.5 sm:px-2 sm:py-1 sm:text-xs">
+            <Radio className="h-3 w-3 sm:h-3.5 sm:w-3.5" aria-hidden="true" />
+            <span className="hidden sm:inline">客户动态</span>
+            <span className="sm:hidden">动态</span>
           </span>
-          <span className="h-4 w-px shrink-0 bg-border" aria-hidden="true" />
+          <span className="h-3.5 w-px shrink-0 bg-border sm:h-4" aria-hidden="true" />
           <div className="news-marquee-mask flex min-w-0 flex-1 items-center overflow-hidden">
             <div
               className="news-marquee-track flex shrink-0 items-center whitespace-nowrap"
@@ -1055,7 +1070,7 @@ export function Dashboard() {
                     <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground/80">
                       {item.customerNames || item.customerName}
                     </span>
-                    <span className="max-w-[240px] truncate text-foreground transition-colors group-hover:text-primary sm:max-w-[340px]">
+                    <span className="max-w-[180px] truncate text-foreground transition-colors group-hover:text-primary sm:max-w-[340px]">
                       {item.title}
                     </span>
                     {item.publishedAt ? (
@@ -1070,7 +1085,7 @@ export function Dashboard() {
           <button
             type="button"
             onClick={() => newsCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-            className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-primary"
+            className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-primary sm:px-2"
             title="跳转到下方完整客户动态"
           >
             <span className="hidden sm:inline">查看全部</span>
@@ -1080,24 +1095,24 @@ export function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-2 lg:grid-cols-4 lg:gap-6">
         {stats.map((stat, statIndex) => {
           const Icon = stat.icon;
           return (
-            <Card key={stat.title} className="overflow-hidden border-none shadow-sm ring-1 ring-border">
-              <CardHeader className="flex flex-row items-center justify-between px-3 pb-1 pt-2.5 sm:px-4 sm:pt-3">
-                <CardTitle className="text-xs font-medium text-muted-foreground sm:text-sm">
+            <Card key={stat.title} className="gap-1.5 overflow-hidden border-none shadow-sm ring-1 ring-border sm:gap-4 lg:gap-6">
+              <CardHeader className="flex flex-row items-center justify-between gap-1 px-2.5 pb-0 pt-2.5 sm:px-4 sm:pb-1 sm:pt-3">
+                <CardTitle className="truncate text-xs font-medium text-muted-foreground sm:text-sm" title={stat.title}>
                   {stat.title}
                 </CardTitle>
-                <div className={`rounded-lg p-1.5 ${stat.bg}`}>
-                  <Icon className={`w-4 h-4 ${stat.color}`} />
+                <div className={`shrink-0 rounded-md p-1 sm:rounded-lg sm:p-1.5 ${stat.bg}`}>
+                  <Icon className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${stat.color}`} />
                 </div>
               </CardHeader>
-              <CardContent className="px-3 pb-2.5 sm:px-4 sm:pb-3">
-                <div className="flex items-baseline gap-2">
-                  <div className="text-xl font-bold sm:text-2xl tabular-nums">
+              <CardContent className="px-2.5 pb-2.5 [&:last-child]:pb-2.5 sm:px-4 sm:pb-3 sm:[&:last-child]:pb-3">
+                <div className="flex items-end justify-between gap-2">
+                  <div className="text-xl font-bold leading-none sm:text-2xl tabular-nums">
                     {loading ? (
-                      <Skeleton className="h-8 w-16" />
+                      <Skeleton className="h-7 w-14 sm:h-8 sm:w-16" />
                     ) : (
                       <span
                         className="stat-value-enter inline-block"
@@ -1107,27 +1122,30 @@ export function Dashboard() {
                       </span>
                     )}
                   </div>
+                  {!loading && stat.spark ? (
+                    <Sparkline data={stat.spark} className={`h-5 w-14 shrink-0 sm:hidden ${stat.color}`} />
+                  ) : null}
                 </div>
                 {loading ? null : stat.spark ? (
                   <div className="mt-1">
-                    <Sparkline data={stat.spark} className={`h-6 w-full ${stat.color}`} />
-                    <p className="mt-1 text-xs text-muted-foreground">{t.stats.trend14}</p>
+                    <Sparkline data={stat.spark} className={`hidden h-6 w-full sm:block ${stat.color}`} />
+                    <p className="mt-1 truncate text-[11px] text-muted-foreground sm:text-xs">{t.stats.trend14}</p>
                   </div>
                 ) : stat.key === "today" ? (
                   // 今日为 0 时不显示 -100% 红箭头（刺眼且无信息量），改中性文案
                   todayTrendCount === 0 ? (
-                    <p className="mt-1 text-xs text-muted-foreground">{t.stats.noToday}</p>
+                    <p className="mt-1 truncate text-[11px] text-muted-foreground sm:text-xs">{t.stats.noToday}</p>
                   ) : stat.delta !== null && stat.delta !== undefined ? (
-                    <p className="mt-1 flex items-center gap-1 text-xs">
+                    <p className="mt-1 flex items-center gap-1 truncate text-[11px] sm:text-xs">
                       {stat.delta >= 0 ? (
-                        <TrendingUp className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+                        <TrendingUp className="h-3 w-3 shrink-0 text-emerald-600 sm:h-3.5 sm:w-3.5" aria-hidden="true" />
                       ) : (
-                        <TrendingDown className="h-3.5 w-3.5 text-red-500" aria-hidden="true" />
+                        <TrendingDown className="h-3 w-3 shrink-0 text-red-500 sm:h-3.5 sm:w-3.5" aria-hidden="true" />
                       )}
                       <span className={stat.delta >= 0 ? "font-medium text-emerald-600" : "font-medium text-red-500"}>
                         {stat.delta >= 0 ? "+" : ""}{Math.round(stat.delta * 100)}%
                       </span>
-                      <span className="text-muted-foreground">{t.stats.vsAvg}</span>
+                      <span className="truncate text-muted-foreground">{t.stats.vsAvg}</span>
                     </p>
                   ) : null
                 ) : null}
@@ -1138,25 +1156,25 @@ export function Dashboard() {
       </div>
 
       {canUseWorkSummary && workSummary && (
-        <Card className="border-purple-100 bg-purple-50/40">
-          <CardHeader>
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <Card className="gap-3 border-purple-100 bg-purple-50/40 sm:gap-6">
+          <CardHeader className="px-3.5 pt-3.5 sm:px-6 sm:pt-6">
+            <div className="flex items-start justify-between gap-2 md:items-center">
               <div className="min-w-0">
-                <CardTitle>{t.reportDialog.title}</CardTitle>
-                <CardDescription className="truncate">
+                <CardTitle className="text-base sm:text-lg">{t.reportDialog.title}</CardTitle>
+                <CardDescription className="mt-0.5 truncate text-xs sm:text-sm">
                   {workSummaryRange || "—"}
                   {workSummary.available && (workSummary.provider || workSummary.usage?.model)
                     ? ` · ${[workSummary.provider, workSummary.usage?.model].filter(Boolean).join(" / ")}`
                     : ""}
                 </CardDescription>
               </div>
-              <Button className="shrink-0 whitespace-nowrap" variant="outline" size="sm" onClick={openReportDialog} disabled={exporting}>
-                {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : null}
+              <Button className="h-8 shrink-0 whitespace-nowrap px-2.5 text-xs sm:h-9 sm:px-3 sm:text-sm" variant="outline" size="sm" onClick={openReportDialog} disabled={exporting}>
+                {exporting ? <span className="btn-loader mr-1.5" aria-hidden="true" /> : null}
                 {t.reportDialog.regenerate}
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-5 text-sm">
+          <CardContent className="space-y-3.5 px-3.5 text-sm [&:last-child]:pb-3.5 sm:space-y-5 sm:px-6 sm:[&:last-child]:pb-6">
             {!workSummary.available || !displayWorkSummary ? (
               <div className="rounded-lg border bg-background px-4 py-3 text-muted-foreground">
                 {workSummary.reason || (lang === "zh-TW" ? "AI 營運總結暫不可用" : "AI 运营总结暂不可用")}
@@ -1262,16 +1280,16 @@ export function Dashboard() {
       )}
 
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12 lg:gap-6">
-        <section className="lg:col-span-7 xl:col-span-8">
-          <div className="mb-3 px-1 sm:mb-4">
-            <h2 className="text-lg font-semibold sm:text-xl">{t.map.title}</h2>
+      <div className="grid grid-cols-1 items-start gap-3 sm:gap-4 lg:grid-cols-12 lg:gap-6">
+        <section className="order-2 lg:order-1 lg:col-span-7 xl:col-span-8">
+          <div className="mb-2 px-0.5 sm:mb-4 sm:px-1">
+            <h2 className="text-base font-semibold sm:text-xl">{t.map.title}</h2>
           </div>
           <Amap
             center={{ lng: 120.71518, lat: 31.31962, name: "苏州办事处" }}
             points={mapPoints}
             zoom={7}
-            height={isCompactViewport ? 300 : 440}
+            height={isCompactViewport ? 240 : 440}
             fitView={false}
             fullscreenable
             fullscreenStats={[
@@ -1283,24 +1301,24 @@ export function Dashboard() {
           />
         </section>
 
-        <section className="lg:col-span-5 xl:col-span-4">
-          <div className="mb-3 flex items-center justify-between gap-2 px-1 sm:mb-4">
-            <h2 className="text-lg font-semibold sm:text-xl">{t.recent.title}</h2>
+        <section className="order-1 lg:order-2 lg:col-span-5 xl:col-span-4">
+          <div className="mb-2 flex items-center justify-between gap-2 px-0.5 sm:mb-4 sm:px-1">
+            <h2 className="text-base font-semibold sm:text-xl">{t.recent.title}</h2>
             <button
               type="button"
-              className="inline-flex shrink-0 items-center gap-1 text-sm text-primary transition-colors hover:underline"
+              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary transition-colors hover:underline sm:text-sm"
               onClick={() => navigate(useOwnScope ? "/service-report" : "/service-orders")}
             >
               {t.recent.viewAll}
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>
-          <Card className="flex h-[320px] flex-col overflow-hidden border-none shadow-sm ring-1 ring-border lg:h-[440px]">
-            <CardContent className="min-h-0 flex-1 overflow-y-auto p-1.5 sm:p-2">
+          <Card className="flex h-auto flex-col gap-0 overflow-hidden border-none shadow-sm ring-1 ring-border lg:h-[440px]">
+            <CardContent className="min-h-0 flex-1 p-1 [&:last-child]:pb-1 sm:p-2 sm:[&:last-child]:pb-2 lg:overflow-y-auto">
               {loading ? (
                 <div className="divide-y divide-border/60">
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={`recent-skeleton-${i}`} className="space-y-1.5 px-2.5 py-2.5">
+                    <div key={`recent-skeleton-${i}`} className="space-y-1.5 px-2.5 py-2 sm:py-2.5">
                       <div className="flex items-center justify-between gap-2">
                         <Skeleton className="h-4 w-36" />
                         <Skeleton className="h-4 w-14" />
@@ -1321,7 +1339,7 @@ export function Dashboard() {
                       key={order.key}
                       role="button"
                       tabIndex={0}
-                      className="group cursor-pointer rounded-lg px-2.5 py-2.5 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                      className="group cursor-pointer rounded-lg px-2.5 py-2 transition-colors hover:bg-muted/50 active:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 sm:py-2.5"
                       onClick={() => openOrderPreview(order.source)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
@@ -1345,7 +1363,7 @@ export function Dashboard() {
                         </div>
                         <span className="shrink-0">{statusIndicatorOf(order.status, order.statusLabel)}</span>
                       </div>
-                      <div className="mt-1 flex min-w-0 items-center justify-between gap-3">
+                      <div className="mt-0.5 flex min-w-0 items-center justify-between gap-3 sm:mt-1">
                         <p className="min-w-0 flex-1 truncate text-xs leading-5 text-muted-foreground" title={order.title}>
                           {order.title}
                         </p>
@@ -1363,20 +1381,29 @@ export function Dashboard() {
       </div>
 
       {/* 客户动态（有新闻时才显示卡片） */}
-      {customerNews.length > 0 && (
+      {customerNews.length > 0 && (() => {
+        const filteredNews = newsOnlyMine
+          ? customerNews.filter((item) => {
+              const names = String(item.customerNames || item.customerName || "").split("、");
+              return names.some((n) => myCustomerNames.has(n));
+            })
+          : customerNews;
+        const visibleNews = isCompactViewport && !newsExpanded ? filteredNews.slice(0, 5) : filteredNews;
+        const hiddenNewsCount = filteredNews.length - visibleNews.length;
+        return (
         <div ref={newsCardRef} className="scroll-mt-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg">客户动态</CardTitle>
-                <CardDescription>近 3 个月客户相关新闻与公告</CardDescription>
+        <Card className="gap-3 sm:gap-6">
+          <CardHeader className="px-3.5 pb-0 pt-3.5 sm:px-6 sm:pb-3 sm:pt-6">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <CardTitle className="text-base sm:text-lg">客户动态</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">近 3 个月客户相关新闻与公告</CardDescription>
               </div>
               {(user?.role === 'sales' || user?.role === 'sales_supervisor') && myCustomerNames.size > 0 ? (
                 <button
                   type="button"
                   onClick={() => setNewsOnlyMine(!newsOnlyMine)}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
                     newsOnlyMine ? 'bg-primary text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'
                   }`}
                 >
@@ -1385,31 +1412,31 @@ export function Dashboard() {
               ) : null}
             </div>
           </CardHeader>
-          <CardContent className="px-4 pb-4 sm:px-6">
-            <div className="max-h-[340px] space-y-2.5 overflow-y-auto pr-1">
-              {(newsOnlyMine ? customerNews.filter((item) => {
-                const names = String(item.customerNames || item.customerName || '').split('、')
-                return names.some((n) => myCustomerNames.has(n))
-              }) : customerNews).map((item) => {
+          <CardContent className="px-3 pb-3 [&:last-child]:pb-3 sm:px-6 sm:pb-4 sm:[&:last-child]:pb-4">
+            <div className="space-y-2 sm:max-h-[340px] sm:space-y-2.5 sm:overflow-y-auto sm:pr-1">
+              {visibleNews.map((item) => {
                 // 3 天内的新闻标 NEW
                 const isNew = item.publishedAt && (Date.now() - new Date(String(item.publishedAt).replace(' ', 'T')).getTime()) < 3 * 24 * 3600 * 1000
                 return (
-                <div key={item.id} className="flex items-start gap-3 rounded-lg border bg-background px-3 py-2.5 text-sm">
+                <div key={item.id} className="flex items-start gap-2.5 rounded-lg border bg-background px-2.5 py-2 text-sm sm:gap-3 sm:px-3 sm:py-2.5">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 sm:gap-2">
                       {isNew ? <span className="shrink-0 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">NEW</span> : null}
-                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${item.customerLevel === 'vip' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
+                      <span
+                        className={`max-w-[170px] truncate rounded px-1.5 py-0.5 text-[10px] font-medium sm:max-w-none ${item.customerLevel === 'vip' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}
+                        title={item.customerNames || item.customerName}
+                      >
                         {item.customerNames || item.customerName}
                       </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{item.sourceName || item.source}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{item.publishedAt ? formatDate(item.publishedAt) : ''}</span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground sm:text-xs">{item.sourceName || item.source}</span>
+                      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground sm:text-xs">{item.publishedAt ? formatDate(item.publishedAt) : ''}</span>
                     </div>
                     {item.url ? (
-                      <a href={item.url} target="_blank" rel="noopener noreferrer" className="mt-1 block truncate font-medium text-foreground hover:text-primary hover:underline">
+                      <a href={item.url} target="_blank" rel="noopener noreferrer" className="mt-1 block line-clamp-2 text-[13px] font-medium leading-snug text-foreground hover:text-primary hover:underline sm:truncate sm:text-sm">
                         {item.title}
                       </a>
                     ) : (
-                      <div className="mt-1 truncate font-medium text-foreground">{item.title}</div>
+                      <div className="mt-1 line-clamp-2 text-[13px] font-medium leading-snug text-foreground sm:truncate sm:text-sm">{item.title}</div>
                     )}
                     {item.summary ? <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.summary}</div> : null}
                   </div>
@@ -1417,23 +1444,34 @@ export function Dashboard() {
                 )
               })}
             </div>
+            {isCompactViewport && filteredNews.length > 5 && (
+              <button
+                type="button"
+                onClick={() => setNewsExpanded((prev) => !prev)}
+                className="mt-2.5 flex w-full items-center justify-center gap-1 rounded-lg border border-border/80 bg-muted/40 py-2 text-xs font-medium text-muted-foreground transition-colors active:bg-muted"
+              >
+                {newsExpanded ? "收起动态" : `展开其余 ${hiddenNewsCount} 条动态`}
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${newsExpanded ? "rotate-180" : ""}`} />
+              </button>
+            )}
           </CardContent>
         </Card>
         </div>
-      )}
+        );
+      })()}
 
       <Dialog open={Boolean(previewOrder)} onOpenChange={(open) => { if (!open) closeOrderPreview(); }}>
         <DialogContent
-          className="flex h-[min(92vh,720px)] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:max-w-[760px]"
+          className="flex h-[min(90vh,720px)] supports-[height:100dvh]:h-[min(90dvh,720px)] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 sm:h-[min(92vh,720px)] sm:max-w-[760px]"
           onOpenAutoFocus={(event) => event.preventDefault()}
         >
-          <DialogHeader className="px-6 pt-6 pr-12">
-            <DialogTitle>{previewOrder ? displayOrderId(previewOrder) : t.recent.previewTitle}</DialogTitle>
-            <DialogDescription>
+          <DialogHeader className="px-4 pt-4 pr-11 text-left sm:px-6 sm:pt-6 sm:pr-12">
+            <DialogTitle className="text-base sm:text-lg">{previewOrder ? displayOrderId(previewOrder) : t.recent.previewTitle}</DialogTitle>
+            <DialogDescription className="line-clamp-2 text-xs sm:text-sm">
               {previewOrder ? `${textValue(previewOrder.customerName)} · ${previewSummary(previewOrder)}` : ""}
             </DialogDescription>
           </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-2">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2 sm:px-6">
             {previewLoading ? (
               <div className="mb-4 space-y-2">
                 <Skeleton className="h-4 w-1/3" />
@@ -1467,23 +1505,23 @@ export function Dashboard() {
               const partText = partsSummary(previewOrder, t.detail);
               const fileText = filesSummary(previewOrder, t.detail);
               return (
-                <div className="space-y-5 py-2">
+                <div className="space-y-4 py-2 sm:space-y-5">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                     {statusIndicatorOf(status, statusLabel)}
                     {typeIndicatorOf(previewOrder.serviceType, typeLabel)}
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <PreviewField label={t.detail.customerName} value={previewOrder.customerName} />
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 md:grid-cols-3 md:gap-4">
+                    <PreviewField className="col-span-2 md:col-span-1" label={t.detail.customerName} value={previewOrder.customerName} />
                     <PreviewField label={t.detail.contactName} value={previewOrder.contactName || t.detail.unnamedContact} />
                     <PreviewField label={t.detail.contactPhone} value={previewOrder.contactPhone} />
-                    <PreviewField label={t.detail.customerAddress} value={previewOrder.customerAddress} />
+                    <PreviewField className="col-span-2 md:col-span-1" label={t.detail.customerAddress} value={previewOrder.customerAddress} />
                     <PreviewField label={t.detail.deviceName} value={previewOrder.deviceName || t.detail.unnamedDevice} />
                     <PreviewField label={t.detail.engineer} value={engineerText(previewOrder, t.detail.unnamedEngineer)} />
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <PreviewField label={t.detail.serviceTime} value={serviceTime} />
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 md:grid-cols-3 md:gap-4">
+                    <PreviewField className="col-span-2 md:col-span-1" label={t.detail.serviceTime} value={serviceTime} />
                     <PreviewField label={t.detail.createdAt} value={formatDateTime(previewOrder.createdAt)} />
                     <PreviewField label={t.detail.submittedAt} value={formatDateTime(previewOrder.submittedAt)} />
                     <PreviewField label={t.detail.updatedAt} value={formatDateTime(previewOrder.updatedAt)} />
@@ -1493,7 +1531,7 @@ export function Dashboard() {
                   <PreviewBlock label={issuePreviewLabel(previewOrder, t.detail)} value={previewOrder.issueDescription} markdown />
                   {displayWorkContent ? <PreviewBlock label={workContentPreviewLabel(previewOrder, t.detail)} value={displayWorkContent} markdown /> : null}
                   {(resultText || previewOrder.report?.resultDescription || previewOrder.report?.customerConfirmName || signatureText) ? (
-                    <div className="grid gap-4 md:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 md:grid-cols-3 md:gap-4">
                       {resultText ? <PreviewField label={t.detail.result} value={resultText} /> : null}
                       {previewOrder.report?.resultDescription ? <PreviewField label={t.detail.resultDescription} value={previewOrder.report.resultDescription} /> : null}
                       {previewOrder.report?.customerConfirmName || previewOrder.report?.customerName ? (
@@ -1503,7 +1541,7 @@ export function Dashboard() {
                     </div>
                   ) : null}
                   {(previewOrder.deviceModel || previewOrder.devicePn || previewOrder.deviceSerialNo || previewOrder.deviceRemark) ? (
-                    <div className="grid gap-4 md:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 md:grid-cols-3 md:gap-4">
                       <PreviewField label={t.detail.deviceModel} value={previewOrder.deviceModel} />
                       <PreviewField label={t.detail.devicePn} value={previewOrder.devicePn} />
                       <PreviewField label={t.detail.deviceSerialNo} value={previewOrder.deviceSerialNo} />
@@ -1516,12 +1554,12 @@ export function Dashboard() {
               );
             })() : null}
           </div>
-          <DialogFooter className="flex-row justify-end border-t bg-background px-6 py-4">
+          <DialogFooter className="flex-row justify-end gap-2 border-t bg-background px-4 py-3 sm:px-6 sm:py-4">
             <Button variant="outline" onClick={closeOrderPreview}>
               {t.recent.close}
             </Button>
             <Button onClick={openFullOrder} disabled={!previewOrder?.id}>
-              <ArrowRight className="w-4 h-4 mr-2" />
+              <ArrowRight className="mr-2 h-4 w-4" />
               {t.recent.openFull}
             </Button>
           </DialogFooter>
@@ -1530,7 +1568,7 @@ export function Dashboard() {
 
       <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
         <DialogContent className="sm:max-w-[720px]">
-          <DialogHeader>
+          <DialogHeader className="text-left">
             <DialogTitle>{t.reportDialog.title}</DialogTitle>
             <DialogDescription>{t.reportDialog.description}</DialogDescription>
           </DialogHeader>
@@ -1619,12 +1657,12 @@ export function Dashboard() {
               hints={[...t.reportDialog.progress.aiHints]}
             />
           ) : null}
-          <DialogFooter>
+          <DialogFooter className="flex-row justify-end gap-2">
             <Button variant="outline" onClick={() => setReportDialogOpen(false)} disabled={exporting}>
               {t.reportDialog.cancel}
             </Button>
             <Button onClick={exportMonthlyReport} disabled={exporting || !reportStartDate || !reportEndDate}>
-              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Sparkles className="w-4 h-4 mr-2" />}
+              {exporting ? <span className="btn-loader mr-2" aria-hidden="true" /> : <Sparkles className="mr-2 h-4 w-4" />}
               {t.reportDialog.submit}
             </Button>
           </DialogFooter>

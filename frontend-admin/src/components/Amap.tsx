@@ -658,6 +658,18 @@ const AMAP_MARKER_CSS = `
 .ops-map-fs-tone-red .ops-map-fs-stat-value { color: #f87171; }
 .ops-map-fs-tone-green .ops-map-fs-stat-value { color: #4ade80; }
 .ops-map-fs-suspended * { animation-play-state: paused !important; }
+@media (max-width: 639px) {
+  .ops-map-fs-topbar { padding: 10px 12px; gap: 8px; }
+  .ops-map-fs-title { font-size: 14px; letter-spacing: 1px; }
+  .ops-map-fs-esc { display: none; }
+  .ops-map-fs-stat { width: calc(50% - 14px); max-width: 156px; padding: 7px 10px; border-radius: 10px; }
+  .ops-map-fs-stat-0 { top: 10px; left: 10px; }
+  .ops-map-fs-stat-1 { top: 10px; right: 10px; }
+  .ops-map-fs-stat-2 { bottom: 10px; left: 10px; }
+  .ops-map-fs-stat-3 { bottom: 10px; right: 10px; }
+  .ops-map-fs-stat-value { font-size: 18px; }
+  .ops-map-fs-stat-label { font-size: 10.5px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .ops-map-fullscreen { transition: none; }
 }
